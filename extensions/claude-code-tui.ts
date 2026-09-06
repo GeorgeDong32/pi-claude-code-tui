@@ -23,7 +23,7 @@
  *   /claude-footer — 开/关原生底栏（开：兼容其它扩展 footer；关：CC 极简风）
  */
 
-import { VERSION, keyHint, ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition, renderDiff } from "@earendil-works/pi-coding-agent";
+import { VERSION, keyText, ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition, renderDiff } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
@@ -187,7 +187,7 @@ const ccResult = (
 	const cont = "     ";
 	const paint = (s: string) => (isError ? theme.fg("error", s) : theme.fg("toolOutput", s));
 	const wrapW = Math.max(10, width - cont.length);
-	const expandHint = theme.fg("dim", `(${keyHint("app.tools.expand", "to expand")})`);
+	const expandHint = theme.fg("dim", `(${keyText("app.tools.expand")} to expand)`);
 
 	// Wraps pre-colored logical lines into physical rows and, unless expanded,
 	// caps the block at MAX_RESULT_ROWS rows total (expand hint included).
@@ -222,7 +222,7 @@ const ccResult = (
 	// Read collapsed: one-line summary, like CC
 	if (name === "read" && !options.expanded) {
 		return [
-			`${gutter}${theme.fg("toolOutput", `Read ${lines.length} lines`)} ${theme.fg("dim", `(${keyHint("app.tools.expand", "to expand")})`)}`,
+			`${gutter}${theme.fg("toolOutput", `Read ${lines.length} lines`)} ${theme.fg("dim", `(${keyText("app.tools.expand")} to expand)`)}`,
 		];
 	}
 
