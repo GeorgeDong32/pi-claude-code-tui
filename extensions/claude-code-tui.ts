@@ -389,7 +389,7 @@ export default function (pi: ExtensionAPI) {
 				// info stays fresh via model_select; usage falls back to
 				// last-good values on stale ctx.
 				const modelName = currentModelName || "no model";
-				const sep = theme.fg("dim", " │ ");
+				const sep = theme.fg("dim", "│");
 
 				try {
 					let used = 0;
@@ -435,11 +435,11 @@ export default function (pi: ExtensionAPI) {
 						return undefined;
 					}
 				})();
-				const modelLabel = effort ? `${modelName} · ${effort}` : modelName;
+				const modelLabel = effort ? `${modelName}·${effort}` : modelName;
 				const rightParts = [muted(modelLabel)];
 				if (win > 0 && used > 0) {
 					rightParts.push(
-						`${theme.fg("dim", "Context ")}${muted(`${pct}%`)}${theme.fg("dim", ` (${formatTokens(used)}/${formatTokens(win)})`)}`,
+						`${theme.fg("dim", "Ctx ")}${muted(`${pct}%`)}${theme.fg("dim", `(${formatTokens(used)}/${formatTokens(win)})`)}`,
 					);
 				}
 				if (cost > 0) {
