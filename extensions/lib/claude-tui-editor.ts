@@ -107,8 +107,15 @@ export function applyRoundedEditorBorders(
  * Turns `38;…` (fg) into `48;…` (bg) and pairs it with a dark foreground,
  * so the bar follows the theme accent instead of a hardcoded gold.
  */
+let editorAccentOpen = "\x1b[38;2;138;190;183m"; // sage fallback (#8ABEB7)
+
+/** Cache the theme accent's fg open-sequence (called from enable with a live ctx). */
+export function setEditorAccentOpen(seq: string): void {
+	if (typeof seq === "string" && seq.includes("38;")) editorAccentOpen = seq;
+}
+
 export function cursorOpenFromFgAnsi(fgOpen: string): string {
-	const bgOpen = fgOpen.replace(/\x1b\[38;/, "\x1b[48;");
+	const bgOpen = fgOpen.replace("\x1b[38;", "\x1b[48;");
 	if (bgOpen === fgOpen) return `\x1b[7m▏\x1b[0m`; // not a direct-color seq: reverse video
 	return `${bgOpen}\x1b[38;2;0;0;0m▏\x1b[39m\x1b[49m`;
 }
@@ -151,7 +158,7 @@ export class CodexStyleEditor extends CustomEditor {
 		// CC style: flat full-width rules (pi's native editor borders), an
 		// accent `❯` prompt and a blinking accent bar cursor (theme-driven).
 		const open = this.cursorOpen();
-		const prompt = this.theme.fg("accent", "❯");
+		const prompt = `${editorAccentOpen}❯\x1b[39m`;
 		const lines = super.render(width).map((line) => restyleEditorCursor(line, open, this.blinkOn));
 
 		// pi appends autocomplete rows AFTER the bottom border (menu pops below

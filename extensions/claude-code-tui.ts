@@ -26,7 +26,7 @@
 import { VERSION, keyHint, ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition, renderDiff } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { CodexStyleEditor, cursorOpenFromFgAnsi } from "./lib/claude-tui-editor.ts";
+import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -308,9 +308,11 @@ export default function (pi: ExtensionAPI) {
 			// setEditorComponent (ctx live), but cursorOpen fires on every
 			// editor render — it must not touch ctx (stale after session
 			// replace/reload → uncaught throw kills pi).
-			// The cursor bar follows the theme accent (converted fg -> bg).
+			// The cursor bar/prompt use the accent sequence cached from a live
+			// ctx at enable time — the factory's theme parameter is NOT a
+			// full theme object (crashed with 'theme.fg is not a function').
 			activeEditor = new CodexStyleEditor(tui, theme, keybindings, () =>
-				cursorOpenFromFgAnsi(theme.fg("accent", "")),
+				cursorOpenFromFgAnsi(accentOpenAnsi),
 			);
 			return activeEditor;
 		});
@@ -679,9 +681,26 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// Accent open-sequence cached from a live ctx (setEditorComponent's
+	// theme parameter lacks .fg and crashed the editor on first render).
+	let accentOpenAnsi = "\x1b[38;2;138;190;183m"; // sage fallback (#8ABEB7)
+	const cacheAccentAnsi = (ctx: ExtensionContext): void => {
+		try {
+			const t = (ctx.ui as unknown as { theme?: { fg?: (c: string, s: string) => string } }).theme;
+			const seq = t?.fg?.("accent", "");
+			if (typeof seq === "string" && seq.includes("38;")) {
+				accentOpenAnsi = seq.slice(0, seq.indexOf("m") + 1);
+				setEditorAccentOpen(accentOpenAnsi);
+			}
+		} catch {
+			// keep last-good / default sage
+		}
+	};
+
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
 		if (ctx.mode !== "tui") return;
+		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
 		currentProviderName = ctx.model?.provider || "";
 		currentContextWindow = ctx.model?.contextWindow || 0;
