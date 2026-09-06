@@ -1,24 +1,42 @@
 {
-  "name": "@shiorangerin/pi-claude-code-tui",
-  "version": "1.4.0",
-  "description": "Claude Code-style TUI for pi: Clawd header, slim prompt bar, CC tool rows, spinner verbs, status line",
+  "name": "@georgedong32/pi-claude-code-tui",
+  "version": "1.4.1",
+  "description": "Claude Code-style TUI for pi (GeorgeDong32 fork): Pi-look startup header, CC tool rows, spinner verbs, status line with permission-modes integration",
   "type": "module",
-  "keywords": ["pi-package", "pi", "tui", "theme", "claude", "claude-code"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "tui",
+    "theme",
+    "claude",
+    "claude-code"
+  ],
   "license": "MIT",
-  "author": "Shiorangerin",
+  "author": "GeorgeDong32",
   "publishConfig": {
     "access": "public"
   },
-  "homepage": "https://github.com/Shiorangerin/pi-claude-code-tui#readme",
+  "homepage": "https://github.com/GeorgeDong32/pi-claude-code-tui#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shiorangerin/pi-claude-code-tui.git"
+    "url": "git+https://github.com/GeorgeDong32/pi-claude-code-tui.git"
   },
   "bugs": {
-    "url": "https://github.com/Shiorangerin/pi-claude-code-tui/issues"
+    "url": "https://github.com/GeorgeDong32/pi-claude-code-tui/issues"
   },
   "pi": {
-    "extensions": ["./extensions"],
-    "themes": ["./themes"]
-  }
+    "extensions": [
+      "./extensions"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  },
+  "files": [
+    "extensions",
+    "themes",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md"
+  ]
 }

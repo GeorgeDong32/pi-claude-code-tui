@@ -374,7 +374,7 @@ export default function (pi: ExtensionAPI) {
 	// Live spinner state for the cc-status left side (running vs completion).
 	let running = false;
 	let spinnerIdx = 0;
-	let spinnerPaint: (s: string) => string = orange;
+	let spinnerPaint: (s: string) => string = (s) => s;
 
 	// --- Status widget: compact CC statusline, right-aligned ABOVE the prompt ---
 	const setStatusWidget = (ctx: ExtensionContext) => {
@@ -621,9 +621,9 @@ export default function (pi: ExtensionAPI) {
 			const theme = (ctx.ui as unknown as { theme?: { fg: (c: string, s: string) => string } }).theme;
 			if (theme?.fg) return (s) => theme.fg("accent", s);
 		} catch {
-			// stale ctx — fall back to the theme-default orange
+			// stale ctx — fall back to unstyled text
 		}
-		return orange;
+		return (s) => s;
 	};
 	const applyWorking = (ctx: ExtensionContext) => {
 		spinnerPaint = accentFg(ctx);
