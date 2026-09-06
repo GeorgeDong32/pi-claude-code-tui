@@ -371,6 +371,10 @@ export default function (pi: ExtensionAPI) {
 	// Turn-completion line (✻ Verb for Xs) rendered at the end of the status
 	// widget row instead of injected into the chat transcript.
 	let lastWorkedLine = "";
+	// Live spinner state for the cc-status left side (running vs completion).
+	let running = false;
+	let spinnerIdx = 0;
+	let spinnerPaint: (s: string) => string = orange;
 
 	// --- Status widget: compact CC statusline, right-aligned ABOVE the prompt ---
 	const setStatusWidget = (ctx: ExtensionContext) => {
@@ -410,7 +414,13 @@ export default function (pi: ExtensionAPI) {
 
 				// Left: turn-completion line (✻ Verb for Xs). Right: model (with
 				// thinking effort) │ context │ cost, right-aligned.
-				const left = lastWorkedLine ? theme.fg("accent", lastWorkedLine) : "";
+				// Running: spinner frame + verb + esc hint on the left. Idle:
+				// the last turn's completion line (✻ Verb for Xs), if any.
+				const left = running
+					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}`
+					: lastWorkedLine
+						? theme.fg("accent", lastWorkedLine)
+						: "";
 				const effort = (() => {
 					try {
 						return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
@@ -616,31 +626,31 @@ export default function (pi: ExtensionAPI) {
 		return orange;
 	};
 	const applyWorking = (ctx: ExtensionContext) => {
-		const paint = accentFg(ctx);
-		ctx.ui.setWorkingIndicator({
-			frames: SPINNER_FRAMES.map((f) => paint(f)),
-			intervalMs: 120,
-		});
-		ctx.ui.setWorkingMessage(
-			`${paint(`${verb}…`)}  ${gray("(esc to interrupt)")}`,
-		);
+		spinnerPaint = accentFg(ctx);
+		// Empty pi's working-message slot: the spinner renders inside the
+		// cc-status row (left side) so it shares the line with
+		// model/context/cost instead of occupying its own line above.
+		ctx.ui.setWorkingMessage(undefined);
 	};
 
 	const startRun = (ctx: ExtensionContext) => {
 		if (!enabled) return;
 		lastWorkedLine = "";
+		running = true;
 		runStart = Date.now();
 		verb = randomOf(SPINNER_VERBS);
-		const paint = accentFg(ctx);
+		spinnerPaint = accentFg(ctx);
 		if (tickTimer) clearInterval(tickTimer);
 		let ticks = 0;
+		// 200ms per spinner frame — calmer than the old 120ms; the verb
+		// rotates every ~2s. Each tick just flips state and re-renders the
+		// widget (no setWorkingMessage).
 		tickTimer = setInterval(() => {
 			try {
 				ticks++;
-				if (ticks % 7 === 0) verb = randomOf(SPINNER_VERBS);
-				ctx.ui.setWorkingMessage(
-					`${paint(`${verb}…`)}  ${gray(`(esc to interrupt · ${formatDuration(Date.now() - runStart)})`)}`,
-				);
+				spinnerIdx++;
+				if (ticks % 10 === 0) verb = randomOf(SPINNER_VERBS);
+				dockTui?.requestRender(true);
 			} catch {
 				// ctx went stale (session replaced/reloaded mid-run): stop
 				// ticking quietly instead of throwing uncaught (kills pi).
@@ -649,7 +659,7 @@ export default function (pi: ExtensionAPI) {
 					tickTimer = null;
 				}
 			}
-		}, 1000);
+		}, 200);
 	};
 
 	const endRun = (ctx: ExtensionContext) => {
@@ -657,6 +667,7 @@ export default function (pi: ExtensionAPI) {
 			clearInterval(tickTimer);
 			tickTimer = null;
 		}
+		running = false;
 		if (!enabled || runStart === 0) return;
 		const elapsed = Date.now() - runStart;
 		runStart = 0;
@@ -703,6 +714,7 @@ export default function (pi: ExtensionAPI) {
 
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
+		running = false;
 		if (tickTimer) {
 			clearInterval(tickTimer);
 			tickTimer = null;
