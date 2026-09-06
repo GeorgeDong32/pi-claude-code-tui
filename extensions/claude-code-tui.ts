@@ -33,15 +33,15 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 // --- Claude Code palette — "Dark mode (colorblind-friendly)" (theme.ts
-// darkDaltonizedTheme): claude rgb(255,153,51), warning rgb(255,204,0),
-// planMode rgb(102,153,153), inactive rgb(153,153,153). ---
-const CLAUDE = "\x1b[38;2;255;153;51m";
+// darkDaltonizedTheme): warning rgb(255,204,0), planMode rgb(102,153,153),
+// inactive rgb(153,153,153). The brand/accent color is NOT hardcoded — it
+// comes from the pi theme's accent token (#8ABEB7 in the bundled
+// claude-code theme) via theme.fg, matching the native Pi look. ---
 const CLAUDE_DIM = "\x1b[38;2;153;153;153m";
 const CLAUDE_WARNING = "\x1b[38;2;255;204;0m";
 const CLAUDE_PLAN = "\x1b[38;2;102;153;153m";
 const RESET = "\x1b[39m";
 
-const orange = (s: string) => `${CLAUDE}${s}${RESET}`;
 const gray = (s: string) => `${CLAUDE_DIM}${s}${RESET}`;
 const yellow = (s: string) => `${CLAUDE_WARNING}${s}${RESET}`;
 const teal = (s: string) => `${CLAUDE_PLAN}${s}${RESET}`;
