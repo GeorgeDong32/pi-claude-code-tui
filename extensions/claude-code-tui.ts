@@ -418,7 +418,7 @@ export default function (pi: ExtensionAPI) {
 						return undefined;
 					}
 				})();
-				const modelLabel = effort ? `${modelName} · ${effort} effort` : modelName;
+				const modelLabel = effort ? `${modelName} · ${effort}` : modelName;
 				const rightParts = [muted(modelLabel)];
 				if (win > 0 && used > 0) {
 					rightParts.push(
