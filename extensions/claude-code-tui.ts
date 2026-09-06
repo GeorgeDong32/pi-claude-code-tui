@@ -27,15 +27,18 @@ import { VERSION, keyHint, ToolExecutionComponent, UserMessageComponent, createB
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { CodexStyleEditor, cursorOpenFromFgAnsi } from "./lib/claude-tui-editor.ts";
+import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-// --- Claude Code palette (dark theme, from src/utils/theme.ts) ---
-const CLAUDE = "\x1b[38;2;215;119;87m";
+// --- Claude Code palette — "Dark mode (colorblind-friendly)" (theme.ts
+// darkDaltonizedTheme): claude rgb(255,153,51), warning rgb(255,204,0),
+// planMode rgb(102,153,153), inactive rgb(153,153,153). ---
+const CLAUDE = "\x1b[38;2;255;153;51m";
 const CLAUDE_DIM = "\x1b[38;2;153;153;153m";
-const CLAUDE_WARNING = "\x1b[38;2;255;193;7m";
-const CLAUDE_PLAN = "\x1b[38;2;72;150;140m";
+const CLAUDE_WARNING = "\x1b[38;2;255;204;0m";
+const CLAUDE_PLAN = "\x1b[38;2;102;153;153m";
 const RESET = "\x1b[39m";
 
 const orange = (s: string) => `${CLAUDE}${s}${RESET}`;
@@ -291,58 +294,12 @@ export default function (pi: ExtensionAPI) {
 	let currentProviderName = "";
 	let currentContextWindow = 0;
 
-	// --- Big Clawd sprite (CC v2.1.x startup logo, reconstructed from the
-	// official render: chunky body, slit eyes = the ▜ gaps, full-width arms,
-	// four legs). 9 cols × 3 rows, arms symmetric (2 half-cells per side),
-	// plain accent fg — no background needed.
-	const clawdLines = (accent: (s: string) => string): string[] => [
-		accent(" █▜███▜▌ "),
-		accent("▀██████▛▘"),
-		accent("  ▘▘ ▘▘  "),
-	];
-
-	// --- Header: CC CondensedLogo layout (Clawd left + 3-line info column) ---
-	const setHeader = (ctx: ExtensionContext) => {
-		ctx.ui.setHeader((_tui, theme) => {
-			const dim = (s: string) => theme.fg("dim", s);
-			const accent = (s: string) => theme.fg("accent", s);
-			const modelLine = currentProviderName
-				? `${currentModelName} · ${currentProviderName}`
-				: currentModelName || "no model";
-			const cwdLine = shortenCwd();
-			const art = clawdLines(accent);
-			// CC's title is pale gold (sampled rgb(232,216,176) from the real
-			// render), not the orange accent
-			const gold = (s: string) => `\x1b[38;2;232;216;176m${s}\x1b[39m`;
-			const info = [
-				`${theme.bold(gold("Claude Code"))} ${dim(`v${VERSION}`)}`,
-				dim(modelLine),
-				dim(cwdLine),
-			];
-			return {
-				invalidate() {},
-				render(_width: number): string[] {
-					// Clawd (8 cols) + 2-col gap + info column, like CC's CondensedLogo
-					return art.map((l, i) => truncateToWidth(`${l}  ${info[i] ?? ""}`, 120, ""));
-				},
-			};
-		});
-	};
-
 	// --- Editor: flat rules + orange ❯ + rotating "Try ..." placeholder ---
+	// (The built-in Plan/Auto mode system was removed in the permission-modes
+	// integration: pi-permission-modes owns mode state — ask/plan/auto/bypass
+	// on Shift+Tab — and this extension's footer renders its published mode.)
 	let activeEditor: CodexStyleEditor | null = null;
-	// --- Mode state: Plan (read-only) vs Auto (full) ---
-	type Mode = "auto" | "plan";
-	let mode: Mode = "auto";
-	let toolsBeforePlan: string[] | undefined;
 	let dockTui: { requestRender: (force?: boolean) => void } | null = null;
-
-	// Mode banner, verbatim from CC: symbols + colors of its dark theme
-	// (auto = warning rgb(255,193,7), plan = planMode rgb(72,150,140))
-	const MODE_LABELS: Record<Mode, string> = {
-		auto: `${yellow("⏵⏵ auto mode on")}${gray(" (shift+tab to cycle)")}`,
-		plan: `${teal("⏸ plan mode on")}${gray(" (shift+tab to cycle)")}`,
-	};
 
 	// --- Editor: flat rules + gold ❯ + blinking bar cursor ---
 	const setEditor = (ctx: ExtensionContext) => {
@@ -355,9 +312,6 @@ export default function (pi: ExtensionAPI) {
 			activeEditor = new CodexStyleEditor(tui, theme, keybindings, () =>
 				cursorOpenFromFgAnsi(""),
 			);
-			// Shift+Tab toggles Plan/Auto (intercepted in the editor before pi's
-			// built-in thinking-cycle can claim it)
-			activeEditor.onShiftTab = () => toggleMode();
 			return activeEditor;
 		});
 	};
@@ -555,7 +509,30 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 	const footerLineText = (fgDim: (s: string) => string, width: number): string => {
-		const label = MODE_LABELS[mode];
+		// pi-permission-modes publishes its live mode into this env var on
+		// every setMode (mode-inherit.ts publishInheritedPermissionMode), so
+		// reading it at render time always reflects the current mode, styled
+		// with that extension's own icon/label semantics.
+		const PM_MODE_ENV = "PERMISSION_MODES_INHERITED_MODE";
+		const PM_MODE_META: Record<string, { icon: string; label: string; paint: (s: string) => string }> = {
+			ask: { icon: "●", label: "ask mode", paint: gray },
+			plan: { icon: "⏸", label: "plan mode", paint: teal },
+			auto: { icon: "▶", label: "auto mode", paint: yellow },
+			bypass: {
+				icon: "⚡",
+				label: "bypass mode",
+				paint: (s) => `\x1b[38;2;255;102;102m${s}${RESET}`,
+			},
+		};
+		const permissionModeLabel = (): string => {
+			const pm = process.env[PM_MODE_ENV]?.trim();
+			if (!pm) return "";
+			const meta = PM_MODE_META[pm];
+			return meta
+				? `${meta.paint(`${meta.icon} ${meta.label} on`)}${gray(" (shift+tab to cycle)")}`
+				: "";
+		};
+		const label = permissionModeLabel();
 		if (editorHasText()) return truncateToWidth(label, width, "");
 		const hints = fgDim("· ! for bash mode · ctrl+p model · ctrl+o tools");
 		return truncateToWidth(`${label} ${hints}`, width);
@@ -681,7 +658,7 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		patchThirdPartyToolRows();
-		setHeader(ctx);
+		applyPiHeaderLook(pi, ctx);
 		setEditor(ctx);
 		applyFooterMode(ctx);
 		applyWorking(ctx);
@@ -694,6 +671,7 @@ export default function (pi: ExtensionAPI) {
 			tickTimer = null;
 		}
 		if (ctx.mode !== "tui") return;
+		disposePiHeaderLook();
 		ctx.ui.setHeader(undefined);
 		ctx.ui.setEditorComponent(undefined);
 		// Replica fully off: relinquish the footer slot (restores pi's
@@ -702,52 +680,15 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setFooter(undefined);
 		ctx.ui.setWidget("cc-status", undefined);
 		ctx.ui.setWidget("cc-footer", undefined);
-		if (toolsBeforePlan) {
-			pi.setActiveTools(toolsBeforePlan);
-			toolsBeforePlan = undefined;
-		}
 		ctx.ui.setWorkingIndicator();
 		ctx.ui.setWorkingMessage();
 	};
 
-	const setMode = (next: Mode) => {
-		if (mode === next) return;
-		mode = next;
-		if (next === "plan") {
-			toolsBeforePlan = pi.getActiveTools();
-			pi.setActiveTools(toolsBeforePlan.filter((t) => t !== "edit" && t !== "write"));
-		} else if (toolsBeforePlan) {
-			pi.setActiveTools(toolsBeforePlan);
-			toolsBeforePlan = undefined;
-		}
-		dockTui?.requestRender(true);
-	};
+	// (The Plan/Auto mode system was removed — pi-permission-modes owns mode
+	// state via its own /mode|/plan|/auto|/bypass commands and Shift+Tab.)
 
-	const toggleMode = () => {
-		setMode(mode === "auto" ? "plan" : "auto");
-	};
-
-	pi.registerCommand("mode", {
-		description: "Toggle Plan Mode / Auto Mode (or: /mode plan, /mode auto)",
-		handler: async (args) => {
-			const a = args.trim().toLowerCase();
-			if (a === "plan" || a === "auto") setMode(a);
-			else toggleMode();
-		},
-	});
-
-	pi.on("before_agent_start", async (event) => {
-		if (mode !== "plan") return;
-		const directive = [
-
-			"## Plan Mode",
-			"Plan Mode is ACTIVE. In this turn you are a read-only researcher:",
-			"- Do NOT edit, create, or delete any files.",
-			"- Explore the codebase, then present a concise, numbered implementation plan.",
-			"- Wait for explicit user approval before proposing to make changes.",
-		].join("\n");
-		return { systemPrompt: `${event.systemPrompt}\n\n${directive}` };
-	});
+	// (The Plan-Mode system-prompt injection was removed together with the
+	// Plan/Auto toggle — pi-permission-modes owns plan-mode gating.)
 
 	pi.on("session_start", async (_event, ctx) => {
 		enable(ctx);

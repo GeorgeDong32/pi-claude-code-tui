@@ -2,9 +2,9 @@
 	"$schema": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
 	"name": "claude-code",
 	"vars": {
-		"claude": "#D77757",
-		"claudeShimmer": "#EB9F7F",
-		"permission": "#B1B9F9",
+		"claude": "#FF9933",
+		"claudeShimmer": "#FFB765",
+		"permission": "#99CCFF",
 		"promptBorder": "#888888",
 		"inactive": "#999999",
 		"subtle": "#505050",
@@ -24,14 +24,13 @@
 		"border": "promptBorder",
 		"borderAccent": "claudeShimmer",
 		"borderMuted": "subtle",
-		"success": "#4EBA65",
-		"error": "#FF6B80",
-		"warning": "#FFC107",
+		"success": "#3399FF",
+		"error": "#FF6666",
+		"warning": "#FFCC00",
 		"muted": "inactive",
 		"dim": "#999999",
 		"text": "text",
 		"thinkingText": "inactive",
-
 		"selectedBg": "selection",
 		"scrollbarThumb": "subtle",
 		"searchMatchBg": "selection",
@@ -46,7 +45,6 @@
 		"toolErrorBg": "",
 		"toolTitle": "text",
 		"toolOutput": "inactive",
-
 		"mdHeading": "claude",
 		"mdLink": "permission",
 		"mdLinkUrl": "inactive",
@@ -57,11 +55,9 @@
 		"mdQuoteBorder": "promptBorder",
 		"mdHr": "subtle",
 		"mdListBullet": "claude",
-
 		"toolDiffAdded": "diffAdded",
 		"toolDiffRemoved": "diffRemoved",
 		"toolDiffContext": "inactive",
-
 		"syntaxComment": "#6A9955",
 		"syntaxKeyword": "#569CD6",
 		"syntaxFunction": "#DCDCAA",
@@ -71,7 +67,6 @@
 		"syntaxType": "#4EC9B0",
 		"syntaxOperator": "#D4D4D4",
 		"syntaxPunctuation": "#D4D4D4",
-
 		"thinkingOff": "promptBorder",
 		"thinkingMinimal": "promptBorder",
 		"thinkingLow": "promptBorder",
@@ -79,8 +74,9 @@
 		"thinkingHigh": "promptBorder",
 		"thinkingXhigh": "promptBorder",
 		"thinkingMax": "#FF5FFF",
-
-		"bashMode": "bashBorder"
+		"bashMode": "bashBorder",
+		"diffAdded": "#0077B3",
+		"diffRemoved": "#B30000"
 	},
 	"export": {
 		"pageBg": "#1A1A1A",
