@@ -308,9 +308,9 @@ export default function (pi: ExtensionAPI) {
 			// setEditorComponent (ctx live), but cursorOpen fires on every
 			// editor render — it must not touch ctx (stale after session
 			// replace/reload → uncaught throw kills pi).
-			// cursorOpenFromFgAnsi currently ignores its arg (fixed gold bar).
+			// The cursor bar follows the theme accent (converted fg -> bg).
 			activeEditor = new CodexStyleEditor(tui, theme, keybindings, () =>
-				cursorOpenFromFgAnsi(""),
+				cursorOpenFromFgAnsi(theme.fg("accent", "")),
 			);
 			return activeEditor;
 		});

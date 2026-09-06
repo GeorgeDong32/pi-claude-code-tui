@@ -102,9 +102,15 @@ export function applyRoundedEditorBorders(
  * Build a bar-cursor style from a theme foreground ANSI sequence.
  * Turns `38;…` (fg) into `48;…` (bg) and pairs it with a dark foreground.
  */
-export function cursorOpenFromFgAnsi(_fgAnsi: string): string {
-	// gold bar, matching the ❯ prompt and text color
-	return `\x1b[38;2;232;216;176m▏\x1b[39m`;
+/**
+ * Build a bar-cursor style from a theme foreground ANSI sequence.
+ * Turns `38;…` (fg) into `48;…` (bg) and pairs it with a dark foreground,
+ * so the bar follows the theme accent instead of a hardcoded gold.
+ */
+export function cursorOpenFromFgAnsi(fgOpen: string): string {
+	const bgOpen = fgOpen.replace(/\x1b\[38;/, "\x1b[48;");
+	if (bgOpen === fgOpen) return `\x1b[7m▏\x1b[0m`; // not a direct-color seq: reverse video
+	return `${bgOpen}\x1b[38;2;0;0;0m▏\x1b[39m\x1b[49m`;
 }
 
 export class CodexStyleEditor extends CustomEditor {
@@ -142,23 +148,23 @@ export class CodexStyleEditor extends CustomEditor {
 
 	render(width: number): string[] {
 		this.ensureBlink();
-		// CC style: flat full-width rules (pi's native editor borders), a gold
-		// `❯` prompt and a blinking gold bar cursor.
+		// CC style: flat full-width rules (pi's native editor borders), an
+		// accent `❯` prompt and a blinking accent bar cursor (theme-driven).
 		const open = this.cursorOpen();
-		const prompt = `\x1b[38;2;232;216;176m❯\x1b[39m`; // same gold as the title/text
+		const prompt = this.theme.fg("accent", "❯");
 		const lines = super.render(width).map((line) => restyleEditorCursor(line, open, this.blinkOn));
 
 		// pi appends autocomplete rows AFTER the bottom border (menu pops below
 		// the prompt). Claude Code pops the menu UP, so lift those rows above
 		// the box.
 		const bottomIdx = findBottomBorderIndex(lines);
-		// Recolor menu rows to CC's suggestion lavender (pi paints them with
-		// accent orange / muted gray).
+		// Recolor menu rows from pi's hardcoded accent orange to the theme
+		// accent (sage), keeping the muted-gray secondary color.
 		const autocompleteRows = lines
 			.slice(bottomIdx + 1)
 			.map((l) =>
 				l
-					.replace(/\x1b\[38;2;215;119;87m/g, "\x1b[38;2;177;185;249m")
+					.replace(/\x1b\[38;2;215;119;87m/g, "\x1b[38;2;138;190;183m")
 			);
 		const core = lines.slice(0, bottomIdx + 1);
 
