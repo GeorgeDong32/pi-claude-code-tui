@@ -26,7 +26,7 @@
 		"borderMuted": "subtle",
 		"success": "#3399FF",
 		"error": "#FF6666",
-		"warning": "#FFCC00",
+		"warning": "accent",
 		"muted": "inactive",
 		"dim": "#999999",
 		"text": "text",
