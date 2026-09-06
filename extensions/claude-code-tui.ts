@@ -635,14 +635,14 @@ export default function (pi: ExtensionAPI) {
 	const applyWorking = (ctx: ExtensionContext) => {
 		spinnerPaint = accentFg(ctx);
 		// The spinner renders inside the cc-status row (left side, sharing the
-		// line with model/context/cost). pi's own working-indicator slot must
-		// be neutralized WITHOUT being cleared: setMessage(undefined) falls
-		// back to the default "Working..." text and setWorkingIndicator()
-		// restores the stock ⋮ Working spinner — both would render a second
-		// working line above the status row. A single empty frame + a space
-		// message keeps the slot present but invisible.
-		ctx.ui.setWorkingIndicator({ frames: [""], intervalMs: 60_000 });
-		ctx.ui.setWorkingMessage(" ");
+		// line with model/context/cost). pi 0.85+ exposes setWorkingVisible to
+		// hide its built-in loader row entirely — the old 占位 approach lost
+		// to 0.85.1's new "Working (high effort)…" default text.
+		try {
+			(ctx.ui as { setWorkingVisible?: (v: boolean) => void }).setWorkingVisible?.(false);
+		} catch {
+			// older pi without the API: default row stays (best effort)
+		}
 	};
 
 	const startRun = (ctx: ExtensionContext) => {
@@ -753,6 +753,11 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (ctx.mode !== "tui") return;
 		disposePiHeaderLook();
+		try {
+			(ctx.ui as { setWorkingVisible?: (v: boolean) => void }).setWorkingVisible?.(true);
+		} catch {
+			/* older pi */
+		}
 		ctx.ui.setHeader(undefined);
 		ctx.ui.setEditorComponent(undefined);
 		// Replica fully off: relinquish the footer slot (restores pi's
