@@ -308,11 +308,10 @@ export default function (pi: ExtensionAPI) {
 			// setEditorComponent (ctx live), but cursorOpen fires on every
 			// editor render — it must not touch ctx (stale after session
 			// replace/reload → uncaught throw kills pi).
-			// The cursor bar/prompt use the accent sequence cached from a live
-			// ctx at enable time — the factory's theme parameter is NOT a
-			// full theme object (crashed with 'theme.fg is not a function').
+			// The prompt follows the theme accent; the cursor bar mimics a
+			// terminal-native caret (light gray block, dark text).
 			activeEditor = new CodexStyleEditor(tui, theme, keybindings, () =>
-				cursorOpenFromFgAnsi(accentOpenAnsi),
+				cursorOpenFromFgAnsi("\x1b[38;2;215;215;215m"),
 			);
 			return activeEditor;
 		});
