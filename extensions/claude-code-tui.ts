@@ -407,22 +407,38 @@ export default function (pi: ExtensionAPI) {
 				const pct = win > 0 ? Math.min(100, Math.round((used / win) * 100)) : 0;
 
 				const muted = (s: string) => theme.fg("muted", s);
-				const parts = [muted(modelName)];
+
+				// Left: turn-completion line (✻ Verb for Xs). Right: model (with
+				// thinking effort) │ context │ cost, right-aligned.
+				const left = lastWorkedLine ? theme.fg("accent", lastWorkedLine) : "";
+				const effort = (() => {
+					try {
+						return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
+					} catch {
+						return undefined;
+					}
+				})();
+				const modelLabel = effort ? `${modelName} · ${effort} effort` : modelName;
+				const rightParts = [muted(modelLabel)];
 				if (win > 0 && used > 0) {
-					parts.push(
+					rightParts.push(
 						`${theme.fg("dim", "Context ")}${muted(`${pct}%`)}${theme.fg("dim", ` (${formatTokens(used)}/${formatTokens(win)})`)}`,
 					);
 				}
 				if (cost > 0) {
-					parts.push(muted(`$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)}`));
+					rightParts.push(muted(`$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)}`));
 				}
-				if (lastWorkedLine) parts.push(theme.fg("accent", lastWorkedLine));
-				// NOTE: branch intentionally omitted — pi's built-in footer
-				// already shows the git branch.
+				const right = rightParts.join(sep);
 
-				const line = parts.join(sep);
-				const pad = " ".repeat(Math.max(0, width - visibleWidth(line)));
-				return [truncateToWidth(pad + line, width)];
+				// Left-aligned completion line, right-aligned model/context/cost.
+				// Degrades to plain left truncation when the two cannot fit.
+				const leftW = visibleWidth(left);
+				const rightW = visibleWidth(right);
+				if (leftW + rightW + 2 <= width) {
+					const pad = " ".repeat(Math.max(2, width - leftW - rightW));
+					return [truncateToWidth(`${left}${pad}${right}`, width)];
+				}
+				return [truncateToWidth(`${left}  ${right}`, width)];
 			},
 		}));
 	};
