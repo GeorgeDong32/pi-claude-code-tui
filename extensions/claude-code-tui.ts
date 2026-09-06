@@ -418,8 +418,14 @@ export default function (pi: ExtensionAPI) {
 				// thinking effort) │ context │ cost, right-aligned.
 				// Running: spinner frame + verb + esc hint on the left. Idle:
 				// the last turn's completion line (✻ Verb for Xs), if any.
+				// Running: spinner frame + verb + esc hint, then pi-permission-modes'
+				// token stats (published via __pmWorkingStats when that extension
+				// sees this card is active). Idle: last turn's completion line.
+				const pmStats = typeof (globalThis as Record<string, unknown>).__pmWorkingStats === "string"
+					? ((globalThis as Record<string, unknown>).__pmWorkingStats as string)
+					: "";
 				const left = running
-					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}`
+					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
 					: lastWorkedLine
 						? theme.fg("accent", lastWorkedLine)
 						: "";
@@ -699,6 +705,8 @@ export default function (pi: ExtensionAPI) {
 
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
+		(pi as { getAllTools?: unknown }).getAllTools; // touch to fail fast on stale
+		(globalThis as Record<string, unknown>).__ccTuiActive = true;
 		if (ctx.mode !== "tui") return;
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
@@ -734,6 +742,7 @@ export default function (pi: ExtensionAPI) {
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
 		running = false;
+		delete (globalThis as Record<string, unknown>).__ccTuiActive;
 		if (tickTimer) {
 			clearInterval(tickTimer);
 			tickTimer = null;
