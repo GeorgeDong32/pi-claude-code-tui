@@ -368,6 +368,9 @@ export default function (pi: ExtensionAPI) {
 	// Last-good usage numbers: widget render must survive a stale ctx
 	// (session replaced/reloaded) — see setStatusWidget below.
 	let cachedUsage = { used: 0, cost: 0 };
+	// Turn-completion line (✻ Verb for Xs) rendered at the end of the status
+	// widget row instead of injected into the chat transcript.
+	let lastWorkedLine = "";
 
 	// --- Status widget: compact CC statusline, right-aligned ABOVE the prompt ---
 	const setStatusWidget = (ctx: ExtensionContext) => {
@@ -413,6 +416,7 @@ export default function (pi: ExtensionAPI) {
 				if (cost > 0) {
 					parts.push(muted(`$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)}`));
 				}
+				if (lastWorkedLine) parts.push(theme.fg("accent", lastWorkedLine));
 				// NOTE: branch intentionally omitted — pi's built-in footer
 				// already shows the git branch.
 
@@ -584,20 +588,34 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	// --- Working indicator + verb rotation ---
+	// Colors come from the pi theme's accent token (via ctx.ui.theme) instead
+	// of a hardcoded brand orange, so the spinner follows the active theme.
+	const accentFg = (ctx: ExtensionContext): ((s: string) => string) => {
+		try {
+			const theme = (ctx.ui as unknown as { theme?: { fg: (c: string, s: string) => string } }).theme;
+			if (theme?.fg) return (s) => theme.fg("accent", s);
+		} catch {
+			// stale ctx — fall back to the theme-default orange
+		}
+		return orange;
+	};
 	const applyWorking = (ctx: ExtensionContext) => {
+		const paint = accentFg(ctx);
 		ctx.ui.setWorkingIndicator({
-			frames: SPINNER_FRAMES.map((f) => orange(f)),
+			frames: SPINNER_FRAMES.map((f) => paint(f)),
 			intervalMs: 120,
 		});
 		ctx.ui.setWorkingMessage(
-			`${orange(verb)}…  ${gray("(esc to interrupt)")}`,
+			`${paint(`${verb}…`)}  ${gray("(esc to interrupt)")}`,
 		);
 	};
 
 	const startRun = (ctx: ExtensionContext) => {
 		if (!enabled) return;
+		lastWorkedLine = "";
 		runStart = Date.now();
 		verb = randomOf(SPINNER_VERBS);
+		const paint = accentFg(ctx);
 		if (tickTimer) clearInterval(tickTimer);
 		let ticks = 0;
 		tickTimer = setInterval(() => {
@@ -605,7 +623,7 @@ export default function (pi: ExtensionAPI) {
 				ticks++;
 				if (ticks % 7 === 0) verb = randomOf(SPINNER_VERBS);
 				ctx.ui.setWorkingMessage(
-					`${orange(verb)}…  ${gray(`(esc to interrupt · ${formatDuration(Date.now() - runStart)})`)}`,
+					`${paint(`${verb}…`)}  ${gray(`(esc to interrupt · ${formatDuration(Date.now() - runStart)})`)}`,
 				);
 			} catch {
 				// ctx went stale (session replaced/reloaded mid-run): stop
@@ -627,7 +645,10 @@ export default function (pi: ExtensionAPI) {
 		const elapsed = Date.now() - runStart;
 		runStart = 0;
 		if (elapsed >= 1000) {
-			ctx.ui.notify(orange(`✻ ${randomOf(TURN_COMPLETION_VERBS)} for ${formatDuration(elapsed)}`), "info");
+			// Completion line lives in the status widget (bottom of the screen)
+			// instead of being injected into the chat transcript.
+			lastWorkedLine = `✻ ${randomOf(TURN_COMPLETION_VERBS)} for ${formatDuration(elapsed)}`;
+			dockTui?.requestRender(true);
 		}
 	};
 
