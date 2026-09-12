@@ -1,6 +1,6 @@
 {
   "name": "@georgedong32/pi-claude-code-tui",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Claude Code-style TUI for pi (GeorgeDong32 fork): Pi-look startup header, CC tool rows, spinner verbs, status line with permission-modes integration",
   "type": "module",
   "keywords": [

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.2 (Unreleased)
+## 1.4.2 (2026-09-12)
 
 ### Changed
 - **Typed capability channel from permission-modes (plan B7)**: `lib/pm-capability.ts` reads mode and working-stats from the versioned `globalThis.__piPermissionModes` object pm now publishes, falling back to the legacy untyped keys (`__pmWorkingStats` literal-prefix string, `PERMISSION_MODES_INHERITED_MODE` env) for one compatibility cycle — the priority chain has one owner and five pinned tests. This extension likewise announces its presence via a versioned `__piCcTui` object (legacy `__ccTuiActive` kept in sync).
