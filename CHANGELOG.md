@@ -3,6 +3,9 @@
 ## 1.4.2 (Unreleased)
 
 ### Changed
+- **Typed capability channel from permission-modes (plan B7)**: `lib/pm-capability.ts` reads mode and working-stats from the versioned `globalThis.__piPermissionModes` object pm now publishes, falling back to the legacy untyped keys (`__pmWorkingStats` literal-prefix string, `PERMISSION_MODES_INHERITED_MODE` env) for one compatibility cycle — the priority chain has one owner and five pinned tests. This extension likewise announces its presence via a versioned `__piCcTui` object (legacy `__ccTuiActive` kept in sync).
+
+### Changed
 - **Declared pi dependency surface (plan B4 step 1)**: `peerDependencies: "@earendil-works/pi-coding-agent" >= 0.85.0` (the first version this fork's `keyText`/tool-renderer usage targets), and expand hints fall back to `ctrl+o` when `keyText` yields an unregistered binding (previously a bare "( to expand)"). Scope note after probing pi 0.85.1: the built-in tool rows already use the official `registerTool` renderCall/renderResult API; the `ToolExecutionComponent` prototype patch remains deliberately — it is the only way to give third-party/MCP tools without their own renderers CC-style collapsed rows (no official surface covers that), now guarded to skip loudly if pi internals move. The spinner stays in the cc-status row: the official border spinner (`embedWorkingStatus` + `setWorkingMessage` live label rotation, verified in pi source) is technically viable, but moving it would scatter the permission-modes working-stats integration and the esc/duration hints that share the row.
 
 ### Changed

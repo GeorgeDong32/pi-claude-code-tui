@@ -37,6 +37,12 @@ import {
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
+import {
+	PM_MODE_ENV,
+	publishCcTuiCapability,
+	readPmStatus,
+	withdrawCcTuiCapability,
+} from "./lib/pm-capability.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -334,9 +340,7 @@ export default function (pi: ExtensionAPI) {
 				// Running: spinner frame + verb + esc hint, then pi-permission-modes'
 				// token stats (published via __pmWorkingStats when that extension
 				// sees this card is active). Idle: last turn's completion line.
-				const pmStats = typeof (globalThis as Record<string, unknown>).__pmWorkingStats === "string"
-					? ((globalThis as Record<string, unknown>).__pmWorkingStats as string)
-					: "";
+				const pmStats = readPmStatus().workingStats;
 				const left = running
 					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
 					: lastWorkedLine
@@ -486,9 +490,8 @@ export default function (pi: ExtensionAPI) {
 		// every setMode (mode-inherit.ts publishInheritedPermissionMode), so
 		// reading it at render time always reflects the current mode, styled
 		// with that extension's own icon/label semantics.
-		const PM_MODE_ENV = "PERMISSION_MODES_INHERITED_MODE";
 		const permissionModeLabel = (): string => {
-			const pm = process.env[PM_MODE_ENV]?.trim();
+			const pm = readPmStatus().mode || process.env[PM_MODE_ENV]?.trim();
 			if (!pm) return "";
 			const meta = PM_MODE_META[pm];
 			return meta
@@ -637,7 +640,7 @@ export default function (pi: ExtensionAPI) {
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
 		(pi as { getAllTools?: unknown }).getAllTools; // touch to fail fast on stale
-		(globalThis as Record<string, unknown>).__ccTuiActive = true;
+		publishCcTuiCapability();
 		if (ctx.mode !== "tui") return;
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
@@ -673,7 +676,7 @@ export default function (pi: ExtensionAPI) {
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
 		running = false;
-		delete (globalThis as Record<string, unknown>).__ccTuiActive;
+		withdrawCcTuiCapability();
 		if (tickTimer) {
 			clearInterval(tickTimer);
 			tickTimer = null;
