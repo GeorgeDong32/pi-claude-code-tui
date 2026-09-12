@@ -3,6 +3,9 @@
 ## 1.4.2 (Unreleased)
 
 ### Changed
+- **Declared pi dependency surface (plan B4 step 1)**: `peerDependencies: "@earendil-works/pi-coding-agent" >= 0.85.0` (the first version this fork's `keyText`/tool-renderer usage targets), and expand hints fall back to `ctrl+o` when `keyText` yields an unregistered binding (previously a bare "( to expand)"). Scope note after probing pi 0.85.1: the built-in tool rows already use the official `registerTool` renderCall/renderResult API; the `ToolExecutionComponent` prototype patch remains deliberately — it is the only way to give third-party/MCP tools without their own renderers CC-style collapsed rows (no official surface covers that), now guarded to skip loudly if pi internals move. The spinner stays in the cc-status row: the official border spinner (`embedWorkingStatus` + `setWorkingMessage` live label rotation, verified in pi source) is technically viable, but moving it would scatter the permission-modes working-stats integration and the esc/duration hints that share the row.
+
+### Changed
 - **Status-row usage numbers come from a change-derived snapshot (plan A7)**: the cc-status widget re-summed the whole session branch on every render frame (per keystroke and per spinner tick). Usage is now observed once at message boundaries (`UsageTracker`, semantics pinned by tests: used = last assistant cumulative, cost = sum) — equivalent values because pi freezes the branch while streaming. The permission-modes mode-chip table moved to module scope instead of being rebuilt per frame.
 
 ### Changed
