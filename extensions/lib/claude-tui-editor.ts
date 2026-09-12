@@ -136,8 +136,15 @@ export class CodexStyleEditor extends CustomEditor {
 	private ensureBlink(): void {
 		if (this.blinkTimer) return;
 		this.blinkTimer = setInterval(() => {
+			// Only blink while focused (plan A8): an unfocused editor must not
+			// force repaints every 530ms — park the cursor solid instead.
+			if (!this.focused) {
+				this.blinkOn = true;
+				return;
+			}
 			this.blinkOn = !this.blinkOn;
-			this.tui.requestRender(true);
+			// Non-forced render keeps pi's line-diff cache intact.
+			this.tui.requestRender();
 		}, 530);
 	}
 

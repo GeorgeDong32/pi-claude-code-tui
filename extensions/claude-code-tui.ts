@@ -26,7 +26,17 @@
 import { VERSION, keyText, ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition, renderDiff } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import {
+	ccCall,
+	ccResult,
+	dotStatus,
+	strArg,
+	collapseCommand,
+	textOfResult,
+	type CCTheme,
+} from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
+import { UsageTracker } from "./lib/status-snapshot.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -42,9 +52,25 @@ const CLAUDE_WARNING = "\x1b[38;2;255;204;0m";
 const CLAUDE_PLAN = "\x1b[38;2;102;153;153m";
 const RESET = "\x1b[39m";
 
+
 const gray = (s: string) => `${CLAUDE_DIM}${s}${RESET}`;
 const yellow = (s: string) => `${CLAUDE_WARNING}${s}${RESET}`;
+
 const teal = (s: string) => `${CLAUDE_PLAN}${s}${RESET}`;
+
+// Mode chrome for the permission-modes footer chip (module-level: the footer
+// closure rebuilt this table on every frame — plan A7).
+const PM_MODE_META: Record<string, { icon: string; label: string; paint: (s: string) => string }> = {
+	ask: { icon: "●", label: "ask mode", paint: gray },
+	plan: { icon: "⏸", label: "plan mode", paint: teal },
+	auto: { icon: "▶", label: "auto mode", paint: yellow },
+	bypass: {
+		icon: "⚡",
+		label: "bypass mode",
+		paint: (s) => `\x1b[38;2;255;102;102m${s}${RESET}`,
+	},
+};
+
 
 // --- Spinner frames (src/components/Spinner/utils.ts getDefaultCharacters) ---
 const BLOSSOM = ["·", "✢", "✱", "✶", "✻", "✽"];
@@ -119,121 +145,9 @@ const shortenCwd = (): string => {
 // replaced with Claude Code-style rows, and renderShell "self" drops the
 // background box.
 
-const strArg = (v: unknown): string => (typeof v === "string" ? v : "");
-const collapseCommand = (cmd: string): string => {
-	const first = cmd.split("\n")[0] ?? "";
-	return cmd.includes("\n") ? `${first} …` : first;
-};
-
-const textOfResult = (result: unknown): string => {
-	const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter((c) => c && c.type === "text" && typeof c.text === "string")
-		.map((c) => c.text as string)
-		.join("\n");
-};
-
-interface CCTheme {
-	fg(color: string, s: string): string;
-	bold(s: string): string;
-}
-
-// ⏺ dot state (CC): orange while running, green on success, red on error.
-// pi rebuilds the call row when the result lands, so `isPartial === false`
-// flips the dot without any extra subscription.
-type CCDotStatus = "running" | "success" | "error";
-const DOT_COLOR: Record<CCDotStatus, string> = {
-	running: "accent",
-	success: "success",
-	error: "error",
-};
-const dotStatus = (rctx?: { isError?: boolean; isPartial?: boolean }): CCDotStatus => {
-	if (rctx?.isError) return "error";
-	if (rctx?.isPartial === false) return "success";
-	return "running";
-};
-
-// `⏺ Tool(args)` call row: single line with args ellipsized to fit (CC
-// style), so long commands can never wrap or misalign the dot. The dot
-// turns red when the tool failed.
-const ccCall = (theme: CCTheme, name: string, args: string, status: CCDotStatus) => ({
-	invalidate() {},
-	render(width: number): string[] {
-		const white = "\x1b[38;2;255;255;255m";
-		const head = `${theme.fg(DOT_COLOR[status], "⏺")} ${white}${theme.bold(name)}(`;
-		const avail = Math.max(1, width - visibleWidth(head) - 1);
-		const shown = truncateToWidth(args, avail, "…");
-		return [`${head}${shown})${RESET}`];
-	},
-});
-
-// `⎿  output` result rows: dim gutter, output wrapped and aligned under the
-// gutter, collapsed preview with expand hint, red on error. Collapse is
-// capped at MAX_RESULT_ROWS PHYSICAL rows: a single minified JSON line can
-// wrap into dozens of terminal rows, so counting logical lines is not enough.
-const MAX_RESULT_ROWS = 3;
-
-const ccResult = (
-	theme: CCTheme,
-	name: string,
-	result: unknown,
-	options: { expanded?: boolean },
-	isError: boolean,
-) => ({
-	invalidate() {},
-	render(width: number): string[] {
-	const gutter = theme.fg("dim", "  ⎿  ");
-	const cont = "     ";
-	const paint = (s: string) => (isError ? theme.fg("error", s) : theme.fg("toolOutput", s));
-	const wrapW = Math.max(10, width - cont.length);
-	const expandHint = theme.fg("dim", `(${keyText("app.tools.expand")} to expand)`);
-
-	// Wraps pre-colored logical lines into physical rows and, unless expanded,
-	// caps the block at MAX_RESULT_ROWS rows total (expand hint included).
-	const emit = (logicalLines: string[]): string[] => {
-		const physical: string[] = [];
-		for (const line of logicalLines) physical.push(...wrapTextWithAnsi(line, wrapW));
-		if (options.expanded || physical.length <= MAX_RESULT_ROWS) {
-			return physical.map((l, i) => `${i === 0 ? gutter : cont}${l}`);
-		}
-		const shown = physical.slice(0, MAX_RESULT_ROWS - 1);
-		const rows = shown.map((l, i) => `${i === 0 ? gutter : cont}${l}`);
-		rows.push(`${cont}${theme.fg("dim", `... +${physical.length - shown.length} lines`)} ${expandHint}`);
-		return rows;
-	};
-
-	const output = textOfResult(result).replace(/\n+$/, "");
-	const lines = output ? output.split("\n") : [];
-
-	// Errors: red summary lines, like CC's `⎿  Error: ...`
-	if (isError) {
-		return emit((lines.length ? lines : ["Error"]).map((l) => theme.fg("error", l)));
-	}
-
-	// Edit: summary + colored diff
-	if (name === "edit") {
-		const diff = (result as { details?: { diff?: string } }).details?.diff;
-		const logical = [lines[0] || "Updated file"];
-		if (diff) logical.push(...renderDiff(diff).split("\n"));
-		return emit(logical);
-	}
-
-	// Read collapsed: one-line summary, like CC
-	if (name === "read" && !options.expanded) {
-		return [
-			`${gutter}${theme.fg("toolOutput", `Read ${lines.length} lines`)} ${theme.fg("dim", `(${keyText("app.tools.expand")} to expand)`)}`,
-		];
-	}
-
-	if (lines.length === 0) {
-		return [`${gutter}${theme.fg("toolOutput", "(no content)")}`];
-	}
-
-	// Generic collapsed preview
-	return emit(lines.map(paint));
-	},
-});
+// CC tool-row renderers (ccCall/ccResult/dotStatus/strArg/collapseCommand/
+// textOfResult) live in ./lib/cc-rows.ts — extracted verbatim so they can be
+// golden-tested (plan C3). Import them here; behavior is unchanged.
 
 export default function (pi: ExtensionAPI) {
 	let enabled = false;
@@ -339,6 +253,12 @@ export default function (pi: ExtensionAPI) {
 		const origCall = proto.getCallRenderer;
 		const origResult = proto.getResultRenderer;
 		const origShell = proto.getRenderShell;
+		// pi internals moved: skip the third-party fallback patch loudly
+		// instead of rendering garbage (plan B4 guard).
+		if (typeof origCall !== "function" || typeof origResult !== "function") {
+			console.warn("[claude-tui] ToolExecutionComponent renderer hooks not found — third-party tool rows stay pi-default");
+			return;
+		}
 		const isBuiltin = (self: { builtInToolDefinition?: unknown }) => self.builtInToolDefinition !== undefined;
 		// NOTE: theme must come from pi core's factory args (always live).
 		// Never capture ctx.ui.theme here: a session_start ctx goes stale
@@ -368,7 +288,17 @@ export default function (pi: ExtensionAPI) {
 
 	// Last-good usage numbers: widget render must survive a stale ctx
 	// (session replaced/reloaded) — see setStatusWidget below.
-	let cachedUsage = { used: 0, cost: 0 };
+	// Usage numbers observed at message boundaries (plan A7): the branch is
+	// frozen while streaming, so per-frame scans were pure waste. Stale-ctx
+	// reads reuse the last-good snapshot, never throw inside render.
+	const usageTracker = new UsageTracker();
+	const observeUsage = (ctx: { sessionManager?: { getBranch?: () => unknown } }) => {
+		try {
+			usageTracker.observe((ctx.sessionManager?.getBranch?.() ?? []) as never);
+		} catch {
+			// stale ctx: keep the last-good snapshot
+		}
+	};
 	// Turn-completion line (✻ Verb for Xs) rendered at the end of the status
 	// widget row instead of injected into the chat transcript.
 	let lastWorkedLine = "";
@@ -391,23 +321,7 @@ export default function (pi: ExtensionAPI) {
 				const modelName = currentModelName || "no model";
 				const sep = theme.fg("dim", "│");
 
-				try {
-					let used = 0;
-					let cost = 0;
-					for (const entry of ctx.sessionManager.getBranch()) {
-						if (entry.type === "message" && entry.message.role === "assistant") {
-							const usage = (entry.message as { usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; cost?: { total?: number } } }).usage;
-							if (usage) {
-								used = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-								cost += usage.cost?.total ?? 0;
-							}
-						}
-					}
-					cachedUsage = { used, cost };
-				} catch {
-					// stale ctx: reuse last-good numbers, never throw
-				}
-				const { used, cost } = cachedUsage;
+				const { used, cost } = usageTracker.get();
 				const win = currentContextWindow || 0;
 				const pct = win > 0 ? Math.min(100, Math.round((used / win) * 100)) : 0;
 
@@ -502,16 +416,38 @@ export default function (pi: ExtensionAPI) {
 			} as Parameters<typeof pi.registerTool>[0]);
 		};
 
-		const ccRenderers = (name: string) => ({
-			renderCall(args: unknown, theme: unknown, context: unknown) {
-				return ccCall(theme as CCTheme, name, (callArgs[name] ?? (() => ""))((args ?? {}) as Record<string, unknown>), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
-			},
-			renderResult(result: unknown, options: unknown, theme: unknown, context: unknown) {
-				const opts = options as { expanded?: boolean };
-				const isError = Boolean((context as { isError?: boolean })?.isError);
-				return ccResult(theme as CCTheme, name, result, opts, isError);
-			},
-		});
+		const ccRenderers = (name: string) => {
+			// Component memo (plan A6): pi calls renderResult every frame; reuse
+			// the component (and its wrap cache) while the inputs are the same
+			// references. A new result object (streaming partials) misses naturally.
+			let resultMemo: {
+				key: { result: unknown; expanded: boolean | undefined; isError: boolean; theme: unknown };
+				component: ReturnType<typeof ccResult>;
+			} | null = null;
+			return {
+				renderCall(args: unknown, theme: unknown, context: unknown) {
+					return ccCall(theme as CCTheme, name, (callArgs[name] ?? (() => ""))((args ?? {}) as Record<string, unknown>), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
+				},
+				renderResult(result: unknown, options: unknown, theme: unknown, context: unknown) {
+					const opts = options as { expanded?: boolean };
+					const isError = Boolean((context as { isError?: boolean })?.isError);
+					if (
+						resultMemo &&
+						resultMemo.key.result === result &&
+						resultMemo.key.expanded === opts?.expanded &&
+						resultMemo.key.isError === isError &&
+						resultMemo.key.theme === theme
+					) {
+						return resultMemo.component;
+					}
+					resultMemo = {
+						key: { result, expanded: opts?.expanded, isError, theme },
+						component: ccResult(theme as CCTheme, name, result, opts, isError),
+					};
+					return resultMemo.component;
+				},
+			};
+		};
 
 		registerCC("read", builtins.read, ccRenderers("read"));
 		registerCC("bash", builtins.bash, ccRenderers("bash"));
@@ -551,16 +487,6 @@ export default function (pi: ExtensionAPI) {
 		// reading it at render time always reflects the current mode, styled
 		// with that extension's own icon/label semantics.
 		const PM_MODE_ENV = "PERMISSION_MODES_INHERITED_MODE";
-		const PM_MODE_META: Record<string, { icon: string; label: string; paint: (s: string) => string }> = {
-			ask: { icon: "●", label: "ask mode", paint: gray },
-			plan: { icon: "⏸", label: "plan mode", paint: teal },
-			auto: { icon: "▶", label: "auto mode", paint: yellow },
-			bypass: {
-				icon: "⚡",
-				label: "bypass mode",
-				paint: (s) => `\x1b[38;2;255;102;102m${s}${RESET}`,
-			},
-		};
 		const permissionModeLabel = (): string => {
 			const pm = process.env[PM_MODE_ENV]?.trim();
 			if (!pm) return "";
@@ -662,7 +588,8 @@ export default function (pi: ExtensionAPI) {
 				ticks++;
 				spinnerIdx++;
 				if (ticks % 10 === 0) verb = randomOf(SPINNER_VERBS);
-				dockTui?.requestRender(true);
+				// Non-forced render keeps pi's line-diff cache intact (plan A8).
+				dockTui?.requestRender();
 			} catch {
 				// ctx went stale (session replaced/reloaded mid-run): stop
 				// ticking quietly instead of throwing uncaught (kills pi).
@@ -687,7 +614,7 @@ export default function (pi: ExtensionAPI) {
 			// Completion line lives in the status widget (bottom of the screen)
 			// instead of being injected into the chat transcript.
 			lastWorkedLine = `✻ ${randomOf(TURN_COMPLETION_VERBS)} for ${formatDuration(elapsed)}`;
-			dockTui?.requestRender(true);
+			dockTui?.requestRender();
 		}
 	};
 
@@ -777,7 +704,14 @@ export default function (pi: ExtensionAPI) {
 	// Plan/Auto toggle — pi-permission-modes owns plan-mode gating.)
 
 	pi.on("session_start", async (_event, ctx) => {
+		observeUsage(ctx);
 		enable(ctx);
+	});
+
+	// Assistant usage finalizes at message_end — that is the only moment the
+	// branch's usage totals can change (plan A7).
+	pi.on("message_end", async (_event, ctx) => {
+		observeUsage(ctx);
 	});
 
 	pi.on("model_select", async (event, _ctx) => {

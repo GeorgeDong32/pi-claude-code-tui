@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2 (Unreleased)
+
+### Changed
+- **Status-row usage numbers come from a change-derived snapshot (plan A7)**: the cc-status widget re-summed the whole session branch on every render frame (per keystroke and per spinner tick). Usage is now observed once at message boundaries (`UsageTracker`, semantics pinned by tests: used = last assistant cumulative, cost = sum) — equivalent values because pi freezes the branch while streaming. The permission-modes mode-chip table moved to module scope instead of being rebuilt per frame.
+
+### Changed
+- **CC tool rows extracted and golden-tested** (`extensions/lib/cc-rows.ts`): the `⏺ Tool(args)` / `⎿ output` renderers moved verbatim out of the monolith with the theme duck-typed and injected, and the fork regained a test suite (`node --test`, 12 cases) pinning exact rendered strings and color-name routing. No behavior change — verified verbatim against the removed block.
+- **Timer hygiene**: the editor cursor blinks only while focused (solid cursor when unfocused) and the spinner/blink/completion timers now request non-forced renders so pi's line-diff cache survives; previously every tick forced a full-terminal repaint (~5-10/s combined). Added `npm run typecheck` (tsc --noEmit passes clean) — the fork's first type gate. Visual verification in a live terminal (spinner frames, cursor blink, no stale rows after resize) is still pending.
+- **Result rows wrap once, not per frame**: `ccResult` caches its rendered rows per width and the render wiring reuses the component while `result`/`expanded`/`isError`/`theme` are the same references (official slot-local cache pattern). A 10k-line tool output previously cost one ANSI-aware wrap per logical line on every frame; cached renders are now free (~0ms vs 687ms for 200 renders) and terminal resizes recompute.
+
 ## 1.4.0
 
 - **Tool rows auto-yield to other TUI suites** — no more manual setup for
