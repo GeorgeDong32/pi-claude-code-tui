@@ -308,6 +308,19 @@ export default function (pi: ExtensionAPI) {
 		// Force mode = explicit user choice (toolRowsPref === true). Auto mode
 		// keeps the old yield-to-renderers contract.
 		const forceRows = () => enabled && toolRowsEnabled && toolRowsPref === true;
+		// Tools whose own result renderer is live, information-dense UI that
+		// force mode must NOT flatten into a 3-row preview: pi-subagents'
+		// `subagent` renders a live workflow card (per-agent progress, tokens,
+		// checklists) inside the tool block — taking it over pushed all that
+		// state down into the belowEditor "Async agents" widget and left a
+		// bare "Workflow running." line (the CC design keeps progress INLINE
+		// under the call row; pi-subagents' coverage mechanism also hides
+		// widget rows already covered by the inline card, so exempting the
+		// result restores that split). Banner-style renderers (SoL-Pi's ⚡
+		// blocks) stay taken over — they carry no live detail. The call row
+		// is still ours (CC ⏺ row + subagentCallSummary), inside the same
+		// flat "self" container.
+		const FORCE_RESULT_EXEMPT = new Set(["subagent"]);
 		// NOTE: theme must come from pi core's factory args (always live).
 		// Never capture ctx.ui.theme here: a session_start ctx goes stale
 		// after newSession/fork/switchSession/reload, and touching ctx.ui
@@ -323,7 +336,7 @@ export default function (pi: ExtensionAPI) {
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);
 			if (!enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
-			if (orig && !forceRows()) return orig;
+			if (orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
 			// Component memo (plan A6, same as the registered-override path):
 			// pi re-invokes getResultRenderer() every frame, so a closure here
 			// would be rebuilt per frame — the cache rides on the component

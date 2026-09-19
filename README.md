@@ -66,6 +66,13 @@ pi 中工具渲染是单占位机制：`read` / `bash` / `grep` / `find` / `ls` 
 
 SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后面），会静默夺走 `edit`/`write` 的渲染权，`auto` 的启动检测看不到它。同用 SoL-Pi 时建议运行一次 `/claude-tools on`：所有工具（含 `obs_recall` 的 Sol-Pi 横幅回显）统一为 CC 行，Action Fusion 照常工作。
 
+### 与 pi-subagents 同用
+
+`on` 模式对 pi-subagents 做了专门适配（1.4.5+）：
+
+- **call 行摘要**：`subagent` 调用不再显示全量 JSON。workflow 按 lane 摘要 → `⏺ subagent(call 5 agents: claude-md-compliance, pr-guardrails, +3)`；单 agent → `⏺ subagent(call agent(scout))`；管理动作 → `⏺ subagent(stop abc123)`。
+- **live 结果不被折叠**：subagent 自带的工作流 live 卡（每个 agent 的进度 / token / checklist，`ctrl+o` 看全文）**豁免**接管，进度内联在工具块内——对齐 CC「Task 进度在调用行下方」的设计。下方面板（Async agents）只保留真正的后台任务；前台调用的进度不会再掉到下面去。
+
 ## Thinking 折叠
 
 Claude Code 默认折叠思考内容；pi 原生同样支持（`settings.json` 的 `hideThinkingBlock`，或会话里按 `ctrl+t` 切换，pi 自己持久化）。本包做两件事：

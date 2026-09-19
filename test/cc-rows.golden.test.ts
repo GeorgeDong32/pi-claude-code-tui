@@ -18,6 +18,7 @@ import {
 	collapseCommand,
 	dotStatus,
 	strArg,
+	subagentCallSummary,
 	textOfResult,
 	thinkingToggleHint,
 	type CCTheme,
@@ -150,6 +151,48 @@ test("callArgsFor matches the built-in summaries and falls back to JSON", () => 
 	// Unknown (third-party) tool names serialize the whole args object.
 	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), '{"id":"obs_1","offset":0}');
 	assert.equal(callArgsFor("obs_recall", undefined), "{}");
+});
+
+test("callArgsFor routes subagent through the summary, unknown tools stay JSON", () => {
+	assert.equal(
+		callArgsFor("subagent", { agent: "pi-review.reviewer", task: "check" }),
+		"call agent(reviewer)",
+	);
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), '{"id":"obs_1"}');
+});
+
+test("subagentCallSummary summarizes workflows by lane keys (real-shape script)", () => {
+	// Shape taken from a real pi-subagents fan-out (five reviewer lanes).
+	const script = `
+const reviewers = await runs.all([
+  { key: "pi-review.claude-md-compliance", agent: "pi-review", task: "..." },
+  { key: "pi-review.pr-guardrails", agent: "pi-review", task: "..." },
+  { key: "pi-review.test-plan-honesty", agent: "pi-review", task: "..." },
+  { key: "pi-review.arch-drift", agent: "pi-review", task: "..." },
+  { key: "pi-review.license-hygiene", agent: "pi-review", task: "..." },
+]);
+return reviewers;`;
+	assert.equal(
+		subagentCallSummary({ workflowScript: script }),
+		"call 5 agents: claude-md-compliance, pr-guardrails, +3",
+	);
+	// Duplicate keys count once; single-lane scripts read as one agent.
+	assert.equal(
+		subagentCallSummary({ workflowScript: 'const a = await runs.one({ key: "solo.lane" });' }),
+		"call agent(lane)",
+	);
+	assert.equal(subagentCallSummary({ workflowScript: "const x = 1;" }), "call workflow");
+});
+
+test("subagentCallSummary covers single agent, actions, paths, and fallback", () => {
+	assert.equal(subagentCallSummary({ agent: "explorer" }), "call agent(explorer)");
+	assert.equal(subagentCallSummary({ action: "stop", id: "abc123" }), "stop abc123");
+	assert.equal(subagentCallSummary({ action: "list" }), "list");
+	assert.equal(
+		subagentCallSummary({ workflowScriptPath: "/tmp/wf/review.mjs" }),
+		"call workflow review.mjs",
+	);
+	assert.equal(subagentCallSummary({ async: true }), '{"async":true}');
 });
 
 test("builtinCallArgs covers exactly the seven built-in tool names", () => {

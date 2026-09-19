@@ -60,8 +60,46 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 	edit: (a) => strArg(a.path),
 };
 
-export const callArgsFor = (name: string, args: unknown): string =>
-	(builtinCallArgs[name] ?? ((a) => JSON.stringify(a ?? {})))((args ?? {}) as Record<string, unknown>);
+export const callArgsFor = (name: string, args: unknown): string => {
+	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
+	return (builtinCallArgs[name] ?? ((a) => JSON.stringify(a ?? {})))((args ?? {}) as Record<string, unknown>);
+};
+
+// CC-style summary for pi-subagents' `subagent` tool (the JSON.stringify
+// fallback put the whole workflowScript on the call row, escapes and all).
+// Mirrors CC's Agent tool: the count/type up front, agent names short —
+// `call 5 agents: k1, k2, +3` / `call agent(name)` / `<action> <target>`.
+const laneKeysOfWorkflow = (script: string): string[] => {
+	const keys: string[] = [];
+	for (const m of script.matchAll(/\bkey\s*:\s*(["'`])([^"'`\n]+)\1/g)) {
+		const key = m[2]!;
+		if (!keys.includes(key)) keys.push(key);
+	}
+	return keys;
+};
+const shortLane = (key: string): string => key.split(".").pop() || key;
+
+export const subagentCallSummary = (args: Record<string, unknown>): string => {
+	const str = (v: unknown): string => (typeof v === "string" ? v : "");
+	if (str(args.action)) {
+		const target = str(args.agent) || str(args.id) || str(args.runId);
+		return target ? `${str(args.action)} ${target}` : str(args.action);
+	}
+	const agent = str(args.agent);
+	if (agent) return `call agent(${shortLane(agent)})`;
+	const inlineScript = str(args.workflowScript);
+	if (inlineScript) {
+		const keys = laneKeysOfWorkflow(inlineScript).map(shortLane);
+		if (keys.length === 0) return "call workflow";
+		if (keys.length === 1) return `call agent(${keys[0]})`;
+		const shown = keys.slice(0, 2).join(", ");
+		const rest = keys.length > 2 ? `, +${keys.length - 2}` : "";
+		return `call ${keys.length} agents: ${shown}${rest}`;
+	}
+	const scriptPath = str(args.workflowScriptPath);
+	if (scriptPath) return `call workflow ${scriptPath.split("/").pop() || scriptPath}`;
+	return JSON.stringify(args);
+};
 
 // CC-style hint for pi's thinking-collapse binding (app.thinking.toggle):
 // keyText yields "" outside a host session, hence the fallback.

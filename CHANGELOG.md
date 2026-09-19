@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.5 (2026-09-19)
+
+### Added
+- **pi-subagents adaptation — CC-style subagent call rows**: `callArgsFor` routes `subagent` through a new `subagentCallSummary` (`lib/cc-rows.ts`): `workflowScript` is parsed for lane keys (dedup, last path segment, first 2 shown) → `call 5 agents: claude-md-compliance, pr-guardrails, +3`; a single lane or an `agent` call → `call agent(name)`; management `action`s → `stop abc123`; `workflowScriptPath` → `call workflow review.mjs`. Previously force mode printed the whole args JSON — the entire workflowScript, escapes and all — on the call row. Mirrors CC's Agent tool design (count/type up front, names short; CC's grouped block reads `Running 5 agents…`).
+
+### Changed
+- **Force mode no longer flattens live subagent results**: `subagent` joins a `FORCE_RESULT_EXEMPT` set — its own renderResult (pi-subagents' live workflow card: per-agent progress, tokens, checklists, ctrl+o detail) stays even under `/claude-tools on`. Taking it over had pushed all live state down into the belowEditor "Async agents" widget and left a bare "Workflow running." line; CC keeps progress INLINE under the call row, and pi-subagents' widget-coverage mechanism hides widget rows already covered by the inline card, so exempting restores that split (foreground call progress inline; only true background tasks stay in the widget). Banner-style renderers (SoL-Pi) remain taken over — they carry no live detail. The call row is still the CC `⏺` row, in the same flat `self` container as the exempt result.
+
 ## 1.4.4 (2026-09-19)
 
 ### Added
