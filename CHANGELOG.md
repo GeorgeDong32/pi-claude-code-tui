@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.4 (2026-09-19)
+
+### Added
+- **Force mode for `/claude-tools on` — third-party renderers are taken over** (SoL-Pi adaptation): the `ToolExecutionComponent` patch used to yield to ANY tool that shipped its own `renderCall`/`renderResult`, so e.g. SoL-Pi's `obs_recall` / `update_plan` kept their three-line `⚡ SoL-Pi · …` banner blocks. With an explicit `on` (`toolRows: true` in `~/.pi/agent/claude-tui.json`), the CC rows now take over every non-built-in tool at render time — and only the renderers swap: `execute` and `parameters` stay the other extension's, so SoL-Pi Action Fusion and Observation Pack behavior is untouched (their savings notices still arrive via notify/status). `auto` keeps the old yield contract. The patch's result factory gained the plan-A6 component memo (it now serves edit diffs / read summaries in force mode) and passes the tool name through, so a third-party override of a built-in name renders the same concise call rows via the shared `callArgsFor` map (`lib/cc-rows.ts`).
+- **Thinking-block label, CC style**: pi natively collapses thinking blocks (`settings.json` `hideThinkingBlock`, toggled and persisted by `ctrl+t` / `app.thinking.toggle`) but labels them with the plain italic "Thinking...". When the CC replica is enabled the hidden label becomes `✻ Thinking… (ctrl+t to expand)`; restored to pi's default on disable. One-time `ctrl+t` tip on enable while the user has never set `hideThinkingBlock` explicitly. The collapse choice itself stays pi-native — there is no extension API to set it, and pi already persists the toggle.
+
+### Changed
+- `/claude-tools on` notify now states the takeover semantics ("every tool renders as CC rows; execute untouched") instead of the ambiguous "CC tool rows on".
+
 ## 1.4.2 (2026-09-12)
 
 ### Changed

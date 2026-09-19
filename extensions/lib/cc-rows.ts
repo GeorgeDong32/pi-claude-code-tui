@@ -38,6 +38,35 @@ export interface CCTheme {
 	bold(s: string): string;
 }
 
+// Concise args summaries for the seven built-in tool names, shared by the
+// registerTool override path and the force-mode prototype patch so a
+// third-party override of a built-in name (e.g. SoL-Pi's fused edit/write)
+// gets the same `⏺ Tool(arg)` call row as the fork-owned built-ins.
+export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => string> = {
+	read: (a) => strArg(a.path),
+	bash: (a) => collapseCommand(strArg(a.command)),
+	grep: (a) => {
+		const p = strArg(a.pattern);
+		const path = strArg(a.path);
+		return path ? `${p} in ${path}` : p;
+	},
+	find: (a) => {
+		const p = strArg(a.pattern);
+		const path = strArg(a.path);
+		return path ? `${p} in ${path}` : p;
+	},
+	ls: (a) => strArg(a.path) || ".",
+	write: (a) => strArg(a.path),
+	edit: (a) => strArg(a.path),
+};
+
+export const callArgsFor = (name: string, args: unknown): string =>
+	(builtinCallArgs[name] ?? ((a) => JSON.stringify(a ?? {})))((args ?? {}) as Record<string, unknown>);
+
+// CC-style hint for pi's thinking-collapse binding (app.thinking.toggle):
+// keyText yields "" outside a host session, hence the fallback.
+export const thinkingToggleHint = (): string => keyText("app.thinking.toggle") || "ctrl+t";
+
 // ⏺ dot state (CC): orange while running, green on success, red on error.
 export type CCDotStatus = "running" | "success" | "error";
 const DOT_COLOR: Record<CCDotStatus, string> = {

@@ -41,7 +41,7 @@ pi install git:github.com/Shiorangerin/pi-claude-code-tui
 | 命令 | 说明 |
 | --- | --- |
 | `/claude-tui` | 整体开关复刻效果（头图 / 编辑器 / 旋转动画 / 状态行；工具行独立控制，见下） |
-| `/claude-tools` | 独立开关 CC 工具行（`on` / `off`，不带参数则翻转） |
+| `/claude-tools` | 独立开关 CC 工具行：`on`（全量接管）/ `off` / `auto`（默认，自动让路） |
 | `/claude-footer` | 切换 pi 原生 footer（`on`：保留 MCP 等扩展的 footer、隐藏 CC 状态组件；`off`：纯 CC 干净外观） |
 | `/claude-verb` | 重新掷一个旋转动画动词 |
 | `Shift+Tab` 或 `/mode` | 切换 **Plan Mode** / **Auto Mode** |
@@ -59,7 +59,21 @@ pi 中工具渲染是单占位机制：`read` / `bash` / `grep` / `find` / `ls` 
 
 - **自动检测（默认）** — 每次会话启动时检查 `pi.getAllTools()` 的源元数据。如果其他扩展（如 [pi-cc-extensions](https://github.com/minuque/pi-cc-extensions)）已占用内置工具行，CC 工具行保持关闭并一次性提示原因。无需任何配置。
 - **手动覆盖** — `/claude-tools on` 收回工具行，`/claude-tools off` 让出，`/claude-tools auto` 恢复自动检测。选择会保存到 `~/.pi/agent/claude-tui.json`，在 `/reload` 和重启后依然生效；`CC_TUI_TOOL_ROWS=0` 可强制关闭。
+- **`on` 是全量接管** — 显式 `on` 时，自带渲染器的第三方工具（如 SoL-Pi 的 `obs_recall`、`update_plan` 和融合版 `edit`/`write`）也会渲染成 CC 行。只换渲染器：execute 与参数保持对方扩展的实现，SoL-Pi Action Fusion / Observation Pack 等功能完全不受影响（节省提示仍走它的 notify/状态栏）。`auto` 维持旧的让路契约。
 - **头图/编辑器槽位**同样是单占位（后写者胜）。如果与其他 TUI 套件同时使用，请在 `settings.json` 的 `packages` 列表里把本包放在**后面**，这样头图和编辑器由本包接管。
+
+### 与 SoL-Pi 同用
+
+SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后面），会静默夺走 `edit`/`write` 的渲染权，`auto` 的启动检测看不到它。同用 SoL-Pi 时建议运行一次 `/claude-tools on`：所有工具（含 `obs_recall` 的 Sol-Pi 横幅回显）统一为 CC 行，Action Fusion 照常工作。
+
+## Thinking 折叠
+
+Claude Code 默认折叠思考内容；pi 原生同样支持（`settings.json` 的 `hideThinkingBlock`，或会话里按 `ctrl+t` 切换，pi 自己持久化）。本包做两件事：
+
+- 折叠标签换成 CC 风格的斜体 `✻ Thinking… (ctrl+t to expand)`
+- 首次启用时若你从未选过折叠偏好，一次性提示快捷键
+
+推荐的完整 CC 设置（加到 `~/.pi/agent/settings.json`）：`"hideThinkingBlock": true`
 
 ## 推荐设置
 
@@ -69,7 +83,8 @@ pi 中工具渲染是单占位机制：`read` / `bash` / `grep` / `find` / `ls` 
 {
   "tuiMode": "fullscreen",
   "outputPad": 0,
-  "quietStartup": true
+  "quietStartup": true,
+  "hideThinkingBlock": true
 }
 ```
 
@@ -77,6 +92,7 @@ pi 中工具渲染是单占位机制：`read` / `bash` / `grep` / `find` / `ls` 
 - 注意：`Shift+Tab` 被改为切换模式，不再是 pi 内置的思考层级循环
 - `outputPad: 0` — 已发送的消息从第 0 列开始顶格显示
 - `quietStartup: true` — 隐藏启动时的资源列表（自定义头图保留）
+- `hideThinkingBlock: true` — 折叠思考内容为一行 `✻ Thinking…`（等价于会话里按一次 `ctrl+t`）
 
 ## 说明
 

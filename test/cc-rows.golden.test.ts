@@ -13,10 +13,13 @@ import assert from "node:assert/strict";
 import {
 	ccCall,
 	ccResult,
+	builtinCallArgs,
+	callArgsFor,
 	collapseCommand,
 	dotStatus,
 	strArg,
 	textOfResult,
+	thinkingToggleHint,
 	type CCTheme,
 } from "../extensions/lib/cc-rows.ts";
 
@@ -135,6 +138,28 @@ test("helpers behave as pinned", () => {
 	assert.equal(dotStatus({ isPartial: false }), "success");
 	assert.equal(dotStatus(undefined), "running");
 	assert.equal(dotStatus({ isPartial: true }), "running");
+});
+
+test("callArgsFor matches the built-in summaries and falls back to JSON", () => {
+	assert.equal(callArgsFor("bash", { command: "git status\ngit diff" }), "git status …");
+	assert.equal(callArgsFor("read", { path: "src/a.ts" }), "src/a.ts");
+	assert.equal(callArgsFor("edit", { path: "src/a.ts", then_run: "bash:x" }), "src/a.ts");
+	assert.equal(callArgsFor("grep", { pattern: "foo", path: "src" }), "foo in src");
+	assert.equal(callArgsFor("grep", { pattern: "foo" }), "foo");
+	assert.equal(callArgsFor("ls", {}), ".");
+	// Unknown (third-party) tool names serialize the whole args object.
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), '{"id":"obs_1","offset":0}');
+	assert.equal(callArgsFor("obs_recall", undefined), "{}");
+});
+
+test("builtinCallArgs covers exactly the seven built-in tool names", () => {
+	assert.deepEqual(Object.keys(builtinCallArgs).sort(), ["bash", "edit", "find", "grep", "ls", "read", "write"]);
+});
+
+test("thinkingToggleHint falls back to ctrl+t outside a host session", () => {
+	// keyText returns "" when no keybindings manager is bound (tests run
+	// without one), so the hint must never render as "( to expand)".
+	assert.equal(thinkingToggleHint(), "ctrl+t");
 });
 
 test("ccResult wrap cache: repeat renders identical, width change recomputes, invalidate clears (plan A6)", () => {

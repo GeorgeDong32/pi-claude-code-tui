@@ -10,7 +10,13 @@
  *   read 折叠摘要），renderShell "self" 去掉背景盒；折叠按物理行封顶
  *   3 行（长 JSON 行 wrap 后也不会刷屏）
  * - 第三方/MCP 工具兜底：原型补丁 ToolExecutionComponent，凡无自带
- *   renderCall/renderResult 的工具（MCP、task 等）同样渲染为折叠的 CC 行
+ *   renderCall/renderResult 的工具（MCP、task 等）同样渲染为折叠的 CC 行；
+ *   显式 on（/claude-tools on）时进一步接管自带渲染器的第三方工具
+ *   （如 SoL-Pi 的 obs_recall / 融合 edit/write）——只换渲染器，
+ *   execute 与参数保持对方实现，功能不受影响
+ * - Thinking 折叠：折叠开关本身是 pi 原生设置（hideThinkingBlock / ctrl+t），
+ *   本扩展只把折叠标签换成 CC 风格 `✻ Thinking… (ctrl+t to expand)`，
+ *   并在用户未做过选择时一次性提示快捷键
  * - Spinner：✻ 花型动画 + Claude 橙 + 190 个 Claude Code 俏皮动词轮换 + (esc to interrupt · Ns)
  * - 收尾：✻ Worked for 12s（CC 过去式动词）
  * - 状态栏：模型 │ Context 23% (50k/200k) │ $0.042（/claude-footer 切换；
@@ -29,10 +35,9 @@ import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil
 import {
 	ccCall,
 	ccResult,
+	callArgsFor,
 	dotStatus,
-	strArg,
-	collapseCommand,
-	textOfResult,
+	thinkingToggleHint,
 	type CCTheme,
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
@@ -151,7 +156,7 @@ const shortenCwd = (): string => {
 // replaced with Claude Code-style rows, and renderShell "self" drops the
 // background box.
 
-// CC tool-row renderers (ccCall/ccResult/dotStatus/strArg/collapseCommand/
+// CC tool-row renderers (ccCall/ccResult/dotStatus/callArgsFor/
 // textOfResult) live in ./lib/cc-rows.ts — extracted verbatim so they can be
 // golden-tested (plan C3). Import them here; behavior is unchanged.
 
@@ -192,6 +197,36 @@ export default function (pi: ExtensionAPI) {
 	let toolRowsPref = loadToolRowsPref();
 	let toolRowsEnabled = toolRowsPref !== false && process.env.CC_TUI_TOOL_ROWS !== "0";
 	let autoYieldNotified = false;
+
+	// --- Thinking blocks: CC-style collapsed label + one-time tip ---
+	// pi natively collapses thinking blocks behind an italic one-line label
+	// (settings.json `hideThinkingBlock`, toggled with ctrl+t and persisted by
+	// pi itself). There is no extension API to SET that flag, so the fork
+	// stays out of the choice: it only restyles the label to CC's `✻
+	// Thinking…` and points at the binding once when the user has never
+	// picked a preference.
+	const settingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json");
+	const thinkingPrefExplicit = (): boolean => {
+		try {
+			if (!existsSync(settingsPath)) return false;
+			const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as { hideThinkingBlock?: unknown };
+			return typeof settings.hideThinkingBlock === "boolean";
+		} catch {
+			return true; // unreadable settings: stay quiet rather than nag
+		}
+	};
+	let thinkingTipShown = false;
+	const applyThinkingLook = (ctx: ExtensionContext) => {
+		try {
+			ctx.ui.setHiddenThinkingLabel(`✻ Thinking… (${thinkingToggleHint()} to expand)`);
+		} catch {
+			// stale ctx or older pi without the API — label stays default
+		}
+		if (!thinkingTipShown && !thinkingPrefExplicit()) {
+			thinkingTipShown = true;
+			ctx.ui.notify(`Tip: ${thinkingToggleHint()} toggles collapsed thinking blocks (saved to settings.json)`, "info");
+		}
+	};
 	// Who owns the built-in tool rows right now? Returns the owner's source
 	// id (e.g. another extension's package), or undefined when pi's own
 	// built-ins own them. Same signal minuque/pi-cc-extensions uses to yield.
@@ -243,7 +278,11 @@ export default function (pi: ExtensionAPI) {
 	// wrapped lines. Prototype-patch ToolExecutionComponent (same module
 	// instance pi's TUI uses, like the UserMessageComponent patch below) so any
 	// tool WITHOUT its own renderers gets CC-style collapsed rows; tools that
-	// do define renderers (built-in overrides, webfetch) are untouched.
+	// do define renderers keep them — except in force mode (/claude-tools on,
+	// explicit pref): there the CC rows take over every non-built-in tool too
+	// (e.g. SoL-Pi's fused edit/write and obs_recall), because the factory
+	// only swaps the renderers — execute and parameters stay the other
+	// extension's, so behavior (action fusion, recall pages) is unchanged.
 	const patchThirdPartyToolRows = () => {
 		const proto = ToolExecutionComponent.prototype as unknown as {
 			toolName: string;
@@ -266,22 +305,59 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		const isBuiltin = (self: { builtInToolDefinition?: unknown }) => self.builtInToolDefinition !== undefined;
+		// Force mode = explicit user choice (toolRowsPref === true). Auto mode
+		// keeps the old yield-to-renderers contract.
+		const forceRows = () => enabled && toolRowsEnabled && toolRowsPref === true;
 		// NOTE: theme must come from pi core's factory args (always live).
 		// Never capture ctx.ui.theme here: a session_start ctx goes stale
 		// after newSession/fork/switchSession/reload, and touching ctx.ui
 		// inside render() throws where pi can't catch it (kills pi).
 		proto.getCallRenderer = function () {
 			const orig = origCall.call(this);
-			if (orig || !enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
+			if (!enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
+			if (orig && !forceRows()) return orig;
 			// renderCall is a factory: (args, theme, ctx) => component
 			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) =>
-				ccCall(theme as CCTheme, this.toolName, JSON.stringify(args ?? {}), dotStatus(rctx));
+				ccCall(theme as CCTheme, this.toolName, callArgsFor(this.toolName, args), dotStatus(rctx));
 		};
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);
-			if (orig || !enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
-			return (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) =>
-				ccResult(theme as CCTheme, "", result, options, Boolean(rctx?.isError));
+			if (!enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
+			if (orig && !forceRows()) return orig;
+			// Component memo (plan A6, same as the registered-override path):
+			// pi re-invokes getResultRenderer() every frame, so a closure here
+			// would be rebuilt per frame — the cache rides on the component
+			// instance instead. Force mode serves edit diffs and read
+			// summaries through here, which are costly enough to notice.
+			const self = this as { toolName: string; __ccResultMemo?: {
+				factory: unknown;
+				key: { result: unknown; expanded: boolean | undefined; isError: boolean; theme: unknown };
+				component: ReturnType<typeof ccResult>;
+			} };
+			return (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
+				const isError = Boolean(rctx?.isError);
+				const expanded = options?.expanded;
+				const memo = self.__ccResultMemo;
+				if (memo && memo.factory === orig) {
+					// Same definition renderer means same tool identity for
+					// this component instance.
+					if (
+						memo.key.result === result &&
+						memo.key.expanded === expanded &&
+						memo.key.isError === isError &&
+						memo.key.theme === theme
+					) {
+						return memo.component;
+					}
+				}
+				const component = ccResult(theme as CCTheme, self.toolName, result, options, isError);
+				self.__ccResultMemo = {
+					factory: orig,
+					key: { result, expanded, isError, theme },
+					component,
+				};
+				return component;
+			};
 		};
 		// Drop the pending/success background box for third-party tools so they
 		// match the flat CC look of the overridden built-ins.
@@ -394,24 +470,6 @@ export default function (pi: ExtensionAPI) {
 	const registerToolOverrides = () => {
 		const builtins = buildBuiltins();
 
-		const callArgs: Record<string, (a: Record<string, unknown>) => string> = {
-			read: (a) => strArg(a.path),
-			bash: (a) => collapseCommand(strArg(a.command)),
-			grep: (a) => {
-				const p = strArg(a.pattern);
-				const path = strArg(a.path);
-				return path ? `${p} in ${path}` : p;
-			},
-			find: (a) => {
-				const p = strArg(a.pattern);
-				const path = strArg(a.path);
-				return path ? `${p} in ${path}` : p;
-			},
-			ls: (a) => strArg(a.path) || ".",
-			write: (a) => strArg(a.path),
-			edit: (a) => strArg(a.path),
-		};
-
 		const registerCC = (name: string, builtin: { name: string }, override: { renderCall: unknown; renderResult: unknown }) => {
 			pi.registerTool({
 				...builtin,
@@ -430,7 +488,7 @@ export default function (pi: ExtensionAPI) {
 			} | null = null;
 			return {
 				renderCall(args: unknown, theme: unknown, context: unknown) {
-					return ccCall(theme as CCTheme, name, (callArgs[name] ?? (() => ""))((args ?? {}) as Record<string, unknown>), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
+					return ccCall(theme as CCTheme, name, callArgsFor(name, args), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
 				},
 				renderResult(result: unknown, options: unknown, theme: unknown, context: unknown) {
 					const opts = options as { expanded?: boolean };
@@ -671,6 +729,7 @@ export default function (pi: ExtensionAPI) {
 		setEditor(ctx);
 		applyFooterMode(ctx);
 		applyWorking(ctx);
+		applyThinkingLook(ctx);
 	};
 
 	const disable = (ctx: ExtensionContext) => {
@@ -685,6 +744,7 @@ export default function (pi: ExtensionAPI) {
 		disposePiHeaderLook();
 		try {
 			(ctx.ui as { setWorkingVisible?: (v: boolean) => void }).setWorkingVisible?.(true);
+			ctx.ui.setHiddenThinkingLabel(); // restore pi's default label
 		} catch {
 			/* older pi */
 		}
@@ -780,7 +840,7 @@ export default function (pi: ExtensionAPI) {
 			saveToolRowsPref(next);
 			if (next) {
 				registerToolOverrides();
-				ctx.ui.notify("CC tool rows on", "info");
+				ctx.ui.notify("CC tool rows on — every tool renders as CC rows (other renderers yield; execute untouched)", "info");
 			} else {
 				registerNativeTools();
 				ctx.ui.notify("CC tool rows off — run /reload if another TUI extension should take over tool rendering", "info");
