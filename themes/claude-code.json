@@ -31,7 +31,7 @@
 		"dim": "#999999",
 		"text": "text",
 		"thinkingText": "inactive",
-		"selectedBg": "selection",
+		"selectedBg": "userMsgBg",
 		"scrollbarThumb": "subtle",
 		"searchMatchBg": "selection",
 		"searchMatchText": "text",
