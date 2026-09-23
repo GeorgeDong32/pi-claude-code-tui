@@ -60,6 +60,7 @@ import {
 import {
 	PM_MODE_ENV,
 	publishCcTuiCapability,
+	startCoreNotificationConsumer,
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
@@ -793,10 +794,27 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// DC5b: newest context for the notification consumer's display callback
+	// (replaced on every enable; stale calls are try/caught downstream).
+	let latestCtx: ExtensionContext | null = null;
+
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
+		latestCtx = ctx;
 		(pi as { getAllTools?: unknown }).getAllTools; // touch to fail fast on stale
 		publishCcTuiCapability();
+		// DC5b: consume core's notification tail queue ourselves (the
+		// capability declaration above makes core drop its direct forward).
+		// Returns false while the core bus is v1/not loaded — readPmStatus
+		// retries every frame, so it attaches right after core's first
+		// publish.
+		startCoreNotificationConsumer((msg, level) => {
+			try {
+				latestCtx?.ui.notify(msg, level as "info" | "warning" | "error");
+			} catch {
+				// stale context — drop this one
+			}
+		});
 		if (ctx.mode !== "tui") return;
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";

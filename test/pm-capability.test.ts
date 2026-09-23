@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
 	PM_MODE_ENV,
 	publishCcTuiCapability,
+	startCoreNotificationConsumer,
+	stopCoreNotificationConsumer,
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "../extensions/lib/pm-capability.ts";
@@ -94,4 +96,62 @@ test("DC5: null snapshot stats falls back through to the legacy key", () => {
 		__pmWorkingStats: "(↑3)",
 	};
 	assert.deepEqual(readPmStatus(store), { workingStats: "↑3", mode: "auto" });
+});
+
+test("DC5b: capability declares notificationsConsumer", () => {
+	const store: Record<string, unknown> = {};
+	publishCcTuiCapability(store);
+	assert.deepEqual((store.__piCcTui as Record<string, unknown>).notificationsConsumer, true);
+	withdrawCcTuiCapability(store);
+	assert.equal(store.__piCcTui, undefined);
+});
+
+test("DC5b: consumer subscribes via snapshot onChange and diffs by lastSeenId (fast-forward, no replay)", async () => {
+	const store: Record<string, unknown> = {};
+	const listeners = new Set<() => void>();
+	let queue: Array<{ id: number; level: string; msg: string }> = [];
+	// v1 snapshot first — subscription must return false, then succeed on v2.
+	function makeSnap(withOnChange: boolean) {
+		return withOnChange
+			? { version: 2, onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); }, notifications: queue }
+			: { version: 1, notifications: queue };
+	}
+	store.__piClaudeCodeCore = makeSnap(false);
+	const shown: Array<[string, string]> = [];
+	assert.equal(startCoreNotificationConsumer((m, l) => shown.push([m, l]), store), false);
+	// Upgrade to v2 with pre-existing history (id 1) — attaching must not replay it.
+	stopCoreNotificationConsumer(); // isolate from prior tests (module singleton)
+	queue = [{ id: 1, level: "info", msg: "history" }];
+	store.__piClaudeCodeCore = makeSnap(true);
+	assert.equal(startCoreNotificationConsumer((m, l) => shown.push([m, l]), store), true);
+	assert.deepEqual(shown, []); // fast-forwarded past id 1
+	// A publish appends and fires listeners — only the new item shows.
+	// (The snapshot must be re-issued so its notifications ref sees the queue.)
+	queue = [...queue, { id: 2, level: "warning", msg: "fresh" }];
+	store.__piClaudeCodeCore = makeSnap(true);
+	for (const l of listeners) l();
+	assert.deepEqual(shown, [["fresh", "warning"]]);
+	// Redelivery of the same snapshot is idempotent.
+	for (const l of listeners) l();
+	assert.deepEqual(shown, [["fresh", "warning"]]);
+	stopCoreNotificationConsumer();
+	assert.equal(listeners.size, 0);
+});
+
+test("DC5b: readPmStatus retries the pending subscription idempotently", () => {
+	const store: Record<string, unknown> = {};
+	const listeners = new Set<() => void>();
+	store.__piClaudeCodeCore = {
+		version: 2,
+		onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); },
+		notifications: [],
+		modes: { mode: "ask", workingStats: null },
+	};
+	const shown: Array<[string, string]> = [];
+	stopCoreNotificationConsumer(); // isolate from prior tests (module singleton)
+	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
+	readPmStatus(store); // frame-path retry hook — already subscribed, no double
+	readPmStatus(store);
+	assert.equal(listeners.size, 1);
+	stopCoreNotificationConsumer();
 });

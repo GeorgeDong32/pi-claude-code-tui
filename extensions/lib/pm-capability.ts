@@ -60,6 +60,10 @@ function readLegacyStats(globalStore: Record<string, unknown>): string {
 
 /** Read pm's published status with the full fallback chain. */
 export function readPmStatus(globalStore: Record<string, unknown> = globalThis as never): PmStatus {
+	// Every render frame is a free retry point for the notification
+	// consumer subscription (idempotent; attaches once the core bus v2
+	// snapshot exists — cctui loads before core, so enable-time often misses).
+	trySubscribeCoreNotifications(globalStore);
 	// DC5: the bus snapshot itself is the primary source (v1+; always-full
 	// stats under DC5 cores). The legacy projection below stays for older
 	// core builds until the version-gated removal window closes.
@@ -101,12 +105,79 @@ export function readPmStatus(globalStore: Record<string, unknown> = globalThis a
 
 /** Publish this extension's presence for pm's suppression probe (B7). */
 export function publishCcTuiCapability(globalStore: Record<string, unknown> = globalThis as never): void {
-	globalStore.__piCcTui = { version: 1, active: true };
+	// DC5b: notificationsConsumer declares that this build consumes the
+	// core bus's notification tail queue itself — core then stops its
+	// direct ctx.ui.notify forward for us (version negotiation, no
+	// double display; older cores keep the forward).
+	globalStore.__piCcTui = { version: 1, active: true, notificationsConsumer: true };
 	// Legacy key (one compatibility cycle for older pm builds).
 	globalStore.__ccTuiActive = true;
 }
 
 export function withdrawCcTuiCapability(globalStore: Record<string, unknown> = globalThis as never): void {
+	stopCoreNotificationConsumer();
 	delete globalStore.__piCcTui;
 	delete globalStore.__ccTuiActive;
+}
+
+// ---- DC5b: notification tail-queue consumer --------------------------------
+//
+// Subscribes through the core snapshot's data-carried onChange and diffs
+// the bounded notifications queue by lastSeenId. Load order puts cctui
+// before core, so the bus may not exist (or still be v1) at enable time —
+// readPmStatus() retries the subscription idempotently on every call, so
+// the first frame after core's first publish attaches it.
+
+type NotificationItem = { id: number; level: string; msg: string };
+type CoreSnapshotLike = {
+	onChange?: (fn: () => void) => () => void;
+	notifications?: readonly NotificationItem[];
+};
+
+let notifyDisplay: ((msg: string, level: string) => void) | null = null;
+let notifyUnsubscribe: (() => void) | null = null;
+let notifyLastSeenId = 0;
+
+function trySubscribeCoreNotifications(globalStore: Record<string, unknown> = globalThis as never): boolean {
+	if (notifyUnsubscribe || !notifyDisplay) return notifyUnsubscribe !== null;
+	const snap = globalStore.__piClaudeCodeCore as CoreSnapshotLike | undefined;
+	const register = snap?.onChange;
+	if (!register) return false;
+	// Fast-forward past history published before we attached (the fallback
+	// adapter already displayed it) — only future items are ours.
+	const current = snap?.notifications;
+	if (current && current.length > 0) notifyLastSeenId = current[current.length - 1]!.id;
+	notifyUnsubscribe = register(() => {
+		const live = globalStore.__piClaudeCodeCore as CoreSnapshotLike | undefined;
+		for (const item of live?.notifications ?? []) {
+			if (item.id <= notifyLastSeenId) continue;
+			notifyLastSeenId = item.id;
+			try {
+				notifyDisplay?.(item.msg, item.level as string);
+			} catch {
+				// Stale context: drop this one rather than replay-loop.
+			}
+		}
+	});
+	return true;
+}
+
+/**
+ * Start consuming the core notification queue. Returns false while the
+ * core bus is not ready (v1 snapshot / not loaded); readPmStatus retries
+ * automatically, or re-call on the next session_start.
+ */
+export function startCoreNotificationConsumer(
+	display: (msg: string, level: string) => void,
+	globalStore: Record<string, unknown> = globalThis as never,
+): boolean {
+	notifyDisplay = display;
+	return trySubscribeCoreNotifications(globalStore);
+}
+
+export function stopCoreNotificationConsumer(): void {
+	notifyUnsubscribe?.();
+	notifyUnsubscribe = null;
+	notifyLastSeenId = 0;
+	notifyDisplay = null;
 }
