@@ -84,17 +84,15 @@ const yellow = (s: string) => `${CLAUDE_WARNING}${s}${RESET}`;
 
 const teal = (s: string) => `${CLAUDE_PLAN}${s}${RESET}`;
 
-// Mode chrome for the permission-modes footer chip (module-level: the footer
-// closure rebuilt this table on every frame — plan A7).
-const PM_MODE_META: Record<string, { icon: string; label: string; paint: (s: string) => string }> = {
-	ask: { icon: "●", label: "ask mode", paint: gray },
-	plan: { icon: "⏸", label: "plan mode", paint: teal },
-	auto: { icon: "▶", label: "auto mode", paint: yellow },
-	bypass: {
-		icon: "⚡",
-		label: "bypass mode",
-		paint: (s) => `\x1b[38;2;255;102;102m${s}${RESET}`,
-	},
+// Mode paint for the permission-modes footer chip (module-level: the footer
+// closure rebuilt this table on every frame — plan A7). DC1: icon/label come
+// from the bus projection (single source, core MODE_META); paint stays a
+// cctui asset.
+const PM_MODE_PAINT: Record<string, (s: string) => string> = {
+	ask: gray,
+	plan: teal,
+	auto: yellow,
+	bypass: (s) => `\x1b[38;2;255;102;102m${s}${RESET}`,
 };
 
 
@@ -611,12 +609,16 @@ export default function (pi: ExtensionAPI) {
 		// reading it at render time always reflects the current mode, styled
 		// with that extension's own icon/label semantics.
 		const permissionModeLabel = (): string => {
-			const pm = readPmStatus().mode || process.env[PM_MODE_ENV]?.trim();
+			const status = readPmStatus();
+			const pm = status.mode || process.env[PM_MODE_ENV]?.trim();
 			if (!pm) return "";
-			const meta = PM_MODE_META[pm];
-			return meta
-				? `${meta.paint(`${meta.icon} ${meta.label} on`)}${gray(" (shift+tab to cycle)")}`
-				: "";
+			const paint = PM_MODE_PAINT[pm] ?? gray;
+			// DC1: icon/label single-sourced from core's MODE_META via the bus
+			// projection; bare mode key + local paint is the older-core fallback.
+			const m = status.meta?.[pm];
+			const icon = m?.icon ?? "●";
+			const label = m ? `${m.label.toLowerCase()} mode` : `${pm} mode`;
+			return `${paint(`${icon} ${label} on`)}${gray(" (shift+tab to cycle)")}`;
 		};
 		const label = permissionModeLabel();
 		if (editorHasText()) return truncateToWidth(label, width, "");

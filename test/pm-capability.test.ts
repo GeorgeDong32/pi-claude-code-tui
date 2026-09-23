@@ -25,6 +25,25 @@ test("versioned capability wins; workingStats used verbatim", () => {
 	assert.deepEqual(readPmStatus(store), { workingStats: "↑1.2k · ↓300", mode: "auto" });
 });
 
+test("DC1: mode meta from the projection is passed through (single source)", () => {
+	const meta = {
+		ask: { icon: "●", label: "Ask", role: "muted" },
+		bypass: { icon: "⚡", label: "Bypass", role: "error" },
+	};
+	const store: Record<string, unknown> = {
+		__piPermissionModes: cap({ meta }),
+	};
+	const status = readPmStatus(store);
+	assert.equal(status.meta, meta); // by reference — frozen snapshot reuse
+	assert.equal(status.meta?.bypass?.icon, "⚡");
+});
+
+test("DC1: absent meta keeps the historical two-field shape", () => {
+	const store: Record<string, unknown> = { __piPermissionModes: cap() };
+	const status = readPmStatus(store);
+	assert.deepEqual(Object.keys(status).sort(), ["mode", "workingStats"]);
+});
+
 test("capability with empty stats falls back to legacy key (paren-stripped)", () => {
 	const store: Record<string, unknown> = {
 		__piPermissionModes: cap({ workingStats: null }),

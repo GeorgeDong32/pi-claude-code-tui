@@ -14,6 +14,15 @@ export interface PmCapabilityLike {
 	active?: boolean;
 	mode?: string;
 	workingStats?: string | null;
+	/** DC1: mode presentation material single-sourced from core's MODE_META. */
+	meta?: Readonly<Record<string, { icon: string; label: string; role: string }>>;
+}
+
+/** Duck-typed mirror of one mode's presentation material. */
+export interface PmModeMeta {
+	icon: string;
+	label: string;
+	role: string;
 }
 
 export interface PmStatus {
@@ -21,6 +30,8 @@ export interface PmStatus {
 	workingStats: string;
 	/** Current permission mode ("ask" | "plan" | "auto" | "bypass"), "" if unknown. */
 	mode: string;
+	/** Mode presentation material from the bus projection; absent on older cores. */
+	meta?: Readonly<Record<string, PmModeMeta>>;
 }
 
 const CAPABILITY_KEY = "__piPermissionModes";
@@ -36,6 +47,8 @@ export function readPmStatus(globalStore: Record<string, unknown> = globalThis a
 	const capability = globalStore[CAPABILITY_KEY] as PmCapabilityLike | undefined;
 	if (isVersioned(capability)) {
 		const legacy = globalStore[LEGACY_STATS_KEY];
+		// Conditional spread: absent meta keeps the historical two-field shape
+		// (deepEqual tests pin it).
 		return {
 			workingStats:
 				typeof capability.workingStats === "string" && capability.workingStats.length > 0
@@ -44,6 +57,7 @@ export function readPmStatus(globalStore: Record<string, unknown> = globalThis a
 						? legacy.replace(/^\(/, "").replace(/\)$/, "")
 						: "",
 			mode: typeof capability.mode === "string" ? capability.mode : "",
+			...(capability.meta ? { meta: capability.meta } : {}),
 		};
 	}
 	// Older pm builds: legacy untyped keys.
