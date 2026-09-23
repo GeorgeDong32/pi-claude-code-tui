@@ -78,3 +78,20 @@ test("cc-tui presence publish/withdraw keeps both keys in sync", () => {
 	assert.equal(store.__piCcTui, undefined);
 	assert.equal(store.__ccTuiActive, undefined);
 });
+
+test("DC5: the bus snapshot itself is the primary source", () => {
+	const meta = { ask: { icon: "●", label: "Ask", role: "muted" } };
+	const store: Record<string, unknown> = {
+		__piClaudeCodeCore: { version: 2, revision: 3, modes: { mode: "bypass", workingStats: "↑7", meta } },
+		__piPermissionModes: cap({ mode: "ask", workingStats: "old" }),
+	};
+	assert.deepEqual(readPmStatus(store), { workingStats: "↑7", mode: "bypass", meta });
+});
+
+test("DC5: null snapshot stats falls back through to the legacy key", () => {
+	const store: Record<string, unknown> = {
+		__piClaudeCodeCore: { version: 2, revision: 3, modes: { mode: "auto", workingStats: null } },
+		__pmWorkingStats: "(↑3)",
+	};
+	assert.deepEqual(readPmStatus(store), { workingStats: "↑3", mode: "auto" });
+});

@@ -36,14 +36,46 @@ export interface PmStatus {
 
 const CAPABILITY_KEY = "__piPermissionModes";
 const LEGACY_STATS_KEY = "__pmWorkingStats";
+const SNAPSHOT_KEY = "__piClaudeCodeCore";
 export const PM_MODE_ENV = "PERMISSION_MODES_INHERITED_MODE";
 
 function isVersioned(value: PmCapabilityLike | undefined): value is PmCapabilityLike {
 	return value?.version !== undefined && value.version >= 1;
 }
 
+/** Duck-typed mirror of the bus snapshot's modes channel (primary source). */
+interface SnapshotLike {
+	version?: number;
+	modes?: {
+		mode?: string;
+		workingStats?: string | null;
+		meta?: Readonly<Record<string, { icon: string; label: string; role: string }>>;
+	};
+}
+
+function readLegacyStats(globalStore: Record<string, unknown>): string {
+	const legacy = globalStore[LEGACY_STATS_KEY];
+	return typeof legacy === "string" && legacy.length > 0 ? legacy.replace(/^\(/, "").replace(/\)$/, "") : "";
+}
+
 /** Read pm's published status with the full fallback chain. */
 export function readPmStatus(globalStore: Record<string, unknown> = globalThis as never): PmStatus {
+	// DC5: the bus snapshot itself is the primary source (v1+; always-full
+	// stats under DC5 cores). The legacy projection below stays for older
+	// core builds until the version-gated removal window closes.
+	const snap = globalStore[SNAPSHOT_KEY] as SnapshotLike | undefined;
+	if (snap?.version !== undefined && snap.version >= 1 && snap.modes) {
+		const m = snap.modes;
+		const workingStats =
+			typeof m.workingStats === "string" && m.workingStats.length > 0
+				? m.workingStats
+				: readLegacyStats(globalStore);
+		return {
+			workingStats,
+			mode: typeof m.mode === "string" ? m.mode : "",
+			...(m.meta ? { meta: m.meta } : {}),
+		};
+	}
 	const capability = globalStore[CAPABILITY_KEY] as PmCapabilityLike | undefined;
 	if (isVersioned(capability)) {
 		const legacy = globalStore[LEGACY_STATS_KEY];
