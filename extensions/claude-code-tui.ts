@@ -701,6 +701,19 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.setWidget("cc-footer", undefined);
 			}
 			setStatusWidget(ctx);
+			// aboveEditor widgets render in registration order, and this
+			// enable() runs in cctui's session_start — before later-loaded
+			// extensions (e.g. pi-claude-code-core's goal block) mount
+			// theirs. Re-register on the next macrotask: same-key setWidget
+			// re-inserts at the map tail, so cc-status (spinner) stays
+			// closest to the editor and the goal block sits above it. A
+			// microtask is NOT enough — the extension runner's per-handler
+			// awaits flush the microtask queue before the next extension's
+			// session_start runs.
+			const requeue = setTimeout(() => {
+				if (enabled) setStatusWidget(ctx);
+			}, 0);
+			requeue.unref?.();
 		}
 	};
 
