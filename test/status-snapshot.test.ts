@@ -29,7 +29,21 @@ test("non-assistant entries and missing usage are ignored", () => {
 		{ type: "message", message: { role: "assistant", content: [] } },
 		{ type: "custom", customType: "modes" },
 	]);
-	assert.deepEqual(snapshot, { used: 0, cost: 0 });
+	assert.deepEqual(snapshot, { used: 0, cost: 0, lastInput: 0, lastOutput: 0, totalInput: 0, totalOutput: 0 });
+});
+
+test("SL3 splits: last/total input+output across assistant messages", () => {
+	const tracker = new UsageTracker();
+	const snapshot = tracker.observe([
+		assistant({ input: 10, output: 5, cost: 0.01 }),
+		{ type: "message", message: { role: "toolResult", content: [] } },
+		assistant({ input: 40, output: 8, cacheRead: 2, cost: 0.02 }),
+	]);
+	assert.equal(snapshot.lastInput, 40); // LAST assistant, raw input only
+	assert.equal(snapshot.lastOutput, 8);
+	assert.equal(snapshot.totalInput, 50); // cumulative across both
+	assert.equal(snapshot.totalOutput, 13);
+	assert.equal(snapshot.used, 40 + 8 + 2 + 0); // legacy mouth unchanged
 });
 
 test("get() serves the cached snapshot between observations", () => {

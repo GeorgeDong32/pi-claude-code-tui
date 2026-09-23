@@ -43,15 +43,30 @@ import {
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
+	buildStatuslineJson,
+	composeFooterLines,
+	StatuslineRunner,
+} from "./lib/statusline.ts";
+import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
+import { buildCompletionLine, formatCost, formatDuration, formatTokens } from "./lib/render-utils.ts";
+import {
+	defaultPrefsPath,
+	loadPrefs,
+	resolveStatusLinePrefs,
+	savePrefs,
+	type ClaudeTuiPrefs,
+	type StatusLinePrefs,
+} from "./lib/prefs.ts";
+import {
 	PM_MODE_ENV,
 	publishCcTuiCapability,
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 // --- Claude Code palette — "Dark mode (colorblind-friendly)" (theme.ts
 // darkDaltonizedTheme): warning rgb(255,204,0), planMode rgb(102,153,153),
@@ -133,18 +148,6 @@ const TURN_COMPLETION_VERBS = [
 
 const randomOf = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
 
-const formatDuration = (ms: number): string => {
-	const s = Math.round(ms / 1000);
-	if (s < 60) return `${s}s`;
-	return `${Math.floor(s / 60)}m ${s % 60}s`;
-};
-
-const formatTokens = (n: number): string => {
-	if (n < 1000) return `${n}`;
-	if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
-	return `${(n / 1_000_000).toFixed(1)}M`;
-};
-
 const shortenCwd = (): string => {
 	const cwd = process.cwd();
 	return cwd.replace(/^\/Users\/[^/]+/, "~");
@@ -174,27 +177,18 @@ export default function (pi: ExtensionAPI) {
 	// built-in tool row, checked via pi.getAllTools() source metadata at
 	// session_start when every extension has loaded. CC_TUI_TOOL_ROWS=0
 	// still forces off (env wins over everything).
-	const toolRowsPrefPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "claude-tui.json");
-	const loadToolRowsPref = (): boolean | undefined => {
-		try {
-			if (!existsSync(toolRowsPrefPath)) return undefined;
-			const pref = JSON.parse(readFileSync(toolRowsPrefPath, "utf8")) as { toolRows?: unknown };
-			if (pref.toolRows === false) return false;
-			if (pref.toolRows === true) return true;
-			return undefined;
-		} catch {
-			return undefined;
-		}
-	};
+	// Plan SL2: the file is a shared read-modify-write store (lib/prefs.ts) —
+	// the old saveToolRowsPref serialized {toolRows} alone and would have
+	// wiped the statusLine keys (and vice versa).
+	const prefsPath = defaultPrefsPath();
+	const initialPrefs = loadPrefs(prefsPath);
+	const toolRowsPrefOf = (prefs: ClaudeTuiPrefs): boolean | undefined =>
+		prefs.toolRows === true || prefs.toolRows === false ? prefs.toolRows : undefined;
 	const saveToolRowsPref = (pref: boolean | undefined): void => {
-		try {
-			mkdirSync(dirname(toolRowsPrefPath), { recursive: true });
-			writeFileSync(toolRowsPrefPath, JSON.stringify(pref === undefined ? {} : { toolRows: pref }, null, 2));
-		} catch {
-			// Never break the TUI over a preference write.
-		}
+		savePrefs({ toolRows: pref }, prefsPath);
 	};
-	let toolRowsPref = loadToolRowsPref();
+	let toolRowsPref = toolRowsPrefOf(initialPrefs);
+	let statusLinePrefs = resolveStatusLinePrefs(initialPrefs.statusLine);
 	let toolRowsEnabled = toolRowsPref !== false && process.env.CC_TUI_TOOL_ROWS !== "0";
 	let autoYieldNotified = false;
 
@@ -395,12 +389,60 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 	// Turn-completion line (✻ Verb for Xs) rendered at the end of the status
-	// widget row instead of injected into the chat transcript.
+	// widget row instead of being injected into the chat transcript.
 	let lastWorkedLine = "";
 	// Live spinner state for the cc-status left side (running vs completion).
 	let running = false;
 	let spinnerIdx = 0;
 	let spinnerPaint: (s: string) => string = (s) => s;
+
+	// --- Statusline runner (plan SL4): CC-compatible external script ---
+	// Event-driven only (session_start / message_end / model_select / compact
+	// / config change / width change) — never per frame. The render path only
+	// reads cached lines; spawns live in the runner's async settle callbacks.
+	let statuslineRunner: StatuslineRunner | null = null;
+	let statuslineWidth = 0; // last render width; a change re-runs the script
+	const statuslineCommand = (): string => {
+		if (statusLinePrefs.command) return statusLinePrefs.command;
+		// Bundled default: the script SOURCE goes straight to `bash -c` — no
+		// filesystem anchor exists (pi's jiti loader evaluates extensions from
+		// data: URLs, so import.meta.url is useless here). See
+		// lib/statusline-default-script.ts.
+		return DEFAULT_STATUSLINE_SCRIPT;
+	};
+	const statuslineOn = (): boolean => enabled && statusLinePrefs.enabled;
+	const ensureStatuslineRunner = (): void => {
+		if (!statuslineOn() || statuslineRunner) return;
+		statuslineRunner = new StatuslineRunner({ command: statuslineCommand() });
+		statuslineRunner.setOnUpdate(() => dockTui?.requestRender());
+	};
+	const teardownStatusline = (): void => {
+		statuslineRunner?.dispose();
+		statuslineRunner = null;
+	};
+	const buildCurrentStatuslineInput = (): string => {
+		const effort = (() => {
+			try {
+				return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
+			} catch {
+				return undefined;
+			}
+		})();
+		return buildStatuslineJson(
+			usageTracker.get(),
+			{
+				displayName: currentModelName || "no model",
+				id: currentProviderName ? `${currentProviderName}/${currentModelName || "model"}` : currentModelName,
+				provider: currentProviderName,
+			},
+			currentContextWindow,
+			{ cwd: process.cwd(), effort },
+		);
+	};
+	const refreshStatusline = (): void => {
+		if (!statuslineRunner) return;
+		statuslineRunner.request(buildCurrentStatuslineInput(), statuslineWidth || 100);
+	};
 
 	// --- Status widget: compact CC statusline, right-aligned ABOVE the prompt ---
 	const setStatusWidget = (ctx: ExtensionContext) => {
@@ -433,30 +475,37 @@ export default function (pi: ExtensionAPI) {
 				const left = running
 					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
 					: lastWorkedLine
-						? theme.fg("accent", lastWorkedLine)
+						? theme.fg("dim", lastWorkedLine)
 						: "";
-				const effort = (() => {
-					try {
-						return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
-					} catch {
-						return undefined;
+				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
+				// on the script row + right-aligned badge instead — the right
+				// group collapses so the same info never shows twice.
+				let right = "";
+				if (!statusLinePrefs.enabled) {
+					const effort = (() => {
+						try {
+							return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
+						} catch {
+							return undefined;
+						}
+					})();
+					const modelLabel = effort ? `${modelName}·${effort}` : modelName;
+					const rightParts = [muted(modelLabel)];
+					if (win > 0 && used > 0) {
+						rightParts.push(
+							`${theme.fg("dim", "Ctx ")}${muted(`${pct}%`)}${theme.fg("dim", `(${formatTokens(used)}/${formatTokens(win)})`)}`,
+						);
 					}
-				})();
-				const modelLabel = effort ? `${modelName}·${effort}` : modelName;
-				const rightParts = [muted(modelLabel)];
-				if (win > 0 && used > 0) {
-					rightParts.push(
-						`${theme.fg("dim", "Ctx ")}${muted(`${pct}%`)}${theme.fg("dim", `(${formatTokens(used)}/${formatTokens(win)})`)}`,
-					);
+					if (cost > 0) {
+						rightParts.push(muted(formatCost(cost)));
+					}
+					right = rightParts.join(sep);
 				}
-				if (cost > 0) {
-					rightParts.push(muted(`$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)}`));
-				}
-				const right = rightParts.join(sep);
 
 				// Left-aligned completion line, right-aligned model/context/cost.
 				// Degrades to plain left truncation when the two cannot fit.
 				const leftW = visibleWidth(left);
+				if (right === "") return [truncateToWidth(left, width)];
 				const rightW = visibleWidth(right);
 				if (leftW + rightW + 2 <= width) {
 					const pad = " ".repeat(Math.max(2, width - leftW - rightW));
@@ -575,11 +624,38 @@ export default function (pi: ExtensionAPI) {
 		return truncateToWidth(`${label} ${hints}`, width);
 	};
 
-	const setFooterLine = (ctx: ExtensionContext) => {
+	const setFooterLine = (ctx: ExtensionContext, includeHints: boolean) => {
 		ctx.ui.setWidget("cc-footer", (_tui, theme) => ({
 			invalidate() {},
 			render(width: number): string[] {
-				return [footerLineText((s) => theme.fg("dim", s), width)];
+				// Width changes re-run the script (its layout usually depends on
+				// OVERRIDE_TERM_WIDTH); request() debounces and dedups, so this
+				// per-frame call only acts on actual changes.
+				if (width !== statuslineWidth) {
+					statuslineWidth = width;
+					refreshStatusline();
+				}
+				return composeFooterLines({
+					statuslineOn: statusLinePrefs.enabled,
+					badgeOn: statusLinePrefs.badge,
+					lines: statuslineRunner ? statuslineRunner.getRenderLines() : [],
+					badgeText: (() => {
+						if (!statusLinePrefs.badge) return "";
+						let effort: string | undefined;
+						try {
+							effort = (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
+						} catch {
+							effort = undefined;
+						}
+						// CC-style effort chip (`⊙ xhigh · /effort`): effort only —
+						// the script row already names the model. /effort is real
+						// (registered by pi-claude-code-core's effort extension).
+						return effort && effort !== "off" ? `⊙ ${effort} · /effort` : "";
+					})(),
+					badgePaint: (s) => theme.fg("muted", s),
+					hints: includeHints ? footerLineText((s) => theme.fg("dim", s), width) : "",
+					width,
+				});
 			},
 		}), { placement: "belowEditor" });
 	};
@@ -612,10 +688,15 @@ export default function (pi: ExtensionAPI) {
 		if (showNativeFooter) {
 			ctx.ui.setFooter(undefined); // restore built-in footer
 			ctx.ui.setWidget("cc-status", undefined);
-			setFooterLine(ctx); // mode/hints live as belowEditor widget
+			// Plan SL4/D2: script rows first, mode/hints below them.
+			setFooterLine(ctx, true);
 		} else {
 			setFooterModeLine(ctx); // fills footer's minSize:1, no gap
-			ctx.ui.setWidget("cc-footer", undefined);
+			if (statusLinePrefs.enabled) {
+				setFooterLine(ctx, false); // statusline-only belowEditor widget
+			} else {
+				ctx.ui.setWidget("cc-footer", undefined);
+			}
 			setStatusWidget(ctx);
 		}
 	};
@@ -682,12 +763,14 @@ export default function (pi: ExtensionAPI) {
 		}
 		running = false;
 		if (!enabled || runStart === 0) return;
-		const elapsed = Date.now() - runStart;
+		const endTs = Date.now();
+		const elapsed = endTs - runStart;
 		runStart = 0;
 		if (elapsed >= 1000) {
 			// Completion line lives in the status widget (bottom of the screen)
-			// instead of being injected into the chat transcript.
-			lastWorkedLine = `✻ ${randomOf(TURN_COMPLETION_VERBS)} for ${formatDuration(elapsed)}`;
+			// instead of being injected into the chat transcript. Plan SL1/D0:
+			// duration + wall-clock end time, rendered dim below.
+			lastWorkedLine = buildCompletionLine(randomOf(TURN_COMPLETION_VERBS), elapsed, endTs);
 			dockTui?.requestRender();
 		}
 	};
@@ -743,12 +826,20 @@ export default function (pi: ExtensionAPI) {
 		applyFooterMode(ctx);
 		applyWorking(ctx);
 		applyThinkingLook(ctx);
+		// Idempotent: re-create the statusline runner after /claude-tui
+		// off→on (disable() tore it down). Skip the initial refresh until a
+		// render has supplied the real terminal width — the widget's
+		// width-diff check triggers the first run, avoiding a wasted
+		// wrong-width spawn at startup.
+		ensureStatuslineRunner();
+		if (statuslineWidth > 0) refreshStatusline();
 	};
 
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
 		running = false;
 		withdrawCcTuiCapability();
+		teardownStatusline();
 		if (tickTimer) {
 			clearInterval(tickTimer);
 			tickTimer = null;
@@ -781,19 +872,30 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		observeUsage(ctx);
-		enable(ctx);
+		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 
 	// Assistant usage finalizes at message_end — that is the only moment the
 	// branch's usage totals can change (plan A7).
 	pi.on("message_end", async (_event, ctx) => {
 		observeUsage(ctx);
+		refreshStatusline();
 	});
 
 	pi.on("model_select", async (event, _ctx) => {
 		currentModelName = event.model?.name || event.model?.id || "";
 		currentProviderName = event.model?.provider || "";
 		currentContextWindow = event.model?.contextWindow || 0;
+		refreshStatusline();
+	});
+
+	// Compaction reshapes the context picture — rerun the script (its data is
+	// cached; this is one debounced spawn, not a scan).
+	pi.on("session_compact", async () => {
+		refreshStatusline();
+	});
+	pi.on("session_before_compact", async () => {
+		refreshStatusline();
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
@@ -809,6 +911,7 @@ export default function (pi: ExtensionAPI) {
 			clearInterval(tickTimer);
 			tickTimer = null;
 		}
+		teardownStatusline();
 		if (ctx.mode === "tui") {
 			ctx.ui.setWorkingIndicator();
 			ctx.ui.setEditorComponent(undefined);
@@ -878,6 +981,43 @@ export default function (pi: ExtensionAPI) {
 			if (enabled) applyFooterMode(ctx);
 			ctx.ui.notify(
 				`Native footer ${showNativeFooter ? "on — CC status widget hidden" : "off — CC status widget shown"}`,
+				"info",
+			);
+		},
+	});
+
+	// Plan SL4: CC-compatible statusline (external script; JSON on stdin).
+	pi.registerCommand("claude-statusline", {
+		description: "Statusline: on | off | badge on|off | set <command>",
+		handler: async (args, ctx) => {
+			const a = args.trim();
+			const badgeMatch = a.match(/^badge\s+(on|off)$/i);
+			const setMatch = a.match(/^set\s+(.+)$/i);
+			if (badgeMatch) {
+				statusLinePrefs = { ...statusLinePrefs, badge: badgeMatch[1]!.toLowerCase() === "on" };
+			} else if (setMatch) {
+				// `set` implies on — setting a script is an intent to use it;
+				// saving it dark confused users ("set 之后没反应").
+				statusLinePrefs = { ...statusLinePrefs, command: setMatch[1]!.trim(), enabled: true };
+				teardownStatusline(); // recreate with the new command
+			} else if (a === "" || a === "on" || a === "off") {
+				statusLinePrefs = {
+					...statusLinePrefs,
+					enabled: a === "" ? !statusLinePrefs.enabled : a === "on",
+				};
+				if (!statusLinePrefs.enabled) teardownStatusline();
+			} else {
+				ctx.ui.notify("Usage: /claude-statusline [on|off|badge on|off|set <command>]", "info");
+				return;
+			}
+			savePrefs({ statusLine: statusLinePrefs }, prefsPath);
+			if (enabled) {
+				ensureStatuslineRunner();
+				refreshStatusline();
+				applyFooterMode(ctx);
+			}
+			ctx.ui.notify(
+				`Statusline ${statusLinePrefs.enabled ? "on" : "off"}${badgeMatch ? ` — badge ${statusLinePrefs.badge ? "on" : "off"}` : ""}${setMatch ? ` — command: ${statusLinePrefs.command}` : ""}`,
 				"info",
 			);
 		},

@@ -44,6 +44,7 @@ pi install git:github.com/Shiorangerin/pi-claude-code-tui
 | `/claude-tools` | 独立开关 CC 工具行：`on`（全量接管）/ `off` / `auto`（默认，自动让路） |
 | `/claude-footer` | 切换 pi 原生 footer（`on`：保留 MCP 等扩展的 footer、隐藏 CC 状态组件；`off`：纯 CC 干净外观） |
 | `/claude-verb` | 重新掷一个旋转动画动词 |
+| `/claude-statusline` | CC 兼容可配置状态行：`on` / `off` / `badge on\|off` / `set <command>`（详见下文「Statusline」） |
 | `Shift+Tab` 或 `/mode` | 切换 **Plan Mode** / **Auto Mode** |
 
 ### 模式
@@ -72,6 +73,26 @@ SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后�
 
 - **call 行摘要**：`subagent` 调用不再显示全量 JSON。workflow 按 lane 摘要 → `⏺ subagent(call 5 agents: claude-md-compliance, pr-guardrails, +3)`；单 agent → `⏺ subagent(call agent(scout))`；管理动作 → `⏺ subagent(stop abc123)`。
 - **live 结果不被折叠**：subagent 自带的工作流 live 卡（每个 agent 的进度 / token / checklist，`ctrl+o` 看全文）**豁免**接管，进度内联在工具块内——对齐 CC「Task 进度在调用行下方」的设计。下方面板（Async agents）只保留真正的后台任务；前台调用的进度不会再掉到下面去。
+
+## Statusline（CC 兼容可配置状态行）
+
+像 Claude Code 的 statusline 一样：扩展把 CC 形状的 JSON（model / workspace / context_window，外加 `pi.cost_usd`、`pi.effort` 扩展字段）喂给你指定的命令 stdin，命令的 stdout（ANSI 原样）渲染在输入框下方——脚本行在上、mode/hints 行在下，effort 以 CC 式芯片（`⊙ high · /effort`，灰色）右对齐在首行末端（effort 未设或 off 时省略；`/effort` 是 pi-claude-code-core 注册的真实命令）。需要 bash + jq。
+
+```text
+ pi-effort │ ◆ main⎇ │ glm-5.3[1m] │ 30K/1M 3% │ I:28K/O:170      ⊙ xhigh · /effort
+ ⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools
+```
+
+- 默认关闭（`/claude-statusline` 开启），零视觉回归；开启后 spinner 行右段的 model/ctx/cost 收敛到脚本行，不双显。
+- 开箱即用包内默认脚本（`~dir │ ◆branch dirty │ model │ Ctx p% │ $cost`）；要复用你在 CC 里的脚本：
+
+  ```
+  /claude-statusline set ~/.claude/statusline-command.sh
+  ```
+
+- 刷新只在会话事件发生（assistant 回复结束 / 切模型 / compaction / 终端宽度变化 / 配置变更），纯异步、绝不阻塞渲染；连续失败 3 次显示一行灰色提示并在下次成功后自愈。
+- 配置持久化在 `~/.pi/agent/claude-tui.json`（`statusLine.enabled/command/badge`，与 `toolRows` 共存互不覆盖）。
+- 性能：`node scripts/bench-statusline.mjs` 实测默认脚本 p50 ≈ 30ms（bash fork 地板约 25ms）；事件驱动下每分钟最多几次 spawn，不在热路径上。
 
 ## Thinking 折叠
 

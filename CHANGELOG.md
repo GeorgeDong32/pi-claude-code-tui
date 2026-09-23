@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 (unreleased)
+
+### Added
+- **CC-compatible configurable statusline** (plan `docs/STATUSLINE-PLAN.md` rev3, SL1–SL5): the extension synthesizes a CC-shaped JSON document (model / workspace / context_window, plus `pi.cost_usd`/`pi.effort`/`pi.provider` extension fields — schema verified against `~/.claude/statusline-command.sh`'s jq fields) and pipes it to an external command's stdin; the command's stdout renders verbatim below the editor — script rows first, then the existing mode/hints row. Your existing CC statusline script works unchanged: `/claude-statusline set ~/.claude/statusline-command.sh`. Off by default (zero visual regression); on enable the spinner row's right group (model/ctx/cost) collapses so nothing shows twice, and `model·effort` becomes a right-aligned CC-style effort chip (`⊙ high · /effort`, muted; hidden when effort is unset or off — the script row already names the model, and `/effort` is a real command registered by pi-claude-code-core) on the first script row (omitted when it cannot fit — script output is never truncated). The bundled default script (bash+jq; source at `scripts/statusline-default.sh`, embedded verbatim as `lib/statusline-default-script.ts` because pi's jiti loader evaluates extensions from data: URLs — no import.meta anchor exists — with a byte-sync test pinning the two) renders `~dir │ ◆branch dirty │ model │ Ctx p% (u/w) │ $cost` with a right-to-left degradation ladder. Refreshes are event-driven only (message_end / model_select / session_compact / width change / config change) — debounced 250ms, in-flight coalesced into one follow-up spawn, 2s timeout kill, output capped at 4 lines / 64KB; three consecutive failures surface a dim `<statusline> cmd failed` row that self-heals on the next success. Benchmark harness: `node scripts/bench-statusline.mjs` (default script p50 ≈ 30ms, p95 ≈ 50ms on a loaded machine; bash fork floor ~25ms — advisory, refreshes never touch the render path).
+- **`/claude-statusline` command**: `on | off | badge on|off | set <command>`, persisted in `~/.pi/agent/claude-tui.json` under `statusLine` via a new shared read-modify-write prefs store (`lib/prefs.ts`, atomic tmp+rename) — fixes the latent bug where `saveToolRowsPref` serialized `{toolRows}` alone and would have wiped every sibling key.
+
+### Changed
+- **Turn-completion line goes CC-dim with an end timestamp** (plan D0): after a run ≥1s the status row shows `✻ Baked for 1m 21s · 13:54` (duration + local wall-clock end time) in theme-dim instead of accent — extracted as the pure `buildCompletionLine` for golden tests.
+- `formatDuration`/`formatTokens`/`formatCost` moved to `lib/render-utils.ts` (shared with the statusline module); `UsageTracker` now also reports `lastInput/lastOutput/totalInput/totalOutput` from its existing single branch scan (pi-footer mouth for the JSON totals).
+
 ## 1.4.5 (2026-09-19)
 
 ### Added

@@ -33,6 +33,7 @@
     ]
   },
   "files": [
+    "scripts",
     "extensions",
     "themes",
     "CHANGELOG.md",
