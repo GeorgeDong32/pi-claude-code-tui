@@ -41,6 +41,7 @@ import {
 	type CCTheme,
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
+import { patchCompactionRow } from "./lib/cc-compaction-row.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
 	buildStatuslineJson,
@@ -794,9 +795,13 @@ export default function (pi: ExtensionAPI) {
 	// Accent open-sequence cached from a live ctx (setEditorComponent's
 	// theme parameter lacks .fg and crashed the editor on first render).
 	let accentOpenAnsi = "\x1b[38;2;138;190;183m"; // sage fallback (#8ABEB7)
+	// Live theme fg (cached alongside the accent) for row patches that render
+	// outside a renderer's theme parameter (compaction row).
+	let themeFg: ((color: string, text: string) => string) | null = null;
 	const cacheAccentAnsi = (ctx: ExtensionContext): void => {
 		try {
 			const t = (ctx.ui as unknown as { theme?: { fg?: (c: string, s: string) => string } }).theme;
+			if (t?.fg) themeFg = (c, s) => t.fg!(c, s);
 			const seq = t?.fg?.("accent", "");
 			if (typeof seq === "string" && seq.includes("38;")) {
 				accentOpenAnsi = seq.slice(0, seq.indexOf("m") + 1);
@@ -854,6 +859,7 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		patchThirdPartyToolRows();
+		patchCompactionRow(() => themeFg);
 		applyPiHeaderLook(pi, ctx);
 		setEditor(ctx);
 		applyFooterMode(ctx);
