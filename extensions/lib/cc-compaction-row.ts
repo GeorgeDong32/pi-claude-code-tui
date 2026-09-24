@@ -31,9 +31,6 @@ export function patchCompactionRow(getFg: () => ThemeFg | null): void {
 	const proto = CompactionSummaryMessageComponent.prototype as unknown as CompactionProto;
 	if (proto.__ccRowsPatched) return;
 	proto.__ccRowsPatched = true;
-	const WHITE = "\x1b[38;2;255;255;255m";
-	const BOLD = "\x1b[1m";
-	const RESET = "\x1b[22m\x1b[39m";
 	proto.updateDisplay = function (this: CompactionProto) {
 		// Strip the Box chrome: no customMessageBg, no 1x1 padding — the row
 		// must sit flush in the transcript like the CC tool rows.
@@ -42,18 +39,20 @@ export function patchCompactionRow(getFg: () => ThemeFg | null): void {
 		this.paddingY = 0;
 		this.clear();
 		const fg = (color: string, text: string) => getFg()?.(color, text) ?? text;
+		// One quiet grey family for the whole row — the token count must not
+		// pop white against the dim compaction line.
 		const tokens = this.message.tokensBefore.toLocaleString("en-US");
 		const expandHint = keyText("app.tools.expand") || "ctrl+o";
 		if (!this.expanded) {
 			this.addChild(new Text(
-				`${fg("dim", "\u23fa")} ${fg("toolOutput", "Context compacted from")} ${WHITE}${BOLD}${tokens} tokens${RESET} ${fg("dim", `(${expandHint} to expand)`)}`,
+				`${fg("dim", "\u23fa")} ${fg("toolOutput", `Context compacted from ${tokens} tokens`)} ${fg("dim", `(${expandHint} to expand)`)}`,
 				0,
 				0,
 			));
 			return;
 		}
 		this.addChild(new Text(
-			`${fg("dim", "\u23fa")} ${fg("toolOutput", "Context compacted")} ${WHITE}${BOLD}${tokens} tokens${RESET}`,
+			`${fg("dim", "\u23fa")} ${fg("toolOutput", `Context compacted ${tokens} tokens`)}`,
 			0,
 			0,
 		));
