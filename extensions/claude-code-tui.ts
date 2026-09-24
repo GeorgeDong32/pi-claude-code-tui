@@ -41,7 +41,7 @@ import {
 	type CCTheme,
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
-import { patchCompactionRow } from "./lib/cc-compaction-row.ts";
+import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
 	buildStatuslineJson,
@@ -946,6 +946,16 @@ export default function (pi: ExtensionAPI) {
 		compacting = true;
 		spinnerPaint = accentFg(ctx);
 		startCompactionTick();
+		// pi shows its native indicator row before this event fires; mute it
+		// so compaction lives only on the cc-status spinner line. Retry a
+		// couple of times in case show lands a tick later.
+		const hush = (retries: number) => {
+			if (silenceNativeCompactionIndicator(dockTui)) return;
+			if (retries <= 0) return;
+			const t = setTimeout(() => hush(retries - 1), 100);
+			t.unref?.();
+		};
+		hush(4);
 	});
 	pi.on("session_compact", async () => {
 		stopCompactionState();

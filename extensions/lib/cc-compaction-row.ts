@@ -61,3 +61,28 @@ export function patchCompactionRow(getFg: () => ThemeFg | null): void {
 		}
 	};
 }
+
+/**
+ * Silence pi's native "Compacting context..." indicator row by locating the
+ * live CompactionStatusIndicator instance in the TUI component tree and
+ * overriding its instance render to zero height. The class itself is not
+ * exported (deep-path imports would patch a second, unused module
+ * instance), but TUI/Container children are public, and pi clears the
+ * indicator itself when compaction ends — the override dies with it.
+ */
+export function silenceNativeCompactionIndicator(root: unknown): boolean {
+	const stack: unknown[] = [root];
+	while (stack.length > 0) {
+		const node = stack.pop() as
+			| { constructor?: { name?: string }; children?: unknown[]; render?: (width: number) => string[] }
+			| null
+			| undefined;
+		if (!node || typeof node !== "object") continue;
+		if (node.constructor?.name === "CompactionStatusIndicator" && typeof node.render === "function") {
+			node.render = () => [];
+			return true;
+		}
+		if (Array.isArray(node.children)) stack.push(...node.children);
+	}
+	return false;
+}

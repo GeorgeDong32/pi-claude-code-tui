@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { CompactionSummaryMessageComponent, initTheme } from "@earendil-works/pi-coding-agent";
-import { patchCompactionRow } from "../extensions/lib/cc-compaction-row.ts";
+import { patchCompactionRow, silenceNativeCompactionIndicator } from "../extensions/lib/cc-compaction-row.ts";
 
 // The Box base class reads the global theme during render; init a default.
 initTheme(undefined as unknown as string);
@@ -54,4 +54,25 @@ test("fg fallback keeps the line readable when no theme is cached", () => {
 	const component = new CompactionSummaryMessageComponent(message);
 	const lines = renderPlain(component);
 	assert.ok(lines.some((l) => l.includes("Context compacted from 145,234 tokens")));
+});
+
+// --- native indicator silencing ---
+
+test("silenceNativeCompactionIndicator finds and mutes the live instance", () => {
+	const indicator = {
+		constructor: { name: "CompactionStatusIndicator" },
+		render(width: number): string[] {
+			return [`Compacting context... (${width})`];
+		},
+	};
+	const tree = {
+		children: [{ children: [{}, indicator] }, { leaf: true }],
+	};
+	assert.equal(silenceNativeCompactionIndicator(tree), true);
+	assert.deepEqual(indicator.render(80), []);
+});
+
+test("silenceNativeCompactionIndicator tolerates absent trees and leaves", () => {
+	assert.equal(silenceNativeCompactionIndicator(null), false);
+	assert.equal(silenceNativeCompactionIndicator({ children: [{}, { children: "not-array" as never }] }), false);
 });
