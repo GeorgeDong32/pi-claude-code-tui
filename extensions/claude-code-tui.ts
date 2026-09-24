@@ -393,6 +393,9 @@ export default function (pi: ExtensionAPI) {
 	let lastWorkedLine = "";
 	// Live spinner state for the cc-status left side (running vs completion).
 	let running = false;
+	// Compaction in flight (session_before_compact → session_compact/_failed):
+	// the cc-status spinner line mirrors it while pi's own indicator row runs.
+	let compacting = false;
 	let spinnerIdx = 0;
 	let spinnerPaint: (s: string) => string = (s) => s;
 
@@ -472,11 +475,13 @@ export default function (pi: ExtensionAPI) {
 				// token stats (published via __pmWorkingStats when that extension
 				// sees this card is active). Idle: last turn's completion line.
 				const pmStats = readPmStatus().workingStats;
-				const left = running
-					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
-					: lastWorkedLine
-						? theme.fg("dim", lastWorkedLine)
-						: "";
+				const left = compacting
+					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
+					: running
+						? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
+						: lastWorkedLine
+							? theme.fg("dim", lastWorkedLine)
+							: "";
 				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
 				// on the script row + right-aligned badge instead — the right
 				// group collapses so the same info never shows twice.
@@ -743,6 +748,32 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// Compaction spinner tick: same 200ms cadence as run ticks, but only the
+	// frame advances (no verb rotation). Runs alongside pi's native
+	// "Compacting context..." indicator; cleared on compact/failed when idle.
+	const startCompactionTick = () => {
+		if (tickTimer) return;
+		tickTimer = setInterval(() => {
+			try {
+				spinnerIdx++;
+				dockTui?.requestRender();
+			} catch {
+				if (tickTimer) {
+					clearInterval(tickTimer);
+					tickTimer = null;
+				}
+			}
+		}, 200);
+	};
+	const stopCompactionState = () => {
+		compacting = false;
+		if (!running && tickTimer) {
+			clearInterval(tickTimer);
+			tickTimer = null;
+		}
+		dockTui?.requestRender();
+	};
+
 	const startRun = (ctx: ExtensionContext) => {
 		if (!enabled) return;
 		lastWorkedLine = "";
@@ -908,6 +939,20 @@ export default function (pi: ExtensionAPI) {
 
 	// (The Plan-Mode system-prompt injection was removed together with the
 	// Plan/Auto toggle — pi-permission-modes owns plan-mode gating.)
+
+	// Mirror compaction progress on the cc-status spinner line.
+	pi.on("session_before_compact", async (_event, ctx) => {
+		if (!enabled) return;
+		compacting = true;
+		spinnerPaint = accentFg(ctx);
+		startCompactionTick();
+	});
+	pi.on("session_compact", async () => {
+		stopCompactionState();
+	});
+	pi.on("session_compact_failed", async () => {
+		stopCompactionState();
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		observeUsage(ctx);
