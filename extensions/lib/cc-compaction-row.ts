@@ -16,6 +16,9 @@ export type ThemeFg = (color: string, text: string) => string;
 interface CompactionProto {
 	message: { summary: string; tokensBefore: number };
 	expanded: boolean;
+	paddingX: number;
+	paddingY: number;
+	setBgFn(bgFn: ((text: string) => string) | undefined): void;
 	clear(): void;
 	addChild(component: unknown): void;
 	updateDisplay(): void;
@@ -32,6 +35,11 @@ export function patchCompactionRow(getFg: () => ThemeFg | null): void {
 	const BOLD = "\x1b[1m";
 	const RESET = "\x1b[22m\x1b[39m";
 	proto.updateDisplay = function (this: CompactionProto) {
+		// Strip the Box chrome: no customMessageBg, no 1x1 padding — the row
+		// must sit flush in the transcript like the CC tool rows.
+		this.setBgFn(undefined);
+		this.paddingX = 0;
+		this.paddingY = 0;
 		this.clear();
 		const fg = (color: string, text: string) => getFg()?.(color, text) ?? text;
 		const tokens = this.message.tokensBefore.toLocaleString("en-US");

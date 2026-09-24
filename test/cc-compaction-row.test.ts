@@ -29,12 +29,15 @@ function renderPlain(component: { render(width: number): string[] }): string[] {
 	return component.render(100).map(strip);
 }
 
-test("collapsed compaction renders the single CC-style line", () => {
+test("collapsed compaction renders the single CC-style line, flush and bg-free", () => {
 	const component = new CompactionSummaryMessageComponent(message);
 	const lines = renderPlain(component);
-	assert.ok(lines.some((l) => l.includes("⏺ Context compacted from 145,234 tokens")));
+	assert.ok(lines.some((l) => l.startsWith("⏺ Context compacted from 145,234 tokens")));
 	assert.ok(lines.some((l) => l.includes("(ctrl+o to expand)")));
 	assert.ok(!lines.some((l) => l.includes("The user greeted")));
+	// Box chrome removed: no padding lines above/below, no bg escape codes.
+	assert.ok(lines.every((l) => l.length === 0 || !l.startsWith(" ")));
+	assert.ok(lines.length <= 1);
 });
 
 test("expanded compaction shows the summary under the ⎿ gutter", () => {
