@@ -67,37 +67,80 @@ export const callArgsFor = (name: string, args: unknown): string => {
 
 // CC-style summary for pi-subagents' `subagent` tool (the JSON.stringify
 // fallback put the whole workflowScript on the call row, escapes and all).
-// Mirrors CC's Agent tool: the count/type up front, agent names short —
-// `call 5 agents: k1, k2, +3` / `call agent(name)` / `<action> <target>`.
-const laneKeysOfWorkflow = (script: string): string[] => {
-	const keys: string[] = [];
-	for (const m of script.matchAll(/\bkey\s*:\s*(["'`])([^"'`\n]+)\1/g)) {
-		const key = m[2]!;
-		if (!keys.includes(key)) keys.push(key);
-	}
-	return keys;
-};
+// Mirrors CC's Agent tool call row = agent type + human description
+// (AgentTool/UI.tsx:411): `delegate · <task>` / `2×scout · <t1> · <t2> · +1`
+// / `workflow <file>` / `<action> <target>`. Mode words ("call", raw lane
+// keys) stay out of the headline.
 const shortLane = (key: string): string => key.split(".").pop() || key;
+
+const excerptLine = (text: string, max: number): string => {
+	let clean = text.replace(/\s+/g, " ").trim();
+	// Long absolute paths eat the headline budget with machine-specific
+	// noise (/Users/x/y/proj → …/proj). Three+ segments only, so dates
+	// like 2026/09/27 survive.
+	clean = clean.replace(/(?:\/[\w@.-]+){3,}/g, (m) => `…/${m.split("/").filter(Boolean).pop()}`);
+	clean = clean.replace(/~\/[\w@.-]+/g, (m) => `…/${m.slice(2)}`);
+	// Leading directive labels ("READ-ONLY:", "只读：") carry no identifying info.
+	clean = clean.replace(/^(READ[- ]?ONLY|只读)\s*[:：]?\s*/i, "");
+	if (!clean) return "";
+	return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+};
+
+// Display-only lane extraction (key/agent/task string fields) from
+// runs.all([...]) / runs.run("k", {...}) object literals. Dynamic ${...}
+// templates are stripped first; backtick tasks match nothing and fall back
+// to the lane key. Exact parity with pi-subagents' parser is not required —
+// this is a headline summary, not execution metadata.
+const lanesOfWorkflow = (script: string): Array<{ key: string; agent: string; task: string }> => {
+	const lanes: Array<{ key: string; agent: string; task: string }> = [];
+	const flat = script.replace(/\$\{[^{}]*\}/g, " ");
+	for (const m of flat.matchAll(/\{([^{}]*)\}/g)) {
+		const body = m[1]!;
+		const field = (name: string): string =>
+			body.match(new RegExp(`\\b${name}\\s*:\\s*(["'])([^"\\n]+?)\\1`))?.[2] ?? "";
+		const key = field("key");
+		const agent = field("agent");
+		const task = field("task");
+		if (key || agent || task) lanes.push({ key, agent, task });
+	}
+	return lanes;
+};
 
 export const subagentCallSummary = (args: Record<string, unknown>): string => {
 	const str = (v: unknown): string => (typeof v === "string" ? v : "");
+	const headline = (agent: string, task: string, fallback: string): string => {
+		const who = agent ? shortLane(agent) : shortLane(fallback);
+		const what = excerptLine(task, 20);
+		return !what || what === who ? who : `${who} · ${what}`;
+	};
 	if (str(args.action)) {
 		const target = str(args.agent) || str(args.id) || str(args.runId);
-		return target ? `${str(args.action)} ${target}` : str(args.action);
+		return target ? `${str(args.action)} ${shortLane(target)}` : str(args.action);
 	}
+	// CC parity (AgentTool.tsx:83 + UI.tsx:411): the model-written short
+	// label IS the headline — no agent name, no task excerpt.
+	const description = str(args.label);
+	if (description) return excerptLine(description, 20);
 	const agent = str(args.agent);
-	if (agent) return `call agent(${shortLane(agent)})`;
+	if (agent) return headline(agent, str(args.task), agent);
 	const inlineScript = str(args.workflowScript);
 	if (inlineScript) {
-		const keys = laneKeysOfWorkflow(inlineScript).map(shortLane);
-		if (keys.length === 0) return "call workflow";
-		if (keys.length === 1) return `call agent(${keys[0]})`;
-		const shown = keys.slice(0, 2).join(", ");
-		const rest = keys.length > 2 ? `, +${keys.length - 2}` : "";
-		return `call ${keys.length} agents: ${shown}${rest}`;
+		const lanes = lanesOfWorkflow(inlineScript);
+		if (lanes.length === 0) return "workflow";
+		if (lanes.length === 1) return headline(lanes[0]!.agent, lanes[0]!.task, lanes[0]!.key);
+		const agents = [...new Set(lanes.map((lane) => lane.agent).filter(Boolean))];
+		const head = agents.length === 1
+			? `${lanes.length}×${shortLane(agents[0]!)}`
+			: agents.length > 1 ? agents.map((a) => shortLane(a)).join("+") : `${lanes.length} agents`;
+		const body = lanes
+			.slice(0, 2)
+			.map((lane) => excerptLine(lane.task, 20) || shortLane(lane.key))
+			.join(" · ");
+		const rest = lanes.length > 2 ? ` · +${lanes.length - 2}` : "";
+		return `${head} · ${body}${rest}`;
 	}
 	const scriptPath = str(args.workflowScriptPath);
-	if (scriptPath) return `call workflow ${scriptPath.split("/").pop() || scriptPath}`;
+	if (scriptPath) return `workflow ${scriptPath.split("/").pop() || scriptPath}`;
 	return JSON.stringify(args);
 };
 
@@ -105,10 +148,12 @@ export const subagentCallSummary = (args: Record<string, unknown>): string => {
 // keyText yields "" outside a host session, hence the fallback.
 export const thinkingToggleHint = (): string => keyText("app.thinking.toggle") || "ctrl+t";
 
-// ⏺ dot state (CC): orange while running, green on success, red on error.
+// ⏺ dot state (CC ToolUseLoader.tsx): while running the dot is DIM (no
+// color + dimColor) and blinks; resolved = success token (blue in the user's
+// theme); error = red.
 export type CCDotStatus = "running" | "success" | "error";
 const DOT_COLOR: Record<CCDotStatus, string> = {
-	running: "accent",
+	running: "dim",
 	success: "success",
 	error: "error",
 };
@@ -119,12 +164,20 @@ export const dotStatus = (rctx?: { isError?: boolean; isPartial?: boolean }): CC
 };
 
 // `⏺ Tool(args)` call row: single line with args ellipsized to fit (CC
-// style), so long commands can never wrap or misalign the dot.
-export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDotStatus) => ({
+// style), so long commands can never wrap or misalign the dot. While the
+// tool is running the dot is dim and blinks (⏺ ↔ space, same column
+// width); terminal states keep a solid dot. Matches CC's ToolUseLoader +
+// useBlink (BLINK_INTERVAL_MS = 600, phase = floor(time/600) % 2, one
+// shared clock so rows blink in sync). The clock is read inside render()
+// so the blink rides the existing per-frame re-render ticks (no timer).
+export const blinkGlyph = (status: CCDotStatus, now: number): string =>
+	status === "running" && Math.floor(now / 600) % 2 === 1 ? " " : "⏺";
+
+export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDotStatus, now?: number) => ({
 	invalidate() {},
 	render(width: number): string[] {
 		const white = "\x1b[38;2;255;255;255m";
-		const head = `${theme.fg(DOT_COLOR[status], "⏺")} ${white}${theme.bold(name)}(`;
+		const head = `${theme.fg(DOT_COLOR[status], blinkGlyph(status, now ?? Date.now()))} ${white}${theme.bold(name)}(`;
 		const avail = Math.max(1, width - visibleWidth(head) - 1);
 		const shown = truncateToWidth(args, avail, "…");
 		return [`${head}${shown})${RESET}`];

@@ -673,11 +673,16 @@ export default function (pi: ExtensionAPI) {
 	// layout reserves minSize:1 for the footer container, so the slot must
 	// render exactly one line — an empty footer would leave a blank row and
 	// push the editor up instead of docking it at the bottom.
-	const setFooterModeLine = (ctx: ExtensionContext) => {
-		ctx.ui.setFooter((_tui, theme) => ({
+	const setFooterBlankLine = (ctx: ExtensionContext) => {
+		// Blank filler for the footer slot. pi ≥0.87 gives the footer row
+		// minSize:0 (chat-viewport.js), so rendering zero lines collapses the
+		// row entirely — extension widgets (fleet roster) become the bottom
+		// row. On pi 0.85.1 the row was minSize:1 and would stay as one blank
+		// line; this filler keeps both versions well-formed.
+		ctx.ui.setFooter((_tui, _theme) => ({
 			invalidate() {},
-			render(width: number): string[] {
-				return [footerLineText((s) => theme.fg("dim", s), width)];
+			render(_width: number): string[] {
+				return [];
 			},
 		}));
 	};
@@ -686,11 +691,12 @@ export default function (pi: ExtensionAPI) {
 	// showNativeFooter = true  → pi's built-in footer (keeps other
 	//   extensions' footers / setStatus texts); mode/hints live as the
 	//   cc-footer widget, cc-status hides to avoid duplicating info.
-	// showNativeFooter = false → footer slot renders mode/hints (fills its
-	//   minSize:1, editor stays docked); cc-status widget shows above input.
+	// showNativeFooter = false → mode/hints join the cc-footer widget
+	//   (statusline rows + hints line); the footer slot renders blank to
+	//   satisfy the dock's minSize:1. Extension widgets registering later
+	//   (pi-subagents' fleet roster) land below the hints, at the bottom.
 	// The footer slot is single-occupancy: occupying it is an explicit user
 	// choice here, flippable at any time with /claude-footer.
-	// Default off = v1.2.0 look, zero visual regression for existing users.
 	let showNativeFooter = false;
 	const applyFooterMode = (ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui") return;
@@ -700,12 +706,12 @@ export default function (pi: ExtensionAPI) {
 			// Plan SL4/D2: script rows first, mode/hints below them.
 			setFooterLine(ctx, true);
 		} else {
-			setFooterModeLine(ctx); // fills footer's minSize:1, no gap
-			if (statusLinePrefs.enabled) {
-				setFooterLine(ctx, false); // statusline-only belowEditor widget
-			} else {
-				ctx.ui.setWidget("cc-footer", undefined);
-			}
+			setFooterBlankLine(ctx); // dock's minSize:1 row stays reserved, now invisible
+			// Mode/hints join the cc-footer widget so they render ABOVE the
+			// fleet roster (registered lazily by pi-subagents at first active
+			// run → map tail). With the statusline off, composeFooterLines
+			// degrades to a hints-only line; refreshStatusline no-ops.
+			setFooterLine(ctx, true);
 			setStatusWidget(ctx);
 			// aboveEditor widgets render in registration order, and this
 			// enable() runs in cctui's session_start — before later-loaded

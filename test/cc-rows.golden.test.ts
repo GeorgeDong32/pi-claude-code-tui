@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import {
 	ccCall,
+	blinkGlyph,
 	ccResult,
 	builtinCallArgs,
 	callArgsFor,
@@ -46,20 +47,32 @@ const result = (text: string): unknown => ({
 });
 
 test("ccCall renders the CC call row with white tool name", () => {
-	assert.deepEqual(ccCall(identity, "bash", '{"command":"ls"}', "running").render(80), [
+	assert.deepEqual(ccCall(identity, "bash", '{"command":"ls"}', "running", 0).render(80), [
 		"⏺ \u001b[38;2;255;255;255mbash({\"command\":\"ls\"})\u001b[39m",
 	]);
 });
 
 test("ccCall ellipsizes args to the terminal width", () => {
-	const rows = ccCall(identity, "bash", '{"command":"ls -la /very/long/path"}', "running").render(18);
+	const rows = ccCall(identity, "bash", '{"command":"ls -la /very/long/path"}', "running", 0).render(18);
 	assert.equal(rows.length, 1);
 	assert.ok(rows[0]!.includes("\u001b[0m…\u001b[0m)"), rows[0]);
 });
 
+test("ccCall blinks the dot while running and keeps ⏺ on terminal states", () => {
+	assert.equal(blinkGlyph("running", 0), "⏺");
+	assert.equal(blinkGlyph("running", 600), " "); // blink-off half-cycle keeps the column
+	assert.equal(blinkGlyph("running", 1200), "⏺");
+	assert.equal(blinkGlyph("success", 500), "⏺");
+	assert.equal(blinkGlyph("error", 500), "⏺");
+	// Live rows read the clock inside render(): two renders 600ms apart differ.
+	const c = ccCall(identity, "bash", "{}", "running", undefined as unknown as number);
+	const a = c.render(80)[0]!.slice(0, 1);
+	assert.ok(["⏺", " "].includes(a));
+});
+
 test("ccCall routes dot colors by status", () => {
 	for (const [status, color] of [
-		["running", "accent"],
+		["running", "dim"],
 		["success", "success"],
 		["error", "error"],
 	] as const) {
@@ -67,6 +80,11 @@ test("ccCall routes dot colors by status", () => {
 		ccCall(theme, "bash", "{}", status).render(80);
 		assert.equal(calls[0]![0], color);
 	}
+});
+
+test("ccCall keeps ⏺ on terminal states", () => {
+	assert.ok(ccCall(identity, "bash", "{}", "success").render(80)[0]!.startsWith("⏺ "));
+	assert.ok(ccCall(identity, "bash", "{}", "error").render(80)[0]!.startsWith("⏺ "));
 });
 
 test("ccResult short output passes through unwrapped", () => {
@@ -156,41 +174,59 @@ test("callArgsFor matches the built-in summaries and falls back to JSON", () => 
 test("callArgsFor routes subagent through the summary, unknown tools stay JSON", () => {
 	assert.equal(
 		callArgsFor("subagent", { agent: "pi-review.reviewer", task: "check" }),
-		"call agent(reviewer)",
+		"reviewer · check",
 	);
 	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), '{"id":"obs_1"}');
 });
 
-test("subagentCallSummary summarizes workflows by lane keys (real-shape script)", () => {
-	// Shape taken from a real pi-subagents fan-out (five reviewer lanes).
+test("subagentCallSummary summarizes workflows by lanes (real-shape script)", () => {
+	// Shape taken from a real pi-review fan-out (five reviewer lanes).
 	const script = `
 const reviewers = await runs.all([
-  { key: "pi-review.claude-md-compliance", agent: "pi-review", task: "..." },
-  { key: "pi-review.pr-guardrails", agent: "pi-review", task: "..." },
-  { key: "pi-review.test-plan-honesty", agent: "pi-review", task: "..." },
-  { key: "pi-review.arch-drift", agent: "pi-review", task: "..." },
-  { key: "pi-review.license-hygiene", agent: "pi-review", task: "..." },
+  { key: "pi-review.claude-md-compliance", agent: "pi-review", task: "check CLAUDE.md rules" },
+  { key: "pi-review.pr-guardrails", agent: "pi-review", task: "check PR guardrails" },
+  { key: "pi-review.test-plan-honesty", agent: "pi-review", task: "check test plan honesty" },
+  { key: "pi-review.arch-drift", agent: "pi-review", task: "check arch drift" },
+  { key: "pi-review.license-hygiene", agent: "pi-review", task: "check license hygiene" },
 ]);
 return reviewers;`;
 	assert.equal(
 		subagentCallSummary({ workflowScript: script }),
-		"call 5 agents: claude-md-compliance, pr-guardrails, +3",
+		"5×pi-review · check CLAUDE.md rul… · check PR guardrails · +3",
+	);
+	// Mixed agents aggregate with "+"; missing tasks fall back to the lane key.
+	assert.equal(
+		subagentCallSummary({
+			workflowScript: 'const a = await runs.all([{ key: "a", agent: "worker", task: "修复登录页" }, { key: "r", agent: "reviewer" }]);',
+		}),
+		"worker+reviewer · 修复登录页 · r",
 	);
 	// Duplicate keys count once; single-lane scripts read as one agent.
 	assert.equal(
 		subagentCallSummary({ workflowScript: 'const a = await runs.one({ key: "solo.lane" });' }),
-		"call agent(lane)",
+		"lane",
 	);
-	assert.equal(subagentCallSummary({ workflowScript: "const x = 1;" }), "call workflow");
+	assert.equal(subagentCallSummary({ workflowScript: "const x = 1;" }), "workflow");
 });
 
 test("subagentCallSummary covers single agent, actions, paths, and fallback", () => {
-	assert.equal(subagentCallSummary({ agent: "explorer" }), "call agent(explorer)");
+	// CC parity: the model-written label IS the headline.
+	assert.equal(subagentCallSummary({ agent: "delegate", label: "统计 proj 条目数" }), "统计 proj 条目数");
+	assert.equal(subagentCallSummary({ agent: "explorer" }), "explorer");
+	assert.equal(subagentCallSummary({ agent: "scout", task: "  概览  目录 结构 " }), "scout · 概览 目录 结构");
+	// Paths collapse to the last segment; dates survive; labels strip.
+	assert.equal(
+		subagentCallSummary({ agent: "delegate", task: "READ-ONLY 演示：在 /Users/gd32/x/proj 下统计条目" }),
+		"delegate · 演示：在 …/proj 下统计条目",
+	);
+	assert.equal(subagentCallSummary({ agent: "s", task: "核对 2026/09/27 的日志" }), "s · 核对 2026/09/27 的日志");
+	// A task equal to the agent name would read as a stutter — show one word.
+	assert.equal(subagentCallSummary({ agent: "go", task: "go" }), "go");
 	assert.equal(subagentCallSummary({ action: "stop", id: "abc123" }), "stop abc123");
 	assert.equal(subagentCallSummary({ action: "list" }), "list");
 	assert.equal(
 		subagentCallSummary({ workflowScriptPath: "/tmp/wf/review.mjs" }),
-		"call workflow review.mjs",
+		"workflow review.mjs",
 	);
 	assert.equal(subagentCallSummary({ async: true }), '{"async":true}');
 });

@@ -71,7 +71,8 @@ SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后�
 
 `on` 模式对 pi-subagents 做了专门适配（1.4.5+）：
 
-- **call 行摘要**：`subagent` 调用不再显示全量 JSON。workflow 按 lane 摘要 → `⏺ subagent(call 5 agents: claude-md-compliance, pr-guardrails, +3)`；单 agent → `⏺ subagent(call agent(scout))`；管理动作 → `⏺ subagent(stop abc123)`。
+- **call 行摘要**：`subagent` 调用不再显示全量 JSON。对齐 CC「调用行 = agent 类型 + 任务描述」（AgentTool/UI.tsx:411）：单 agent → `⏺ subagent(scout · 概览目录结构)`；workflow 聚合 → `⏺ subagent(2×scout · 任务一 · 任务二 · +1)`（混合 agent 显示 `worker+reviewer`）；管理动作 → `⏺ subagent(stop abc123)`。
+- **运行态不渲染冗余行**：配合 pi-subagents surface-tuning patch v3，`single · running` 这类「模式词·状态」行在运行中渲染为零行——状态由 call 行圆点颜色（accent=进行中）与 fleet roster 承载，完成行 `✓ <agent> · completed` 在结束时出现（CC 的 `Done (…)` 等价物）。
 - **live 结果不被折叠**：subagent 自带的工作流 live 卡（每个 agent 的进度 / token / checklist，`ctrl+o` 看全文）**豁免**接管，进度内联在工具块内——对齐 CC「Task 进度在调用行下方」的设计。下方面板（Async agents）只保留真正的后台任务；前台调用的进度不会再掉到下面去。
 
 ## Statusline（CC 兼容可配置状态行）
