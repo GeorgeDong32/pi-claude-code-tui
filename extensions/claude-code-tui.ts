@@ -323,13 +323,14 @@ export default function (pi: ExtensionAPI) {
 		// inside render() throws where pi can't catch it (kills pi).
 		proto.getCallRenderer = function () {
 			const orig = origCall.call(this);
-			// SPEC 0.99-adapt DEC-03/MCP-02: official MCP tools carry their own
-			// renderer AND pi 0.99 marks them builtin — both guards would yield.
-			// The MCP shape is checked first: we take them over on purpose; the
-			// user-asked shape is the CC row, not pi's official one.
+			// SPEC 0.99-adapt DEC-03/MCP-02: official MCP tools ship their own
+			// renderer; we take them over on purpose (the user-asked shape is the
+			// CC row). The MCP exception exempts ONLY the builtin check and the
+			// auto-yield — the user's enabled/toolRowsEnabled switches stay in charge.
+			if (!enabled || !toolRowsEnabled) return orig;
 			const mcpName = mcpDisplayName(this.toolName);
-			if (!mcpName && (!enabled || !toolRowsEnabled || isBuiltin(this))) return orig;
-			if (enabled && toolRowsEnabled && !mcpName && orig && !forceRows()) return orig;
+			if (!mcpName && isBuiltin(this)) return orig;
+			if (!mcpName && orig && !forceRows()) return orig;
 			// renderCall is a factory: (args, theme, ctx) => component
 			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) =>
 				ccCall(
@@ -341,10 +342,11 @@ export default function (pi: ExtensionAPI) {
 		};
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);
-			// MCP takeover (DEC-03): same first-check as the call renderer.
+			// MCP takeover (DEC-03): same switch discipline as the call renderer.
+			if (!enabled || !toolRowsEnabled) return orig;
 			const mcpName = mcpDisplayName(this.toolName);
-			if (!mcpName && (!enabled || !toolRowsEnabled || isBuiltin(this))) return orig;
-			if (enabled && toolRowsEnabled && !mcpName && orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
+			if (!mcpName && isBuiltin(this)) return orig;
+			if (!mcpName && orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
 			// Component memo (plan A6, same as the registered-override path):
 			// pi re-invokes getResultRenderer() every frame, so a closure here
 			// would be rebuilt per frame — the cache rides on the component
