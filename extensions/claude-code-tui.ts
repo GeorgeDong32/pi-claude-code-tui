@@ -35,6 +35,8 @@ import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil
 import {
 	ccCall,
 	ccResult,
+	mcpArgsSummary,
+	mcpDisplayName,
 	callArgsFor,
 	dotStatus,
 	thinkingToggleHint,
@@ -321,16 +323,28 @@ export default function (pi: ExtensionAPI) {
 		// inside render() throws where pi can't catch it (kills pi).
 		proto.getCallRenderer = function () {
 			const orig = origCall.call(this);
-			if (!enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
-			if (orig && !forceRows()) return orig;
+			// SPEC 0.99-adapt DEC-03/MCP-02: official MCP tools carry their own
+			// renderer AND pi 0.99 marks them builtin — both guards would yield.
+			// The MCP shape is checked first: we take them over on purpose; the
+			// user-asked shape is the CC row, not pi's official one.
+			const mcpName = mcpDisplayName(this.toolName);
+			if (!mcpName && (!enabled || !toolRowsEnabled || isBuiltin(this))) return orig;
+			if (enabled && toolRowsEnabled && !mcpName && orig && !forceRows()) return orig;
 			// renderCall is a factory: (args, theme, ctx) => component
 			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) =>
-				ccCall(theme as CCTheme, this.toolName, callArgsFor(this.toolName, args), dotStatus(rctx));
+				ccCall(
+					theme as CCTheme,
+					mcpName ?? this.toolName,
+					mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
+					dotStatus(rctx),
+				);
 		};
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);
-			if (!enabled || !toolRowsEnabled || isBuiltin(this)) return orig;
-			if (orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
+			// MCP takeover (DEC-03): same first-check as the call renderer.
+			const mcpName = mcpDisplayName(this.toolName);
+			if (!mcpName && (!enabled || !toolRowsEnabled || isBuiltin(this))) return orig;
+			if (enabled && toolRowsEnabled && !mcpName && orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
 			// Component memo (plan A6, same as the registered-override path):
 			// pi re-invokes getResultRenderer() every frame, so a closure here
 			// would be rebuilt per frame — the cache rides on the component
@@ -357,7 +371,7 @@ export default function (pi: ExtensionAPI) {
 						return memo.component;
 					}
 				}
-				const component = ccResult(theme as CCTheme, self.toolName, result, options, isError);
+				const component = ccResult(theme as CCTheme, mcpName ?? self.toolName, result, options, isError);
 				self.__ccResultMemo = {
 					factory: orig,
 					key: { result, expanded, isError, theme },
@@ -369,7 +383,13 @@ export default function (pi: ExtensionAPI) {
 		// Drop the pending/success background box for third-party tools so they
 		// match the flat CC look of the overridden built-ins.
 		proto.getRenderShell = function () {
-			if (enabled && toolRowsEnabled && !isBuiltin(this) && this.toolDefinition !== undefined) return "self";
+			if (
+				enabled &&
+				toolRowsEnabled &&
+				(mcpDisplayName(this.toolName) || !isBuiltin(this)) &&
+				this.toolDefinition !== undefined
+			)
+				return "self";
 			return origShell.call(this);
 		};
 		proto.__ccRowsPatched = true;

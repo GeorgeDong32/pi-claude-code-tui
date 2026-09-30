@@ -190,6 +190,28 @@ export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDot
 // wrap into dozens of terminal rows, so counting logical lines is not enough.
 export const MAX_RESULT_ROWS = 3;
 
+/**
+ * MCP tool display name (SPEC 0.99-adapt MCP-01): `mcp__server__tool` (and
+ * the single-underscore variant) renders as `server/tool` — the CC shape.
+ * Same canonicalization shape as core mcp-gov's family.ts.
+ */
+const MCP_NAME = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)__(.+)$/;
+const MCP_NAME_FALLBACK = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)_(.+)$/;
+
+export const mcpDisplayName = (name: string): string | null => {
+	const m = MCP_NAME.exec(name) ?? MCP_NAME_FALLBACK.exec(name);
+	return m ? `${m[1]}/${m[2]}` : null;
+};
+
+/** Generic `key=value` argument summary for MCP tools (values JSON-shortened). */
+export const mcpArgsSummary = (args: unknown): string => {
+	if (args == null || typeof args !== "object" || Array.isArray(args)) return "";
+	const pairs = Object.entries(args as Record<string, unknown>)
+		.map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+		.join(" ");
+	return pairs.length > 80 ? `${pairs.slice(0, 77)}…` : pairs;
+};
+
 export const ccResult = (
 	theme: CCTheme,
 	name: string,
