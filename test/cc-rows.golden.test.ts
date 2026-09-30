@@ -168,9 +168,14 @@ test("callArgsFor matches the built-in summaries and falls back to JSON", () => 
 	assert.equal(callArgsFor("grep", { pattern: "foo", path: "src" }), "foo in src");
 	assert.equal(callArgsFor("grep", { pattern: "foo" }), "foo");
 	assert.equal(callArgsFor("ls", {}), ".");
-	// Unknown (third-party) tool names serialize the whole args object.
-	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), '{"id":"obs_1","offset":0}');
-	assert.equal(callArgsFor("obs_recall", undefined), "{}");
+	// core's obs_recall now has a dedicated CC-style summary (id [+ offset]).
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), "obs_1");
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 512 }), "obs_1 @512");
+	assert.equal(callArgsFor("obs_recall", undefined), "");
+	// Truly unknown (third-party) tools serialize — clamped to one line (CC rule).
+	// clamp = 160 chars total: prefix {"a":" is 6 chars, so 159-6=153 xs + ellipsis.
+	assert.equal(callArgsFor("zz_third", { a: "x".repeat(300) }), `{"a":"${"x".repeat(153)}…`);
+	assert.equal(callArgsFor("zz_third", undefined), "{}");
 });
 
 test("callArgsFor routes subagent through the summary, unknown tools stay JSON", () => {
@@ -178,7 +183,7 @@ test("callArgsFor routes subagent through the summary, unknown tools stay JSON",
 		callArgsFor("subagent", { agent: "pi-review.reviewer", task: "check" }),
 		"reviewer · check",
 	);
-	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), '{"id":"obs_1"}');
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), "obs_1");
 });
 
 test("subagentCallSummary summarizes workflows by lanes (real-shape script)", () => {
@@ -233,8 +238,15 @@ test("subagentCallSummary covers single agent, actions, paths, and fallback", ()
 	assert.equal(subagentCallSummary({ async: true }), '{"async":true}');
 });
 
-test("builtinCallArgs covers exactly the seven built-in tool names", () => {
-	assert.deepEqual(Object.keys(builtinCallArgs).sort(), ["bash", "edit", "find", "grep", "ls", "read", "write"]);
+test("builtinCallArgs covers the built-ins plus the core tool family", () => {
+	const keys = Object.keys(builtinCallArgs).sort();
+	for (const must of ["bash", "edit", "find", "grep", "ls", "read", "write"]) assert.ok(keys.includes(must), must);
+	for (const core of ["create_goal", "propose_goal_draft", "session_recall", "memory_consolidate", "obs_recall", "pi_review_report"]) {
+		assert.ok(keys.includes(core), core);
+	}
+	// Core family summaries stay one-line headlines, never raw JSON.
+	assert.ok(!callArgsFor("create_goal", { objective: "ship it" }).startsWith("{"));
+	assert.ok(!callArgsFor("session_recall", { query: "goal state" }).startsWith("{"));
 });
 
 test("thinkingToggleHint falls back to ctrl+t outside a host session", () => {

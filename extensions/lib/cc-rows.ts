@@ -42,9 +42,22 @@ export interface CCTheme {
 // registerTool override path and the force-mode prototype patch so a
 // third-party override of a built-in name (e.g. SoL-Pi's fused edit/write)
 // gets the same `⏺ Tool(arg)` call row as the fork-owned built-ins.
-export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => string> = {
+/** CC call-row clamp (BashTool/UI.tsx:26-27 semantics): never let a call
+ * argument line exceed one visual line — 160 chars, ellipsis, whole tail cut. */
+export const CLAMP_CALL_ARGS_CHARS = 160;
+export const clampCallSummary = (text: string): string =>
+	text.length > CLAMP_CALL_ARGS_CHARS ? `${text.slice(0, CLAMP_CALL_ARGS_CHARS - 1)}…` : text;
+
+export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => string> = (() => {
+	// ── pi-claude-code-core tools: CC-style one-line summaries instead of the
+	// JSON fallback (which put whole goal drafts / recall queries on the row).
+	const shortText = (v: unknown, max = 60): string => {
+		const t = strArg(v).replace(/\s+/g, " ").trim();
+		return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+	};
+	const builtins: Record<string, (a: Record<string, unknown>) => string> = {
 	read: (a) => strArg(a.path),
-	bash: (a) => collapseCommand(strArg(a.command)),
+	bash: (a) => clampCallSummary(collapseCommand(strArg(a.command))),
 	grep: (a) => {
 		const p = strArg(a.pattern);
 		const path = strArg(a.path);
@@ -58,11 +71,33 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 	ls: (a) => strArg(a.path) || ".",
 	write: (a) => strArg(a.path),
 	edit: (a) => strArg(a.path),
-};
+	// ── core: goal family — objective/summary headline, never the draft body.
+	create_goal: (a) => shortText(a.objective ?? a.goal ?? a.title),
+	propose_goal_draft: (a) => shortText(a.objective ?? a.goal ?? a.title),
+	update_goal: (a) => shortText(a.objective ?? a.note ?? a.status),
+	get_goal: () => "",
+	pause_goal: (a) => shortText(a.reason, 40),
+	goal_questionnaire: (a) => shortText(a.topic ?? a.question),
+	// ── core: memory / recall — query headline, ids only.
+	session_recall: (a) => [shortText(a.query, 40), a.since ? `since ${strArg(a.since)}` : ""].filter(Boolean).join(" · "),
+	memory_consolidate: (a) => {
+		const ops = a.operations as unknown[] | undefined;
+		return ops?.length ? `${ops.length} ops` : shortText(a.reason, 40);
+	},
+	obs_recall: (a) => [strArg(a.id), a.offset ? `@${Number(a.offset)}` : ""].filter(Boolean).join(" "),
+	// ── core: review / plan — short nouns.
+	pi_review_report: (a) => shortText(a.mode ?? a.scope ?? a.base, 40),
+	plan_ready: (a) => shortText(a.plan ?? a.summary, 40),
+	step_complete: (a) => shortText(a.step ?? a.result, 40),
+	};
+	return builtins;
+})();
 
 export const callArgsFor = (name: string, args: unknown): string => {
 	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
-	return (builtinCallArgs[name] ?? ((a) => JSON.stringify(a ?? {})))((args ?? {}) as Record<string, unknown>);
+	const table = builtinCallArgs;
+	const summarize = table[name] ?? ((a) => clampCallSummary(JSON.stringify(a ?? {})));
+	return summarize((args ?? {}) as Record<string, unknown>);
 };
 
 // CC-style summary for pi-subagents' `subagent` tool (the JSON.stringify
