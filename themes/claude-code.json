@@ -73,7 +73,7 @@
 		"thinkingMedium": "promptBorder",
 		"thinkingHigh": "promptBorder",
 		"thinkingXhigh": "promptBorder",
-		"thinkingMax": "#FF5FFF",
+		"thinkingMax": "promptBorder",
 		"bashMode": "bashBorder",
 		"diffAdded": "#0077B3",
 		"diffRemoved": "#B30000"
