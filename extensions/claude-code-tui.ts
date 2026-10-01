@@ -51,7 +51,7 @@ import {
 	StatuslineRunner,
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
-import { buildCompletionLine, formatCost, formatDuration, formatTokens } from "./lib/render-utils.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatCost, formatDuration, formatTokens } from "./lib/render-utils.ts";
 import {
 	defaultPrefsPath,
 	loadPrefs,
@@ -678,10 +678,11 @@ export default function (pi: ExtensionAPI) {
 						} catch {
 							effort = undefined;
 						}
-						// CC-style effort chip (`⊙ xhigh · /effort`): effort only —
-						// the script row already names the model. /effort is real
+						// CC-style effort chip (`● high · /effort`): effort only —
+						// the script row already names the model. Symbols are CC's
+						// ○◐●◉ fill ladder (effortBadgeSymbol); /effort is real
 						// (registered by pi-claude-code-core's effort extension).
-						return effort && effort !== "off" ? `⊙ ${effort} · /effort` : "";
+						return effort && effort !== "off" ? `${effortBadgeSymbol(effort)} ${effort} · /effort` : "";
 					})(),
 					badgePaint: (s) => theme.fg("muted", s),
 					hints: includeHints ? footerLineText((s) => theme.fg("dim", s), width) : "",

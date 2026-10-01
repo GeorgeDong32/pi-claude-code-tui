@@ -58,6 +58,27 @@ export function formatThinkingLabel(level: string): string {
 	return level === "off" ? "off" : level;
 }
 
+/**
+ * CC effort symbols (Claude Code EffortIndicator): ○ low → ◐ medium → ● high
+ * → ◉ max — visual weight from glyph fill, not color. pi has seven thinking
+ * levels to CC's four, so they collapse onto the nearest CC rung:
+ * minimal/low → ○, medium → ◐, high/xhigh → ●, max → ◉. Unknown levels fall
+ * back to ● (same defensive default as CC's effortLevelToSymbol).
+ */
+export function effortBadgeSymbol(level: string): string {
+	switch (level) {
+		case "minimal":
+		case "low":
+			return "\u25cb"; // ○
+		case "medium":
+			return "\u25d0"; // ◐
+		case "max":
+			return "\u25c9"; // ◉
+		default:
+			return "\u25cf"; // ● (high, xhigh, unknown)
+	}
+}
+
 /** Claude-style gerunds used while Pi is generating a response. */
 export const PI_WORKING_VERBS = [
 	"Accomplishing",

@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCompletionLine, formatCost, formatDuration, formatTokens } from "../extensions/lib/render-utils.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatCost, formatDuration, formatTokens } from "../extensions/lib/render-utils.ts";
 
 test("formatDuration table", () => {
 	assert.equal(formatDuration(0), "0s");
@@ -25,6 +25,16 @@ test("formatCost keeps cent precision under $0.01", () => {
 	assert.equal(formatCost(0.0072), "$0.0072");
 	assert.equal(formatCost(0.04), "$0.04");
 	assert.equal(formatCost(1.5), "$1.50");
+});
+
+test("effortBadgeSymbol: CC ○◐●◉ fill ladder over pi's seven levels", () => {
+	assert.equal(effortBadgeSymbol("minimal"), "\u25cb"); // ○
+	assert.equal(effortBadgeSymbol("low"), "\u25cb"); // ○
+	assert.equal(effortBadgeSymbol("medium"), "\u25d0"); // ◐
+	assert.equal(effortBadgeSymbol("high"), "\u25cf"); // ●
+	assert.equal(effortBadgeSymbol("xhigh"), "\u25cf"); // ● (nearest CC rung)
+	assert.equal(effortBadgeSymbol("max"), "\u25c9"); // ◉
+	assert.equal(effortBadgeSymbol("whatever"), "\u25cf"); // unknown → ● (CC's defensive default)
 });
 
 test("buildCompletionLine: verb + duration + local HH:MM end time", () => {
