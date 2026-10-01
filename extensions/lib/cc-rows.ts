@@ -208,11 +208,14 @@ export const dotStatus = (rctx?: { isError?: boolean; isPartial?: boolean }): CC
 export const blinkGlyph = (status: CCDotStatus, now: number): string =>
 	status === "running" && Math.floor(now / 600) % 2 === 1 ? " " : "⏺";
 
-export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDotStatus, now?: number) => ({
+// `badge` (e.g. "(MCP)") renders dim between the name and the args paren,
+// reproducing CC's MCP userFacingName suffix (`server - tool (MCP)`).
+export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDotStatus, now?: number, badge?: string) => ({
 	invalidate() {},
 	render(width: number): string[] {
 		const white = "\x1b[38;2;255;255;255m";
-		const head = `${theme.fg(DOT_COLOR[status], blinkGlyph(status, now ?? Date.now()))} ${white}${theme.bold(name)}(`;
+		const badgeText = badge ? ` ${theme.fg("dim", badge)}` : "";
+		const head = `${theme.fg(DOT_COLOR[status], blinkGlyph(status, now ?? Date.now()))} ${white}${theme.bold(name)}${badgeText}(`;
 		const avail = Math.max(1, width - visibleWidth(head) - 1);
 		const shown = truncateToWidth(args, avail, "…");
 		return [`${head}${shown})${RESET}`];
@@ -227,7 +230,11 @@ export const MAX_RESULT_ROWS = 3;
 
 /**
  * MCP tool display name (SPEC 0.99-adapt MCP-01): `mcp__server__tool` (and
- * the single-underscore variant) renders as `server/tool` — the CC shape.
+ * the single-underscore variant) renders as `server - tool` — the core of
+ * CC's MCP userFacingName (`services/mcp/client.ts`:
+ * `${serverName} - ${displayName} (MCP)`); the dim `(MCP)` badge is added
+ * by the call row (ccCall badge), mirroring CC's AssistantToolUseMessage
+ * which renders the userFacingName verbatim. Non-MCP names → null.
  * Same canonicalization shape as core mcp-gov's family.ts.
  */
 const MCP_NAME = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)__(.+)$/;
@@ -235,7 +242,7 @@ const MCP_NAME_FALLBACK = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)_(.+)$/;
 
 export const mcpDisplayName = (name: string): string | null => {
 	const m = MCP_NAME.exec(name) ?? MCP_NAME_FALLBACK.exec(name);
-	return m ? `${m[1]}/${m[2]}` : null;
+	return m ? `${m[1]} - ${m[2]}` : null;
 };
 
 /** Generic `key=value` argument summary for MCP tools (values JSON-shortened). */

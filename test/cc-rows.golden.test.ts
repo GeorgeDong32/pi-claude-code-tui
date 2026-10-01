@@ -270,14 +270,14 @@ test("ccResult wrap cache: repeat renders identical, width change recomputes, in
 
 // SPEC 0.99-adapt MCP-01/02: official MCP tools (which carry their own
 // renderers since pi 0.99) must render as CC rows.
-test("mcpDisplayName converts official shapes to server/tool (MCP-01)", () => {
-	assert.equal(mcpDisplayName("mcp__exa__search"), "exa/search");
-	assert.equal(mcpDisplayName("mcp__github-ci__delete_branch"), "github-ci/delete_branch");
-	assert.equal(mcpDisplayName("mcp_exa_search"), "exa/search");
+test("mcpDisplayName converts official shapes to the CC userFacingName core (MCP-01)", () => {
+	assert.equal(mcpDisplayName("mcp__exa__search"), "exa - search");
+	assert.equal(mcpDisplayName("mcp__github-ci__delete_branch"), "github-ci - delete_branch");
+	assert.equal(mcpDisplayName("mcp_exa_search"), "exa - search");
 	assert.equal(mcpDisplayName("read"), null);
 	assert.equal(mcpDisplayName("subagent"), null);
 	// Greedy server group matches core mcp-gov's canonicalization (known).
-	assert.equal(mcpDisplayName("mcp__s__a__b"), "s__a/b");
+	assert.equal(mcpDisplayName("mcp__s__a__b"), "s__a - b");
 });
 
 test("mcpArgsSummary renders key=value pairs with a cap (MCP-01)", () => {
@@ -289,10 +289,17 @@ test("mcpArgsSummary renders key=value pairs with a cap (MCP-01)", () => {
 	assert.equal(mcpArgsSummary(undefined), "");
 });
 
-test("CC call row for an MCP tool keeps the dot/bold shape (MCP-04)", () => {
-	const row = ccCall(identity, mcpDisplayName("mcp__exa__search")!, mcpArgsSummary({ query: "hi" }), "success");
+test("CC call row for an MCP tool keeps the dot/bold shape and carries the dim (MCP) badge (MCP-04)", () => {
+	const name = mcpDisplayName("mcp__exa__search")!;
+	const row = ccCall(identity, name, mcpArgsSummary({ query: "hi" }), "success", undefined, "(MCP)");
 	const lines = row.render(90).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
 	const text = lines.join("\n");
-	assert.ok(text.includes("exa/search"));
+	assert.ok(text.includes("exa - search"));
+	assert.ok(text.includes("(MCP)"));
 	assert.ok(text.includes("query=hi"));
+	// The badge renders dim between the name and the args paren — CC dims
+	// the same userFacingName suffix (FallbackPermissionRequest.tsx).
+	const rec = recordingTheme();
+	ccCall(rec.theme, name, "query=hi", "success", undefined, "(MCP)").render(90);
+	assert.ok(rec.calls.some(([color, s]) => color === "dim" && s === "(MCP)"));
 });

@@ -28,6 +28,7 @@ extensions/
   lib/                      # 纯模块（无 pi 运行时依赖，可单测）
     cc-rows.ts              #   CC 工具行渲染器（call/result 行、diff、折叠）
     cc-compaction-row.ts    #   压缩行 prototype patch + 原生压缩指示器静音
+    cc-skill-row.ts         #   skill 调用行 prototype patch（CC 式 ⏺ Skill(name)，保留点击展开）
     claude-tui-editor.ts    #   CC 式编辑器（半开圆角边框、❯ 提示符、块状光标）
     pi-startup-header.ts    #   Pi-look 启动头（动画 logo + tips 侧栏）
     statusline.ts           #   statusline JSON 合成、badge、子进程 runner、footer 组合

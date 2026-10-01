@@ -44,6 +44,7 @@ import {
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
+import { patchSkillRow } from "./lib/cc-skill-row.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
 	buildStatuslineJson,
@@ -338,6 +339,10 @@ export default function (pi: ExtensionAPI) {
 					mcpName ?? this.toolName,
 					mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
 					dotStatus(rctx),
+					undefined,
+					// CC's userFacingName suffix (`server - tool (MCP)`) — the dim
+					// badge is what makes an MCP call recognizable at a glance.
+					mcpName ? "(MCP)" : undefined,
 				);
 		};
 		proto.getResultRenderer = function () {
@@ -920,6 +925,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		patchThirdPartyToolRows();
 		patchCompactionRow(() => themeFg);
+		patchSkillRow(() => themeFg);
 		applyPiHeaderLook(pi, ctx);
 		setEditor(ctx);
 		applyFooterMode(ctx);
