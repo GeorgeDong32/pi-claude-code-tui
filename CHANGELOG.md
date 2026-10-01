@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 (2026-10-02)
+
+### Added
+- **CC-style skill invocation row**: pi's native `[skill]` box (customMessageBg, name-only, zero info collapsed) is prototype-patched into the CC tool-row family (`lib/cc-skill-row.ts`, the compaction-row recipe): collapsed `⏺ Skill(name) (ctrl+o to expand)`, body expands under the `⎿` gutter with ANSI-aware wrapping. Box chrome stripped so the row sits flush with the tool rows; expansion state stays native so the global ctrl+o walk keeps working; the MouseRegion is re-armed so click-to-expand survives (which the compaction patch drops).
+- **`(MCP)` badge on MCP call rows**: MCP rows read `⏺ exa - web_search (MCP)(query)` now — `mcpDisplayName` yields the CC userFacingName core `server - tool` (was the self-invented `server/tool`; CC's `services/mcp/client.ts` builds `server - tool (MCP)`), and `ccCall` grows an optional badge rendered dim between name and args paren (CC dims the same suffix in `FallbackPermissionRequest`). Detector call sites (auto-yield, force gates) only read null/non-null and are unaffected.
+
+### Changed
+- **Golden visual delta**: MCP rows `exa/search(query)` → `exa - search (MCP)(query)`, badge routed through theme `dim`; `mcpDisplayName` tests updated accordingly.
+
 ## 1.5.0 (2026-09-30)
 
 ### Added
