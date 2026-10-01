@@ -11,7 +11,7 @@
 - **精简提示栏** — 平面分隔线、金色 `❯` 提示符、金色条状光标；编辑器为空时显示暗色旋转的 `Try "..."` 建议
 - **CC 风格工具行** — `⏺ Tool(args)` 格式 + 暗色 `⎿` 输出槽、彩色 diff、红色错误提示（内置工具的执行逻辑完全不动，仅渲染层改造）。折叠输出上限为 **3 个物理行**（单行压缩 JSON 可能换行成几十个终端行，所以折叠按换行后的行数计算，而非逻辑行数），并带展开提示。
 - **第三方 / MCP 工具回退** — 其他扩展注册的工具（MCP 适配器、`task` 等）没有自带渲染器，会用 pi 默认的 10 行 fallback 淹没对话记录；本扩展通过 prototype-patch `ToolExecutionComponent`，让任何没有 `renderCall`/`renderResult` 的工具都能获得同样的 CC 风格折叠行。
-- **旋转状态动词** — 全套 190 个 Claude Code 俏皮动词（`Pondering…`、`Vibing…`、`Flibbertigibbeting…`），配花瓣旋转动画，完成时显示 `✻ Worked for 12s` 收尾行
+- **旋转状态动词** — 全套 187 个 Claude Code 俏皮动词（`Pondering…`、`Vibing…`、`Flibbertigibbeting…`），配花瓣旋转动画，完成时显示 `✻ Worked for 12s` 收尾行
 - **状态行** — 提示栏上方显示 `model │ Context 23% (50k/200k) │ $0.042`。运行 `/claude-footer on` 可换回 pi 原生 footer（保留其他扩展的 footer，如 MCP 适配器——CC 状态组件会自动隐藏，避免重复）
 - **底部提示行** — `⏵⏵ auto mode on …` 按键提示；输入框有内容时自动压缩为仅模式标签
 - **历史消息** — 已发送的消息渲染为细长全宽条，带暗色 `❯` 前缀
@@ -138,6 +138,16 @@ Claude Code 默认折叠思考内容；pi 原生同样支持（`settings.json` �
 - **`/claude-tools off` 在 `/reload` 后失效** — 你用的是 ≤ 1.2.2 版本。重新运行 `pi install git:github.com/Shiorangerin/pi-claude-code-tui` 升级到 ≥ 1.3.1，该版本会持久化选择。
 
 如果以上都没用，请开一个 issue，附上你的 pi 版本（`pi --version`）、包版本和 `packages` 列表顺序。
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [AGENTS.md](AGENTS.md)（[英文](AGENTS.en.md)） | 面向 AI 助手/贡献者的仓库指南：结构、命令、约定、常见坑 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（[英文](docs/ARCHITECTURE.en.md)） | 架构文档：模块地图、数据流、渲染接管机制、statusline 协议 |
+| [docs/manual-verification.md](docs/manual-verification.md) | 视觉效果人工验证清单（自动化测试测不到的渲染行为） |
+| [docs/STATUSLINE-PLAN.md](docs/STATUSLINE-PLAN.md) | statusline 设计过程存档（SL1–SL5 已全部落地） |
+| [CHANGELOG.md](CHANGELOG.md) | 版本历史 |
 
 ## 许可证
 

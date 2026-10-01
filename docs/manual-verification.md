@@ -1,5 +1,8 @@
 # A8 Manual Verification Checklist (1.4.2)
 
+> Context for what each item is testing lives in [ARCHITECTURE.md](ARCHITECTURE.md)
+> (§4 rendering takeover, §5 statusline protocol).
+
 Automated tests pin the data layer (cc-rows golden, status-snapshot, pm-capability)
 but rendering is inherently visual — `node --test` cannot see a frame advance or a
 resize artifact. Run this in a real terminal after installing 1.4.2. Each item notes

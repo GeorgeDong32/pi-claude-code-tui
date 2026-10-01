@@ -1,0 +1,156 @@
+# ARCHITECTURE — pi-claude-code-tui
+
+This document describes the internal architecture of `@georgedong32/pi-claude-code-tui`: module breakdown, data flow, rendering takeover mechanisms, the statusline child-process protocol, preference persistence, and the integration points with the pi host. It is aimed at contributors changing the code; the user manual lives in [README](../README.md).
+
+> 中文版本：[ARCHITECTURE.md](ARCHITECTURE.md)。Repository conventions and pitfalls: [../AGENTS.en.md](../AGENTS.en.md).
+
+## 1. Overview
+
+This package is a pi extension + theme that runs entirely inside pi's TUI process and **touches only the display layer**: rendering takeover happens through pi's public extension API (re-registering tools via `pi.registerTool` with render overrides, `ctx.ui.setHeader/setEditorComponent/setWidget`, `registerMarkdownTransformer`) plus a small number of prototype patches. Tool `execute` and everything sent to the model are never modified.
+
+```
+package.json ("pi": { extensions, themes })
+        │ loaded by jiti (data: URLs, moduleCache: false)
+        ▼
+extensions/claude-code-tui.ts   ← entry factory: event wiring / commands / mode switches
+        │ calls
+        ▼
+extensions/lib/*                ← pure modules: renderers, protocol, IO, utilities
+themes/claude-code.json         ← theme (pi theme system)
+```
+
+## 2. Module map
+
+| Module | Responsibility | Key exports | Tests |
+| --- | --- | --- | --- |
+| `extensions/claude-code-tui.ts` | Entry. `export default function (pi)`; registers commands, subscribes to session events, mounts/unmounts every rendering slot | extension factory | (wiring layer; covered by lib unit tests + manual verification) |
+| `lib/cc-rows.ts` | CC tool rows: `⏺ Tool(args)` call row + `⎿` output gutter, colored diffs, collapse (3 physical-line cap, counted after wrapping) | `ccCall` and friends | `cc-rows.golden.test.ts` (byte-exact golden) |
+| `lib/cc-compaction-row.ts` | Patches the native `[compaction]` box into a CC-style row; silences the native "Compacting…" indicator inside the component tree | `patchCompactionRow`, `silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
+| `lib/claude-tui-editor.ts` | CC-style editor: flat rules, gold `❯`, themed bar cursor (530 ms blink, focused only), autocomplete lifted above the box | `CodexStyleEditor`, `stripAnsi`, … | (visual behavior via manual verification) |
+| `lib/pi-startup-header.ts` | Pi-look startup header: 13-frame animated logo, "Let's build something great", model/effort/cwd, tips sidebar | `applyPiHeaderLook` | `render-utils.test.ts` (layout pure functions) |
+| `lib/statusline.ts` | CC-compatible statusline: JSON synthesis, badge math, one-shot child-process runner, footer composition | `buildStatuslineJson`, `composeFooterLines`, `StatuslineRunner` | `statusline.test.ts` |
+| `lib/statusline-default-script.ts` | TS inline copy of the bundled default script (no filesystem anchor at runtime, see §8) | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts` (byte-sync with scripts/) |
+| `lib/status-snapshot.ts` | `UsageTracker`: scans the branch once per `message_end`, caches used/cost/last/total usage | `UsageTracker` | `status-snapshot.test.ts` |
+| `lib/pm-capability.ts` | permission-modes status consumer (versioned capability channel → bus snapshot → legacy-key fallback chain); core notification-queue consumer; publishes this package's presence | `readPmStatus`, `publishCcTuiCapability` | `pm-capability.test.ts` |
+| `lib/prefs.ts` | `~/.pi/agent/claude-tui.json` read-modify-write: merge + tmp/rename atomic swap; corrupt files fall back to `{}` | `loadPrefs`, `savePrefs` | `prefs.test.ts` |
+| `lib/render-utils.ts` | Formatting (durations/tokens/cost), header layout widths, spinner verb table, tips selection | `formatDuration`, `headerColumnWidths`, `pickWorkingVerb`, … | `render-utils.test.ts` |
+| `themes/claude-code.json` | claude-code theme: `vars` (palette variables) + `colors` (pi semantic-color mapping) + `export` | — | — |
+| `scripts/statusline-default.sh` | Default statusline script (source of truth) | — | byte-sync pinned by `statusline.test.ts` |
+| `scripts/bench-statusline.mjs` | Default-script performance benchmark (p50 ≈ 30 ms; bash fork floor ~25 ms) | — | — |
+
+Dependency direction: entry → lib, one-way; libs rarely depend on each other (`pi-startup-header` → `render-utils` is the main exception). Libs never import pi runtime state — only pure functions (`visibleWidth` etc. from `pi-tui`) and a few pi-coding-agent exports (`keyText`, `renderDiff`, and the component classes being patched).
+
+## 3. Lifecycle & event flow
+
+The entry factory runs once at extension load, but **tool registration and slot takeover happen at `session_start`** (`enable(ctx)`) — ownership probing needs every extension registered, and non-TUI modes keep stock rendering.
+
+```
+load (jiti)
+  ├─ register commands: claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline
+  ├─ UserMessageComponent.prototype.rebuild patch (strip bar padding, idempotent __ccCompact marker)
+  └─ registerMarkdownTransformer (assistant plain lines forced white; user messages as CC full-width bars)
+
+session_start → enable(ctx)
+  ├─ tool-row mode decision (see §4)
+  ├─ ctx.ui.setHeader(...)            ← startup header (tui mode)
+  ├─ ctx.ui.setEditorComponent(...)   ← CC editor
+  ├─ ctx.ui.setWidget("cc-status")    ← spinner / completion-line status widget
+  ├─ ctx.ui.setWidget("cc-footer")    ← statusline + mode/hints rows
+  ├─ patchCompactionRow(getFg)        ← CC-style compaction row
+  ├─ publishCcTuiCapability()         ← tell pm this package exists (mutual suppression)
+  └─ startCoreNotificationConsumer()  ← consume the core notification tail queue (auto-retry)
+
+Runtime events
+  ├─ message_end / agent_start / agent_settled → UsageTracker.observe() → statusline refresh, cc-status update
+  ├─ model_select → statusline refresh
+  ├─ session_before_compact → silence native indicator, cc-status mirrors compaction progress
+  ├─ session_compact(_failed) → restore
+  └─ session_shutdown / disable → setHeader/setEditorComponent/setWidget(undefined), withdraw capability
+```
+
+`/claude-tui` is the master switch (header/editor/animation/status widget; tool rows are independent), while `/claude-tools`, `/claude-footer`, and `/claude-statusline` control the three subsystems and persist their choices to prefs.
+
+## 4. Rendering takeover (the core)
+
+### 4.1 Built-in tool rows (7 tools)
+
+`read` / `bash` / `grep` / `find` / `ls` / `write` / `edit` are taken over by **re-registering them via `pi.registerTool`** (pi has no separate renderer-registration API): the 7 built-in tool definitions are rebuilt with pi's exported `create*ToolDefinition(cwd)`, overlaid with the `renderCall` / `renderResult` overrides from `lib/cc-rows.ts` and `renderShell: "self"` (drops the background box so rows sit flush in the transcript); `execute` stays pi's native implementation, so tool semantics are unchanged. `/claude-tools off` re-registers the pristine definitions via the same mechanism (`registerNativeTools`). Renderers are pure functions: the theme is injected duck-typed and output is pinned by golden tests; `renderResult` is called every frame, kept cheap by the A6 component memo (reuses the component and its wrap cache while inputs are identical). The collapse cap is **3 physical lines** (counted after terminal wrapping) because a single-line minified JSON can wrap into dozens of terminal rows.
+
+### 4.2 Third-party / MCP tool fallback (prototype patch)
+
+pi's tool rendering is single-occupancy: one component class (`ToolExecutionComponent`) owns a single `getCallRenderer` / `getResultRenderer` pair. Third-party/MCP tools without their own renderers fall into pi's default 10-line fallback. This package patches both prototype methods:
+
+```
+getCallRenderer():
+  orig = original method
+  if !enabled || !toolRowsEnabled           → orig (fully yield)
+  if official MCP tool (mcpDisplayName hit) → take over as a CC row (the user-asked shape)
+  if built-in tool                           → orig (already handled by §4.1)
+  if it ships a renderer and not force mode  → orig (the auto-yield contract)
+  otherwise                                  → CC call row (args summary)
+getResultRenderer():
+  same, but FORCE_RESULT_EXEMPT (= {"subagent"}) is exempt:
+  pi-subagents' live workflow card is information-dense UI and must not be
+  collapsed even in force mode
+```
+
+Three modes: `auto` (default; takes over when no other renderer owner exists), `on` (full takeover, including third-party tools that ship renderers — only the renderer is swapped, `execute` remains the other extension's implementation), `off` (yield). Tool ownership is probed at `session_start` via `pi.getAllTools()` source metadata; extensions that register tools in a later `session_start` (e.g. SoL-Pi) are invisible to the probe, so the README recommends `/claude-tools on` when co-running them.
+
+### 4.3 Other rendering patches
+
+- **Compaction row**: `CompactionSummaryMessageComponent.prototype.updateDisplay` becomes one `⏺ Context compacted from N tokens` line with the summary expanding under the `⎿` gutter; Box background/padding are stripped so the row sits flush in the transcript.
+- **Native compaction indicator silencing**: the class is not exported, so the TUI component tree is searched for a `CompactionStatusIndicator` instance whose `render` is overridden to zero rows (instance-level override; pi clears the indicator itself when compaction ends).
+- **User message bars**: a `UserMessageComponent.prototype.rebuild` patch zeroes child `paddingY` (compact bar); a markdown transformer renders user messages as a `❯ `-prefixed, rgb(55,55,55) full-width bar (padded with NBSPs) and forces assistant plain lines white while markdown-structured lines keep their theme colors.
+
+## 5. Statusline child-process protocol
+
+Modeled on Claude Code's statusline contract: the extension synthesizes **CC-shaped JSON** (`model` / `workspace` / `context_window`, plus this package's extension fields `pi.cost_usd` and `pi.effort`) and feeds it to the user command's stdin; stdout (ANSI included) renders line-by-line below the editor — script rows on top, the mode/hints row below (one `cc-footer` widget, so ordering is free). A user's `~/.claude/statusline-command.sh` is reused without modification.
+
+`StatuslineRunner` scheduling discipline (the render path never spawns):
+
+- **Event-driven**: refreshes only on `message_end` / model switch / compaction / terminal width change / config change;
+- **250 ms debounce** for bursts; **in-flight coalescing** (an identical mid-flight request is dropped; a changed one sets `pendingAfterInFlight` and re-runs after landing);
+- **2 s timeout**; output capped at **4 lines / 64 KB**;
+- **3 consecutive failures** degrade to one grey hint line, self-healing on the next success;
+- the child env gets `OVERRIDE_TERM_WIDTH`; the script drops segments right-to-left when narrow.
+
+`composeFooterLines` assembles statusline rows (optional) + the effort badge (`appendBadge`, right-aligned chip) + the untouched cc-footer mode/hints rows; `/claude-footer on` hides the whole CC status widget and restores pi's native footer (keeping other extensions' footers such as MCP adapters).
+
+## 6. Preference persistence
+
+All switches live in `~/.pi/agent/claude-tui.json` (path respects `PI_CODING_AGENT_DIR`):
+
+```json
+{ "toolRows": true, "statusLine": { "enabled": true, "command": "", "badge": true } }
+```
+
+Writes go through `savePrefs`: read disk → spread → merge → write tmp → rename. An `undefined` value deletes its key (`/claude-tools auto` returns to auto-detect). `toolRows` and `statusLine` historically clobbered each other — that is the direct motivation for the pure-module + atomic-write refactor (SL2). `CC_TUI_TOOL_ROWS=0` is an environment-level force-off (overriding prefs).
+
+## 7. Integration with other extensions
+
+- **permission-modes (pm)**: `Shift+Tab` is intercepted in the editor's `handleInput` (ahead of pi's built-in thinking cycle) to toggle Plan/Auto. pm status is read through `readPmStatus`'s three-level fallback chain: core bus snapshot `__piClaudeCodeCore.modes` (primary) → versioned `__piPermissionModes` capability object → legacy `__pmWorkingStats` string + the `PERMISSION_MODES_INHERITED_MODE` env var. Mode icons/labels come from pm's published `meta` (single-sourced from core's MODE_META).
+- **Notification display**: this package declares `notificationsConsumer: true` and consumes the core notification tail queue via the snapshot's `onChange` (diffing by `lastSeenId`); core then stops its own direct forward — version negotiation, no double display; older cores keep the forward.
+- **pi-subagents**: force mode has dedicated adaptations (call row = agent type + task summary, zero redundant running rows, live cards exempt from collapse), see §4.2 and the README.
+- **Slot coexistence**: header/editor slots are last-writer-wins; when co-running other TUI suites, put this package later in the packages list.
+
+## 8. Runtime constraints (why the code looks like this)
+
+- **jiti `moduleCache: false` + data: URLs**: `import.meta.url` never points at the installed package → anything needing packaged files must be inlined (the default statusline script therefore exists as a TS string, byte-synced with `scripts/statusline-default.sh` and enforced by `statusline.test.ts`); the same component class can appear as multiple module instances → deep-path import patches are unreliable; prefer pi-exported classes + idempotent markers.
+- **Render callbacks must not throw**: `render()` runs on stacks pi cannot catch. Every failure path (missing jq, failing script, corrupt prefs, missing theme) degrades silently.
+- **Per-frame cost**: render only reads caches (UsageTracker snapshot, runner's completed rows); width change is the only per-frame check. The blink timer toggles only while focused; all timers are `unref()`ed; `requestRender` calls are non-forced to preserve pi's line-diff cache.
+- **Context staleness**: a `session_start` ctx goes stale after session replacement → the theme is read lazily/per frame; the accent ANSI sequence is cached once as a string at enable time (`setEditorAccentOpen`).
+
+## 9. Theme
+
+`themes/claude-code.json` follows the pi theme schema: `vars` defines the Claude dark palette (accent = sage `#8ABEB7`, userMsgBg, diff color pairs, …), and `colors` maps pi's semantic colors (accent/border/toolOutput/mdHeading/…) onto the vars. The editor cursor and autocomplete derive their ANSI sequences from the theme accent (fg→bg conversion), so the cursor follows the accent if the theme changes.
+
+## 10. Testing architecture
+
+- **Pure-module unit tests** (`node --test`, TS via type stripping): prefs atomicity, UsageTracker semantics (used = last assistant message's cumulative usage; cost = the sum), statusline JSON shape and badge math, the pm fallback chain, render-utils formatting and layout.
+- **Golden render tests**: `cc-rows.golden.test.ts` pins rendered bytes and color routing with identity/recording themes — the equivalence net for the A6 wrap-cache and future render changes. `keyText()` returns `""` without a host, so tests assert literal fallbacks.
+- **Byte-sync test**: `DEFAULT_STATUSLINE_SCRIPT` ↔ `scripts/statusline-default.sh`.
+- **Manual verification**: `docs/manual-verification.md` covers the visual behavior automated tests cannot see (spinner frame advance, cursor blink, resize artifacts, statusline debounce regressions, …).
+
+## 11. Historical design docs
+
+`docs/STATUSLINE-PLAN.md` records the full design process of the statusline subsystem (SL1–SL5: rev1→rev3, user decisions D0–D5, performance gate). Everything in it has shipped; it is kept for decision history only — current behavior is defined by this document and the code.

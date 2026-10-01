@@ -1,5 +1,8 @@
 # STATUSLINE-PLAN — cctui CC 兼容 statusline（v1.5.0 提案 · rev3）
 
+> **存档说明**：SL1–SL5 已全部落地（v1.5.0，测试绿）。本文档仅为设计决策存档；
+> statusline 的当前行为以 [ARCHITECTURE.md](ARCHITECTURE.md) §5 与代码为准。
+
 日期：2026-09-22 ｜ 状态：**已实现（SL1–SL5 落地，测试绿；性能门实测见 §7 addendum）**
 基底：当前 main（v1.4.5, a008e17）。**不恢复** 09-16 被烧线（`a6fa343^` = 3087002，
 rev2 内置段方案）；其 diff 仅作参考——rev2 的 GitStatusCache 整块不再需要（脚本自己跑 git）。

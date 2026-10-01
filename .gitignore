@@ -1,4 +1,3 @@
 node_modules/
 *.log
-AGENTS.md
 package-lock.json
