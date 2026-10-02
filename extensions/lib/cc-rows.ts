@@ -222,6 +222,21 @@ export const ccCall = (theme: CCTheme, name: string, args: string, status: CCDot
 	},
 });
 
+/** Preserve the fused tool's then_run badge when its call renderer is replaced. */
+export const ccThenRunCall = (theme: CCTheme, call: ReturnType<typeof ccCall>, command: unknown): ReturnType<typeof ccCall> => {
+	if (typeof command !== "string" || command.trim() === "") return call;
+	return {
+		invalidate() {
+			call.invalidate();
+		},
+		render(width: number): string[] {
+			const badge = truncateToWidth(command, Math.max(1, width - 4), "…");
+			// Theme.fg reads instance state; keep its receiver attached.
+			return [...call.render(width), `  ${theme.fg("dim", `↳ then_run: ${badge}`)}`];
+		},
+	};
+};
+
 // `⎿  output` result rows: dim gutter, output wrapped and aligned under the
 // gutter, collapsed preview with expand hint, red on error. Collapse is
 // capped at MAX_RESULT_ROWS PHYSICAL rows: a single minified JSON line can

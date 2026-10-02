@@ -36,6 +36,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import {
 	ccCall,
+	ccThenRunCall,
 	ccResult,
 	mcpArgsSummary,
 	mcpDisplayName,
@@ -326,17 +327,7 @@ export default function (pi: ExtensionAPI) {
 				// core's own call badge is replaced by the CC row, so the badge is
 				// re-stated here as a dim second row (read-only; execute untouched).
 				const cmd = (args as { then_run?: { command?: string } } | null | undefined)?.then_run?.command;
-				if (typeof cmd !== "string" || cmd.trim() === "") return call;
-				const fg = (theme as CCTheme).fg;
-				return {
-					invalidate() {
-						call.invalidate();
-					},
-					render(width: number): string[] {
-						const badge = truncateToWidth(cmd, Math.max(1, width - 4), "…");
-						return [...call.render(width), `  ${fg("dim", `↳ then_run: ${badge}`)}`];
-					},
-				};
+				return ccThenRunCall(theme as CCTheme, call, cmd);
 			};
 		};
 		proto.getResultRenderer = function () {
