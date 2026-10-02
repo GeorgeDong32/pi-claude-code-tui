@@ -54,17 +54,25 @@ test("raw render carries no background escape even before stripping", () => {
 	assert.ok(!raw.includes("\x1b[41m"));
 });
 
-test("expanded skill shows the body under the ⎿ gutter, hint dropped", () => {
+test("expanded skill renders ONE gutter: first row carries ⎿, the rest align under it", () => {
 	const component = makeComponent();
 	(component as unknown as { setExpanded(e: boolean): void }).setExpanded(true);
-	const lines = renderPlain(component);
+	const lines = renderPlain(component).filter((l) => l.trim().length > 0 || l.startsWith(" "));
 	assert.ok(lines.some((l) => l.includes("⏺ Skill(improve-codebase-architecture)")));
 	assert.ok(!lines.some((l) => l.includes("(ctrl+o to expand)")));
-	assert.ok(lines.some((l) => l.includes("⎿") && l.includes("Audit the architecture.")));
-	assert.ok(lines.some((l) => l.includes("⎿") && l.includes("Propose deepening opportunities.")));
+	// First body row: gutter + first content line.
+	const firstBody = lines.find((l) => l.includes("Audit the architecture."));
+	assert.ok(firstBody?.startsWith("  ⎿  "), `first body row must carry the gutter: ${JSON.stringify(firstBody)}`);
+	// Later rows (new paragraph, blank-line separators) align with 5 spaces — no repeated ⎿.
+	const later = lines.find((l) => l.includes("Propose deepening opportunities."));
+	assert.ok(later?.startsWith("     ") && !later.includes("⎿"), `later rows must be indent-aligned: ${JSON.stringify(later)}`);
+	// Blank lines between paragraphs become indent-only rows, never bare ⎿.
+	const blanks = renderPlain(component).filter((l) => l.trim().length === 0);
+	assert.ok(blanks.every((l) => !l.includes("⎿")), "blank rows must not repeat the gutter glyph");
+	assert.equal(lines.filter((l) => l.includes("⎿")).length, 1, "exactly one gutter row in the block");
 });
 
-test("expanded long body lines wrap within the render width", () => {
+test("expanded long body wraps as indent-aligned continuations, width-capped", () => {
 	const longBlock = {
 		...baseBlock,
 		content:
@@ -77,6 +85,8 @@ test("expanded long body lines wrap within the render width", () => {
 	for (const line of lines) {
 		assert.ok(line.length <= 100, `line exceeds width: ${line.length}`);
 	}
+	// Wrapped continuation rows carry no second gutter glyph.
+	assert.equal(lines.filter((l) => l.includes("⎿")).length, 1);
 });
 
 test("collapsed skill name truncates to a single line on narrow widths", () => {

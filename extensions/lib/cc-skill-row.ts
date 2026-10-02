@@ -80,20 +80,27 @@ export function patchSkillRow(getFg: () => ThemeFg | null): void {
 		const content = new Container();
 		content.addChild(row);
 		if (expanded) {
-			// Skill body under the ⎿ gutter, wrapped like the CC result rows —
-			// markdown prose lines can be arbitrarily long.
-			for (const line of (this.skillBlock?.content ?? "").split("\n")) {
-				content.addChild({
-					invalidate() {},
-					render(width: number): string[] {
-						const inner = Math.max(1, width - visibleWidth(GUTTER));
-						const physical = wrapTextWithAnsi(line, inner);
-						const rows = physical.length > 0 ? physical : [""];
-						const pad = " ".repeat(visibleWidth(GUTTER));
-						return rows.map((text, i) => `${fg("dim", i === 0 ? GUTTER : pad)}${fg("toolOutput", text)}`);
-					},
-				});
-			}
+			// Skill body as ONE guttered block, byte-consistent with the
+		// ccResult family: only the first physical row carries the ⎿, every
+		// other row (wrapped continuations, blank lines) aligns under it
+		// with a 5-space indent. Wrap-once cache per width, same as ccResult.
+			const lines = (this.skillBlock?.content ?? "").replace(/\n+$/, "").split("\n");
+			let cache: { width: number; rows: string[] } | null = null;
+			content.addChild({
+				invalidate() {
+					cache = null;
+				},
+				render(width: number): string[] {
+					if (cache && cache.width === width) return cache.rows;
+					const cont = "     ";
+				const wrapW = Math.max(10, width - cont.length);
+					const physical: string[] = [];
+					for (const line of lines) physical.push(...wrapTextWithAnsi(line, wrapW));
+					const rows = physical.map((l, i) => `${i === 0 ? fg("dim", GUTTER) : cont}${fg("toolOutput", l)}`);
+					cache = { width, rows };
+					return rows;
+				},
+			});
 		}
 		// Re-arm the native click-to-expand (the compaction patch drops its
 		// MouseRegion; the skill row always had one, keep the behavior).
