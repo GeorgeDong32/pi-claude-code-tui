@@ -317,7 +317,12 @@ export default function (pi: ExtensionAPI) {
 		// blocks) stay taken over — they carry no live detail. The call row
 		// is still ours (CC ⏺ row + subagentCallSummary), inside the same
 		// flat "self" container.
-		const FORCE_RESULT_EXEMPT = new Set(["subagent"]);
+		// TR D1 (spec 2026-10-02-core-tool-renderers): obs_recall's own result
+		// renderer is a dense paged view (size/lines/range + content preview) —
+		// flattening it to a 3-row CC preview would throw away exactly the
+		// paging state that makes recall readable. Same exemption class as
+		// subagent: keep the tool's own renderer in force mode.
+		const FORCE_RESULT_EXEMPT = new Set(["subagent", "obs_recall"]);
 		// NOTE: theme must come from pi core's factory args (always live).
 		// Never capture ctx.ui.theme here: a session_start ctx goes stale
 		// after newSession/fork/switchSession/reload, and touching ctx.ui
@@ -333,17 +338,41 @@ export default function (pi: ExtensionAPI) {
 			if (!mcpName && isBuiltin(this)) return orig;
 			if (!mcpName && orig && !forceRows()) return orig;
 			// renderCall is a factory: (args, theme, ctx) => component
-			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) =>
-				ccCall(
+			// TR D2: obs_recall args collapse to `obs_4b1d7b39 · +15.5KB` (the raw
+			// JSON id/offset pair is unreadable in the CC row).
+			const obsRecallSummary = (args: unknown): string => {
+				const a = args as { id?: string; offset?: number };
+				const id = typeof a?.id === "string" && a.id ? (a.id.length <= 16 ? a.id : a.id.slice(0, 16)) : "obs_?";
+				const off = !a?.offset || a.offset <= 0 ? "start" : `+${(a.offset / 1024).toFixed(1)}KB`;
+				return `${id} · ${off}`;
+			};
+			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) => {
+				const call = ccCall(
 					theme as CCTheme,
 					mcpName ?? this.toolName,
-					mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
+					this.toolName === "obs_recall" ? obsRecallSummary(args) : mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
 					dotStatus(rctx),
 					undefined,
 					// CC's userFacingName suffix (`server - tool (MCP)`) — the dim
 					// badge is what makes an MCP call recognizable at a glance.
 					mcpName ? "(MCP)" : undefined,
 				);
+				// TR D3: fused write/edit calls carry then_run — in force mode the
+				// core's own call badge is replaced by the CC row, so the badge is
+				// re-stated here as a dim second row (read-only; execute untouched).
+				const cmd = (args as { then_run?: { command?: string } } | null | undefined)?.then_run?.command;
+				if (typeof cmd !== "string" || cmd.trim() === "") return call;
+				const fg = (theme as CCTheme).fg;
+				return {
+					invalidate() {
+						call.invalidate();
+					},
+					render(width: number): string[] {
+						const badge = truncateToWidth(cmd, Math.max(1, width - 4), "…");
+						return [...call.render(width), `  ${fg("dim", `↳ then_run: ${badge}`)}`];
+					},
+				};
+			};
 		};
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);

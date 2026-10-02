@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added (TR, spec 2026-10-02-core-tool-renderers)
+- Force mode exempts obs_recall dense paged result view (FORCE_RESULT_EXEMPT - same class as subagent); obs_recall args in CC call rows collapse to a short "obs_4b1d7b39 - +15.5KB" form; fused write/edit calls re-state the "then_run: command" badge as a dim second row under the CC row (core own call badge is replaced in force mode). Auto mode unchanged (core renderers flow through natively).
+
 ## 1.6.0 (2026-10-02)
 
 ### Added
