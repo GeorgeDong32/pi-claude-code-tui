@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import {
 	shimmerSegments,
 	glimmerIndexAt,
-	SHIMMER_BAND,
+	SPINNER_TICK_MS,
 	SHIMMER_LEAD_IN,
 	SHIMMER_TRAIL_OUT,
 } from "../extensions/lib/spinner-shimmer.ts";
@@ -25,10 +25,10 @@ test("segments reassemble to the original text at every index", () => {
 });
 
 test("band splits the word mid-sweep", () => {
-	// gi=5 → band covers columns 4..5 (start = gi-1, width SHIMMER_BAND+1)
+	// gi=5 → band covers columns 4..5 (start = gi-1, two columns wide)
 	const seg = shimmerSegments("Baking…", 5);
 	assert.equal(seg.before, "Baki");
-	assert.equal(seg.shimmer.length, SHIMMER_BAND + 1);
+	assert.equal(seg.shimmer.length, 3);
 	assert.equal(seg.before + seg.shimmer + seg.after, "Baking…");
 });
 
@@ -38,15 +38,15 @@ test("offscreen band renders no shimmer segment", () => {
 	assert.deepEqual(shimmerSegments(text, text.length + 10), { before: text, shimmer: "", after: "" });
 });
 
-test("glimmerIndexAt advances one column per 200ms and wraps", () => {
+test("glimmerIndexAt advances one column per SPINNER_TICK_MS and wraps", () => {
 	const width = 8;
 	const cycle = width + SHIMMER_LEAD_IN + SHIMMER_TRAIL_OUT;
 	// Lead-in: negative index before entering the word.
 	assert.equal(glimmerIndexAt(0, width), -SHIMMER_LEAD_IN);
-	assert.equal(glimmerIndexAt(200, width), -SHIMMER_LEAD_IN + 1);
+	assert.equal(glimmerIndexAt(SPINNER_TICK_MS, width), -SHIMMER_LEAD_IN + 1);
 	// Wraps after one full cycle.
-	assert.equal(glimmerIndexAt(cycle * 200, width), -SHIMMER_LEAD_IN);
-	assert.equal(glimmerIndexAt(cycle * 200 + 400, width), -SHIMMER_LEAD_IN + 2);
+	assert.equal(glimmerIndexAt(cycle * SPINNER_TICK_MS, width), -SHIMMER_LEAD_IN);
+	assert.equal(glimmerIndexAt(cycle * SPINNER_TICK_MS + 2 * SPINNER_TICK_MS, width), -SHIMMER_LEAD_IN + 2);
 	// Negative elapsed clamps to the cycle start.
 	assert.equal(glimmerIndexAt(-999, width), -SHIMMER_LEAD_IN);
 });

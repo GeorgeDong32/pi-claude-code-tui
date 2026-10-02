@@ -49,7 +49,7 @@ import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./l
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
 import { weightedVerbSample } from "./lib/spinner-verbs.ts";
-import { glimmerIndexAt, shimmerSegments } from "./lib/spinner-shimmer.ts";
+import { glimmerIndexAt, shimmerSegments, SPINNER_TICK_MS } from "./lib/spinner-shimmer.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
 	buildStatuslineJson,
@@ -809,11 +809,12 @@ export default function (pi: ExtensionAPI) {
 		verb = weightedVerbSample();
 		spinnerPaint = accentFg(ctx);
 		if (tickTimer) clearInterval(tickTimer);
-		// 200ms per spinner frame — calmer than the old 120ms. The verb is
-		// sampled ONCE per run (CC Spinner.tsx: useState(() => sample()) on
-		// mount) and never rotates; liveliness comes from the shimmer band
-		// sweeping the word (lib/spinner-shimmer.ts), which reads elapsed
-		// time at render so it rides this same tick. No new timer.
+		// 300ms per spinner frame (SPINNER_TICK_MS) — user-tuned calm; CC's
+		// native 120ms reads busy. The verb is sampled ONCE per run (CC
+		// Spinner.tsx: useState(() => sample()) on mount) and never rotates;
+		// liveliness comes from the shimmer band sweeping the word
+		// (lib/spinner-shimmer.ts), which reads elapsed time at render so it
+		// rides this same tick. No new timer.
 		tickTimer = setInterval(() => {
 			try {
 				spinnerIdx++;
@@ -827,7 +828,7 @@ export default function (pi: ExtensionAPI) {
 					tickTimer = null;
 				}
 			}
-		}, 200);
+		}, SPINNER_TICK_MS);
 	};
 
 	const endRun = (ctx: ExtensionContext) => {

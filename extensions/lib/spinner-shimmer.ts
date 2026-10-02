@@ -20,8 +20,11 @@ export const SHIMMER_BAND = 2;
 export const SHIMMER_LEAD_IN = 2;
 /** Trail columns after the last column (band fades out offscreen). */
 export const SHIMMER_TRAIL_OUT = 4;
-/** Column advance per tick — matches the 200ms spinner tick. */
-export const SHIMMER_STEP_MS = 200;
+/** Shared spinner tick (ms): drives BOTH the blossom frame advance and the
+ * shimmer band step. Single source so they can never drift apart.
+ * User-tuned: 300ms — CC runs 120ms but that reads as busy here; the
+ * slow sweep matches the repo's calm-motion taste. */
+export const SPINNER_TICK_MS = 300;
 
 export interface ShimmerSegments {
 	before: string;
@@ -44,9 +47,9 @@ export function shimmerSegments(text: string, glimmerIndex: number): ShimmerSegm
 }
 
 /** Band position for an elapsed run: advances one column per
- * SHIMMER_STEP_MS, wraps after width + lead-in + trail-out. */
+ * SPINNER_TICK_MS, wraps after width + lead-in + trail-out. */
 export function glimmerIndexAt(elapsedMs: number, width: number): number {
 	const cycle = width + SHIMMER_LEAD_IN + SHIMMER_TRAIL_OUT;
-	const step = Math.floor(Math.max(0, elapsedMs) / SHIMMER_STEP_MS) % cycle;
+	const step = Math.floor(Math.max(0, elapsedMs) / SPINNER_TICK_MS) % cycle;
 	return step - SHIMMER_LEAD_IN;
 }
