@@ -22,9 +22,9 @@ export const SHIMMER_LEAD_IN = 2;
 export const SHIMMER_TRAIL_OUT = 4;
 /** Shared spinner tick (ms): drives BOTH the blossom frame advance and the
  * shimmer band step. Single source so they can never drift apart.
- * User-tuned: 300ms — CC runs 120ms but that reads as busy here; the
- * slow sweep matches the repo's calm-motion taste. */
-export const SPINNER_TICK_MS = 300;
+ * 200ms is the settled cadence (CC native is 120ms — busier); a 300ms
+ * trial read as sluggish next to the shimmer sweep and was rolled back. */
+export const SPINNER_TICK_MS = 200;
 
 export interface ShimmerSegments {
 	before: string;

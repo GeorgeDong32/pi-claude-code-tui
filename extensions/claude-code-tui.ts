@@ -809,8 +809,9 @@ export default function (pi: ExtensionAPI) {
 		verb = weightedVerbSample();
 		spinnerPaint = accentFg(ctx);
 		if (tickTimer) clearInterval(tickTimer);
-		// 300ms per spinner frame (SPINNER_TICK_MS) — user-tuned calm; CC's
-		// native 120ms reads busy. The verb is sampled ONCE per run (CC
+		// 200ms per spinner frame (SPINNER_TICK_MS) — the settled cadence
+		// (CC's native 120ms reads busy; a 300ms trial read sluggish and
+		// was rolled back). The verb is sampled ONCE per run (CC
 		// Spinner.tsx: useState(() => sample()) on mount) and never rotates;
 		// liveliness comes from the shimmer band sweeping the word
 		// (lib/spinner-shimmer.ts), which reads elapsed time at render so it
