@@ -17,7 +17,9 @@
  * - Thinking 折叠：折叠开关本身是 pi 原生设置（hideThinkingBlock / ctrl+t），
  *   本扩展只把折叠标签换成 CC 风格 `✻ Thinking… (ctrl+t to expand)`，
  *   并在用户未做过选择时一次性提示快捷键
- * - Spinner：✻ 花型动画 + Claude 橙 + 190 个 Claude Code 俏皮动词轮换 + (esc to interrupt · Ns)
+ * - Spinner：✻ 花型动画 + Claude 橙 + CC 同款 187 词表（Clauding→Piing 彩蛋）——
+ *   每 run 加权抽一个定终身（骨干词高频、彩蛋稀有，CC 本尊是等概率抽样不轮换），
+ *   词面有 claudeShimmer 流光扫过 + (esc to interrupt · Ns)
  * - 收尾：✻ Worked for 12s（CC 过去式动词）
  * - 状态栏：模型 │ Context 23% (50k/200k) │ $0.042（/claude-footer 切换；
  *   开原生底栏时自动隐藏，避免与 pi-mcp-adapter / pi-lens 的 footer 重复）
@@ -45,6 +47,8 @@ import {
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
+import { weightedVerbSample } from "./lib/spinner-verbs.ts";
+import { glimmerIndexAt, shimmerSegments } from "./lib/spinner-shimmer.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
 import {
 	buildStatuslineJson,
@@ -104,45 +108,6 @@ const PM_MODE_PAINT: Record<string, (s: string) => string> = {
 // --- Spinner frames (src/components/Spinner/utils.ts getDefaultCharacters) ---
 const BLOSSOM = ["·", "✢", "✱", "✶", "✻", "✽"];
 const SPINNER_FRAMES = [...BLOSSOM, ...[...BLOSSOM].reverse()];
-
-// --- 190 playful verbs (src/constants/spinnerVerbs.ts) ---
-const SPINNER_VERBS = [
-	"Accomplishing", "Actioning", "Actualizing", "Architecting", "Baking", "Beaming",
-	"Beboppin'", "Befuddling", "Billowing", "Blanching", "Bloviating", "Boogieing",
-	"Boondoggling", "Booping", "Bootstrapping", "Brewing", "Bunning", "Burrowing",
-	"Calculating", "Canoodling", "Caramelizing", "Cascading", "Catapulting",
-	"Cerebrating", "Channeling", "Channelling", "Choreographing", "Churning",
-	"Clauding", "Coalescing", "Cogitating", "Combobulating", "Composing", "Computing",
-	"Concocting", "Considering", "Contemplating", "Cooking", "Crafting", "Creating",
-	"Crunching", "Crystallizing", "Cultivating", "Deciphering", "Deliberating",
-	"Determining", "Dilly-dallying", "Discombobulating", "Doing", "Doodling",
-	"Drizzling", "Ebbing", "Effecting", "Elucidating", "Embellishing", "Enchanting",
-	"Envisioning", "Evaporating", "Fermenting", "Fiddle-faddling", "Finagling",
-	"Flambéing", "Flibbertigibbeting", "Flowing", "Flummoxing", "Fluttering",
-	"Forging", "Forming", "Frolicking", "Frosting", "Gallivanting", "Galloping",
-	"Garnishing", "Generating", "Gesticulating", "Germinating", "Gitifying",
-	"Grooving", "Gusting", "Harmonizing", "Hashing", "Hatching", "Herding",
-	"Honking", "Hullaballooing", "Hyperspacing", "Ideating", "Imagining",
-	"Improvising", "Incubating", "Inferring", "Infusing", "Ionizing",
-	"Jitterbugging", "Julienning", "Kneading", "Leavening", "Levitating",
-	"Lollygagging", "Manifesting", "Marinating", "Meandering", "Metamorphosing",
-	"Misting", "Moonwalking", "Moseying", "Mulling", "Mustering", "Musing",
-	"Nebulizing", "Nesting", "Newspapering", "Noodling", "Nucleating", "Orbiting",
-	"Orchestrating", "Osmosing", "Perambulating", "Percolating", "Perusing",
-	"Philosophising", "Photosynthesizing", "Pollinating", "Pondering",
-	"Pontificating", "Pouncing", "Precipitating", "Prestidigitating", "Processing",
-	"Proofing", "Propagating", "Puttering", "Puzzling", "Quantumizing",
-	"Razzle-dazzling", "Razzmatazzing", "Recombobulating", "Reticulating",
-	"Roosting", "Ruminating", "Sautéing", "Scampering", "Schlepping", "Scurrying",
-	"Seasoning", "Shenaniganing", "Shimmying", "Simmering", "Skedaddling",
-	"Sketching", "Slithering", "Smooshing", "Sock-hopping", "Spelunking",
-	"Spinning", "Sprouting", "Stewing", "Sublimating", "Swirling", "Swooping",
-	"Symbioting", "Synthesizing", "Tempering", "Thinking", "Thundering",
-	"Tinkering", "Tomfoolering", "Topsy-turvying", "Transfiguring", "Transmuting",
-	"Twisting", "Undulating", "Unfurling", "Unravelling", "Vibing", "Waddling",
-	"Wandering", "Warping", "Whatchamacalliting", "Whirlpooling", "Whirring",
-	"Whisking", "Wibbling", "Working", "Wrangling", "Zesting", "Zigzagging",
-];
 
 // Past-tense verbs for turn completion (src/constants/turnCompletionVerbs.ts)
 const TURN_COMPLETION_VERBS = [
@@ -239,7 +204,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		return undefined;
 	};
-	let verb = randomOf(SPINNER_VERBS);
+	let verb = weightedVerbSample();
 	let runStart = 0;
 	let tickTimer: ReturnType<typeof setInterval> | null = null;
 	let currentModelName = "";
@@ -531,10 +496,18 @@ export default function (pi: ExtensionAPI) {
 				// token stats (published via __pmWorkingStats when that extension
 				// sees this card is active). Idle: last turn's completion line.
 				const pmStats = readPmStatus().workingStats;
+				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
+				// narrow claudeShimmer band rides the 200ms tick across the word.
+				const verbText = `${verb}…`;
+				const seg = shimmerSegments(verbText, glimmerIndexAt(Date.now() - runStart, visibleWidth(verbText)));
+				const verbPainted =
+					(seg.before ? spinnerPaint(seg.before) : "") +
+					(seg.shimmer ? theme.fg("borderAccent", seg.shimmer) : "") +
+					(seg.after ? spinnerPaint(seg.after) : "");
 				const left = compacting
 					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
 					: running
-						? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint(`${verb}…`)} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
+						? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
 						: lastWorkedLine
 							? theme.fg("dim", lastWorkedLine)
 							: "";
@@ -842,18 +815,17 @@ export default function (pi: ExtensionAPI) {
 		lastWorkedLine = "";
 		running = true;
 		runStart = Date.now();
-		verb = randomOf(SPINNER_VERBS);
+		verb = weightedVerbSample();
 		spinnerPaint = accentFg(ctx);
 		if (tickTimer) clearInterval(tickTimer);
-		let ticks = 0;
-		// 200ms per spinner frame — calmer than the old 120ms; the verb
-		// rotates every ~2s. Each tick just flips state and re-renders the
-		// widget (no setWorkingMessage).
+		// 200ms per spinner frame — calmer than the old 120ms. The verb is
+		// sampled ONCE per run (CC Spinner.tsx: useState(() => sample()) on
+		// mount) and never rotates; liveliness comes from the shimmer band
+		// sweeping the word (lib/spinner-shimmer.ts), which reads elapsed
+		// time at render so it rides this same tick. No new timer.
 		tickTimer = setInterval(() => {
 			try {
-				ticks++;
 				spinnerIdx++;
-				if (ticks % 10 === 0) verb = randomOf(SPINNER_VERBS);
 				// Non-forced render keeps pi's line-diff cache intact (plan A8).
 				dockTui?.requestRender();
 			} catch {
@@ -1125,7 +1097,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("claude-verb", {
 		description: "Reroll the Claude Code spinner verb",
 		handler: async (_args, ctx) => {
-			verb = randomOf(SPINNER_VERBS);
+			verb = weightedVerbSample();
 			ctx.ui.notify(`✻ ${verb}…`, "info");
 		},
 	});

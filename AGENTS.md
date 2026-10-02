@@ -36,7 +36,8 @@ extensions/
     status-snapshot.ts      #   UsageTracker：会话用量快照（每事件重算，供每帧读缓存）
     pm-capability.ts        #   permission-modes 能力通道消费端 + 核心通知队列消费
     prefs.ts                #   ~/.pi/agent/claude-tui.json 读改写（原子）
-    render-utils.ts         #   格式化/布局纯函数 + spinner 动词表
+    render-utils.ts         #   格式化/布局纯函数 + spinner 动词表（加权抽样 + Piing 彩蛋）
+    spinner-shimmer.ts      #   spinner 动词流光（CC computeShimmerSegments 移植，纯函数）
 themes/claude-code.json     # claude-code 主题（vars/colors）
 scripts/statusline-default.sh   # 默认 statusline 脚本（source of truth，与 TS 内联副本字节同步）
 scripts/bench-statusline.mjs    # statusline 性能基准
