@@ -1,5 +1,6 @@
 import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import { readEffortLevel } from "./host-status.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	center,
@@ -223,7 +224,7 @@ class PiStartupHeader implements Component {
 		const innerWidth = width - 2;
 		const { leftWidth, rightWidth, useTips } = headerColumnWidths(innerWidth);
 		const model = formatModelLabel(this.ctx.model);
-		const effort = this.pi.getThinkingLevel();
+		const effort = readEffortLevel(this.pi) ?? "off";
 		const cwd = formatCwd(this.ctx.cwd);
 
 		const leftLines = [

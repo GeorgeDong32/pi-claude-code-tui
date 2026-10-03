@@ -49,6 +49,8 @@ import {
 } from "./lib/cc-rows.ts";
 import { decideTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
+import { buildStatusRightGroup, permissionModeLabel, statusRowLayout } from "./lib/cc-status-line.ts";
+import { readEffortLevel } from "./lib/host-status.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
@@ -61,7 +63,7 @@ import {
 	StatuslineRunner,
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
-import { buildCompletionLine, effortBadgeSymbol, formatCost, formatDuration, formatTokens } from "./lib/render-utils.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/render-utils.ts";
 import {
 	defaultPrefsPath,
 	loadPrefs,
@@ -393,13 +395,7 @@ export default function (pi: ExtensionAPI) {
 		statuslineRunner = null;
 	};
 	const buildCurrentStatuslineInput = (): string => {
-		const effort = (() => {
-			try {
-				return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
-			} catch {
-				return undefined;
-			}
-		})();
+		const effort = readEffortLevel(pi);
 		return buildStatuslineJson(
 			usageTracker.get(),
 			{
@@ -432,7 +428,6 @@ export default function (pi: ExtensionAPI) {
 
 				const { used, cost } = usageTracker.get();
 				const win = currentContextWindow || 0;
-				const pct = win > 0 ? Math.min(100, Math.round((used / win) * 100)) : 0;
 
 				const muted = (s: string) => theme.fg("muted", s);
 
@@ -462,38 +457,20 @@ export default function (pi: ExtensionAPI) {
 				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
 				// on the script row + right-aligned badge instead — the right
 				// group collapses so the same info never shows twice.
-				let right = "";
-				if (!statusLinePrefs.enabled) {
-					const effort = (() => {
-						try {
-							return (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
-						} catch {
-							return undefined;
-						}
-					})();
-					const modelLabel = effort ? `${modelName}·${effort}` : modelName;
-					const rightParts = [muted(modelLabel)];
-					if (win > 0 && used > 0) {
-						rightParts.push(
-							`${theme.fg("dim", "Ctx ")}${muted(`${pct}%`)}${theme.fg("dim", `(${formatTokens(used)}/${formatTokens(win)})`)}`,
-						);
-					}
-					if (cost > 0) {
-						rightParts.push(muted(formatCost(cost)));
-					}
-					right = rightParts.join(sep);
-				}
-
-				// Left-aligned completion line, right-aligned model/context/cost.
-				// Degrades to plain left truncation when the two cannot fit.
-				const leftW = visibleWidth(left);
-				if (right === "") return [truncateToWidth(left, width)];
-				const rightW = visibleWidth(right);
-				if (leftW + rightW + 2 <= width) {
-					const pad = " ".repeat(Math.max(2, width - leftW - rightW));
-					return [truncateToWidth(`${left}${pad}${right}`, width)];
-				}
-				return [truncateToWidth(`${left}  ${right}`, width)];
+				const right = statusLinePrefs.enabled
+					? ""
+					: buildStatusRightGroup({
+						model: modelName,
+						effort: readEffortLevel(pi),
+						used,
+						contextWindow: win,
+						cost,
+						muted,
+						dim: (t) => theme.fg("dim", t),
+						sep,
+					});
+				// Left/right join lives in lib/cc-status-line.ts (table-tested).
+				return statusRowLayout(left, right, width);
 			},
 		}));
 	};
@@ -582,19 +559,13 @@ export default function (pi: ExtensionAPI) {
 		// every setMode (mode-inherit.ts publishInheritedPermissionMode), so
 		// reading it at render time always reflects the current mode, styled
 		// with that extension's own icon/label semantics.
-		const permissionModeLabel = (): string => {
-			const status = readPmStatus();
-			const pm = status.mode || process.env[PM_MODE_ENV]?.trim();
-			if (!pm) return "";
-			const paint = PM_MODE_PAINT[pm] ?? gray;
-			// DC1: icon/label single-sourced from core's MODE_META via the bus
-			// projection; bare mode key + local paint is the older-core fallback.
-			const m = status.meta?.[pm];
-			const icon = m?.icon ?? "●";
-			const label = m ? `${m.label.toLowerCase()} mode` : `${pm} mode`;
-			return `${paint(`${icon} ${label} on`)}${gray(" (shift+tab to cycle)")}`;
-		};
-		const label = permissionModeLabel();
+		const status = readPmStatus();
+		const label = permissionModeLabel(
+			status.mode || process.env[PM_MODE_ENV]?.trim(),
+			status.meta,
+			(mode) => PM_MODE_PAINT[mode] ?? gray,
+			gray,
+		);
 		if (editorHasText()) return truncateToWidth(label, width, "");
 		const hints = fgDim("· ! for bash mode · ctrl+p model · ctrl+o tools");
 		return truncateToWidth(`${label} ${hints}`, width);
@@ -617,16 +588,11 @@ export default function (pi: ExtensionAPI) {
 					lines: statuslineRunner ? statuslineRunner.getRenderLines() : [],
 					badgeText: (() => {
 						if (!statusLinePrefs.badge) return "";
-						let effort: string | undefined;
-						try {
-							effort = (pi as { getThinkingLevel?: () => string | undefined }).getThinkingLevel?.();
-						} catch {
-							effort = undefined;
-						}
 						// CC-style effort chip (`● high · /effort`): effort only —
 						// the script row already names the model. Symbols are CC's
 						// ○◐●◉ fill ladder (effortBadgeSymbol); /effort is real
 						// (registered by pi-claude-code-core's effort extension).
+						const effort = readEffortLevel(pi);
 						return effort && effort !== "off" ? `${effortBadgeSymbol(effort)} ${effort} · /effort` : "";
 					})(),
 					badgePaint: (s) => theme.fg("muted", s),
