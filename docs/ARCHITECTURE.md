@@ -31,6 +31,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/run-state.ts` | run/compaction 状态机：tick 单一 owner、verb 每 run 采样一次、≥1s 完成行门控、stale ctx 静默停摆 | `RunStateMachine` | `run-state.test.ts`（注入 clock/timer 的事件序） |
 | `lib/host-status.ts` | host 易变状态读取 seam（effort/思考档位，永不抛——render 栈安全） | `readEffortLevel` | `host-status.test.ts` |
 | `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
+| `lib/cc-skill-row.ts` | 把原生 `[skill]` 盒子补丁成 CC 式 `⏺ Skill(name)` 行；展开块复用 cc-rows 的 gutter-wrap（字节钉死），保留原生点击展开 | `patchSkillRow` | `cc-skill-row.test.ts`（含字节级展开块断言） |
 | `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused）、补全面板弹到框上方 | `CodexStyleEditor`、`stripAnsi` 等 | （视觉效果靠人工验证） |
 | `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏；header 布局宽度与 tips 选取纯函数同居于此（唯一使用者） | `applyPiHeaderLook`、`headerColumnWidths`、`pickSlashCommandTips` | `pi-startup-header.test.ts`（布局/tips 表测） |
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
