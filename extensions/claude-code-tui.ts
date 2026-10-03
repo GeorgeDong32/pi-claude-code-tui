@@ -297,20 +297,14 @@ export default function (pi: ExtensionAPI) {
 			const mcpName = mcpDisplayName(this.toolName);
 			if (!mcpName && isBuiltin(this)) return orig;
 			if (!mcpName && orig && !forceRows()) return orig;
-			// renderCall is a factory: (args, theme, ctx) => component
-			// TR D2: obs_recall args collapse to `obs_4b1d7b39 · +15.5KB` (the raw
-			// JSON id/offset pair is unreadable in the CC row).
-			const obsRecallSummary = (args: unknown): string => {
-				const a = args as { id?: string; offset?: number };
-				const id = typeof a?.id === "string" && a.id ? (a.id.length <= 16 ? a.id : a.id.slice(0, 16)) : "obs_?";
-				const off = !a?.offset || a.offset <= 0 ? "start" : `+${(a.offset / 1024).toFixed(1)}KB`;
-				return `${id} · ${off}`;
-			};
+			// renderCall is a factory: (args, theme, ctx) => component. All
+			// summaries (obs_recall included, TR D2) come from callArgsFor —
+			// the single home for arg-to-summary rules.
 			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) => {
 				const call = ccCall(
 					theme as CCTheme,
 					mcpName ?? this.toolName,
-					this.toolName === "obs_recall" ? obsRecallSummary(args) : mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
+					mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
 					dotStatus(rctx),
 					undefined,
 					// CC's userFacingName suffix (`server - tool (MCP)`) — the dim

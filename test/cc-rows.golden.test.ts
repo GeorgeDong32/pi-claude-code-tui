@@ -168,10 +168,14 @@ test("callArgsFor matches the built-in summaries and falls back to JSON", () => 
 	assert.equal(callArgsFor("grep", { pattern: "foo", path: "src" }), "foo in src");
 	assert.equal(callArgsFor("grep", { pattern: "foo" }), "foo");
 	assert.equal(callArgsFor("ls", {}), ".");
-	// core's obs_recall now has a dedicated CC-style summary (id [+ offset]).
-	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), "obs_1");
-	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 512 }), "obs_1 @512");
-	assert.equal(callArgsFor("obs_recall", undefined), "");
+	// core's obs_recall — TR D2 format: id (≤16 chars) · humanized offset.
+	// Unified here (2026-10-03): the force-mode prototype path had been
+	// rendering this format from a local copy; the table entry was an
+	// unreachable shadow. Production output is unchanged.
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 0 }), "obs_1 · start");
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1", offset: 512 }), "obs_1 · +0.5KB");
+	assert.equal(callArgsFor("obs_recall", undefined), "obs_? · start");
+	assert.equal(callArgsFor("obs_recall", { id: "obs_abcdef0123456789xyz", offset: 15872 }), "obs_abcdef012345 · +15.5KB");
 	// Truly unknown (third-party) tools serialize — clamped to one line (CC rule).
 	// clamp = 160 chars total: prefix {"a":" is 6 chars, so 159-6=153 xs + ellipsis.
 	assert.equal(callArgsFor("zz_third", { a: "x".repeat(300) }), `{"a":"${"x".repeat(153)}…`);
@@ -183,7 +187,7 @@ test("callArgsFor routes subagent through the summary, unknown tools stay JSON",
 		callArgsFor("subagent", { agent: "pi-review.reviewer", task: "check" }),
 		"reviewer · check",
 	);
-	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), "obs_1");
+	assert.equal(callArgsFor("obs_recall", { id: "obs_1" }), "obs_1 · start");
 });
 
 test("subagentCallSummary summarizes workflows by lanes (real-shape script)", () => {

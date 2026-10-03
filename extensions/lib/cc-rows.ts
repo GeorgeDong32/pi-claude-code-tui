@@ -84,7 +84,16 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 		const ops = a.operations as unknown[] | undefined;
 		return ops?.length ? `${ops.length} ops` : shortText(a.reason, 40);
 	},
-	obs_recall: (a) => [strArg(a.id), a.offset ? `@${Number(a.offset)}` : ""].filter(Boolean).join(" "),
+	// TR D2 (spec 2026-10-02-core-tool-renderers): the raw JSON id/offset pair
+	// is unreadable in the CC row — collapse to `obs_4b1d7b39 · +15.5KB`
+	// (id truncated to 16 chars; byte offset humanized to KB, "start" at 0).
+	// Single home for this rule: both wiring paths (registered overrides and
+	// the force-mode prototype patch) route through callArgsFor.
+	obs_recall: (a) => {
+		const id = typeof a.id === "string" && a.id ? (a.id.length <= 16 ? a.id : a.id.slice(0, 16)) : "obs_?";
+		const off = typeof a.offset === "number" && a.offset > 0 ? `+${(a.offset / 1024).toFixed(1)}KB` : "start";
+		return `${id} · ${off}`;
+	},
 	// ── core: review / plan — short nouns.
 	pi_review_report: (a) => shortText(a.mode ?? a.scope ?? a.base, 40),
 	plan_ready: (a) => shortText(a.plan ?? a.summary, 40),
