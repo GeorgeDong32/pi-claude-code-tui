@@ -45,7 +45,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `scripts/statusline-default.sh` | 默认 statusline 脚本（source of truth） | — | 字节同步由 `statusline.test.ts` 钉住 |
 | `scripts/bench-statusline.mjs` | 默认脚本性能基准（p50 ≈ 30ms，bash fork 地板 ~25ms） | — | — |
 
-依赖方向：入口 → lib 单向；lib 之间有少量纯函数复用（`cc-skill-row` → `cc-rows` 的 gutter-wrap、`cc-status-line` → `format`、`pi-startup-header` → `format`/`host-status`/`cc-rows`），均为纯依赖、无环。lib 不 import pi 运行时状态，只 import 纯函数（`pi-tui` 的 `visibleWidth` 等）与少量 pi-coding-agent 导出（`keyText`、`renderDiff`、被 patch 的组件类）。
+依赖方向：入口 → lib 单向；lib 之间有少量纯函数复用（`cc-skill-row` → `cc-rows` 的 gutter-wrap、`cc-status-line` → `format`、`pi-startup-header` → `format`/`host-status`），均为纯依赖、无环。lib 不 import pi 运行时状态，只 import 纯函数（`pi-tui` 的 `visibleWidth` 等）与少量 pi-coding-agent 导出（`keyText`、`renderDiff`、被 patch 的组件类）。
 
 ## 3. 生命周期与事件流
 

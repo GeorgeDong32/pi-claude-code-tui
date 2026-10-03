@@ -45,7 +45,7 @@ themes/claude-code.json         ← theme (pi theme system)
 | `scripts/statusline-default.sh` | Default statusline script (source of truth) | — | byte-sync pinned by `statusline.test.ts` |
 | `scripts/bench-statusline.mjs` | Default-script performance benchmark (p50 ≈ 30 ms; bash fork floor ~25 ms) | — | — |
 
-Dependency direction: entry → lib, one-way; a few pure-function reuses between libs (`cc-skill-row` → `cc-rows` gutter-wrap, `cc-status-line` → `format`, `pi-startup-header` → `format`/`host-status`/`cc-rows`), all pure and acyclic. Libs never import pi runtime state — only pure functions (`visibleWidth` etc. from `pi-tui`) and a few pi-coding-agent exports (`keyText`, `renderDiff`, and the component classes being patched).
+Dependency direction: entry → lib, one-way; a few pure-function reuses between libs (`cc-skill-row` → `cc-rows` gutter-wrap, `cc-status-line` → `format`, `pi-startup-header` → `format`/`host-status`), all pure and acyclic. Libs never import pi runtime state — only pure functions (`visibleWidth` etc. from `pi-tui`) and a few pi-coding-agent exports (`keyText`, `renderDiff`, and the component classes being patched).
 
 ## 3. Lifecycle & event flow
 

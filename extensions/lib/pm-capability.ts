@@ -58,7 +58,6 @@ function readLegacyStats(globalStore: Record<string, unknown>): string {
 	return typeof legacy === "string" && legacy.length > 0 ? legacy.replace(/^\(/, "").replace(/\)$/, "") : "";
 }
 
-/** Read pm's published status with the full fallback chain. */
 /**
  * Read pm's published status with the full fallback chain — a PURE read:
  * no subscription side effects (2026-10-03; the DC5b retry hook moved to
@@ -139,8 +138,9 @@ export function withdrawCcTuiCapability(globalStore: Record<string, unknown> = g
 // Subscribes through the core snapshot's data-carried onChange and diffs
 // the bounded notifications queue by lastSeenId. Load order puts cctui
 // before core, so the bus may not exist (or still be v1) at enable time —
-// readPmStatus() retries the subscription idempotently on every call, so
-// the first frame after core's first publish attaches it.
+// the ENTRY retries startCoreNotificationConsumer explicitly (enable,
+// session_start, and the status widget's per-frame render), so the first
+// retry after core's first publish attaches it.
 
 type NotificationItem = { id: number; level: string; msg: string };
 type CoreSnapshotLike = {
@@ -177,9 +177,10 @@ function trySubscribeCoreNotifications(globalStore: Record<string, unknown> = gl
 }
 
 /**
- * Start consuming the core notification queue. Returns false while the
- * core bus is not ready (v1 snapshot / not loaded); readPmStatus retries
- * automatically, or re-call on the next session_start.
+ * Start (or retry) consuming the core notification queue — idempotent once
+ * attached. Returns false while the core bus is not ready (v1 snapshot /
+ * not loaded); the entry re-calls this at enable, session_start, and each
+ * status-widget render frame.
  */
 export function startCoreNotificationConsumer(
 	display: (msg: string, level: string) => void,

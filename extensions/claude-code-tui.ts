@@ -210,7 +210,13 @@ export default function (pi: ExtensionAPI) {
 	// tick timer and every transition; the render below reads view() only. ---
 	const runState = new RunStateMachine({
 		now: () => Date.now(),
-		setTick: (fn, ms) => setInterval(fn, ms),
+		// Timers must unref() (AGENTS.md trap 11) — the spinner tick is this
+		// package's longest-lived interval and must never hold the loop open.
+		setTick: (fn, ms) => {
+			const h = setInterval(fn, ms);
+			h.unref?.();
+			return h as never;
+		},
 		clearTick: (h) => clearInterval(h as ReturnType<typeof setInterval>),
 		tickMs: SPINNER_TICK_MS,
 		requestRender: () => dockTui?.requestRender(),
@@ -223,14 +229,14 @@ export default function (pi: ExtensionAPI) {
 	let currentProviderName = "";
 	let currentContextWindow = 0;
 
-	// --- Editor: flat rules + orange ❯ + rotating "Try ..." placeholder ---
-	// (The built-in Plan/Auto mode system was removed in the permission-modes
+	// --- Editor: flat rules + gold ❯ + blinking bar cursor (CodexStyleEditor,
+	// lib/claude-tui-editor.ts) ---
+	// (The built-in Plan/Auto mode toggle was removed in the permission-modes
 	// integration: pi-permission-modes owns mode state — ask/plan/auto/bypass
 	// on Shift+Tab — and this extension's footer renders its published mode.)
 	let activeEditor: CodexStyleEditor | null = null;
 	let dockTui: { requestRender: (force?: boolean) => void } | null = null;
 
-	// --- Editor: flat rules + gold ❯ + blinking bar cursor ---
 	const setEditor = (ctx: ExtensionContext) => {
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
 			// NOTE: the factory body runs synchronously inside
@@ -438,13 +444,11 @@ export default function (pi: ExtensionAPI) {
 
 				const muted = (s: string) => theme.fg("muted", s);
 
-				// Left: turn-completion line (✻ Verb for Xs). Right: model (with
-				// thinking effort) │ context │ cost, right-aligned.
-				// Running: spinner frame + verb + esc hint on the left. Idle:
-				// the last turn's completion line (✻ Verb for Xs), if any.
-				// Running: spinner frame + verb + esc hint, then pi-permission-modes'
-				// token stats (published via __pmWorkingStats when that extension
-				// sees this card is active). Idle: last turn's completion line.
+				// Left: running → spinner frame + verb + esc hint (+ pm token stats
+				// when that extension sees this card is active); compacting →
+				// "Compacting context…"; idle → the last turn's completion line
+				// (✻ Verb for Xs), if any. Right: model (with thinking effort) │
+				// context │ cost, right-aligned.
 				const pmStats = readPmStatus().workingStats;
 				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
 				// narrow claudeShimmer band rides the 200ms tick across the word.
@@ -747,7 +751,6 @@ export default function (pi: ExtensionAPI) {
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
 		latestCtx = ctx;
-		(pi as { getAllTools?: unknown }).getAllTools; // touch to fail fast on stale
 		// DC5b: activate = publish the capability + start consuming core's
 		// notification tail queue in one call (withdraw is the single
 		// reverse). Returns false while the core bus is v1/not loaded — the
@@ -828,8 +831,11 @@ export default function (pi: ExtensionAPI) {
 	// (The Plan-Mode system-prompt injection was removed together with the
 	// Plan/Auto toggle — pi-permission-modes owns plan-mode gating.)
 
-	// Mirror compaction progress on the cc-status spinner line.
+	// Mirror compaction progress on the cc-status spinner line; compaction
+	// also reshapes the context picture, so both events re-run the statusline
+	// script (data is cached — one debounced spawn, not a scan).
 	pi.on("session_before_compact", async (_event, ctx) => {
+		refreshStatusline();
 		if (!enabled) return;
 		spinnerPaint = accentFg(ctx);
 		runState.startCompaction();
@@ -846,6 +852,7 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.on("session_compact", async () => {
 		runState.stopCompaction();
+		refreshStatusline();
 	});
 	pi.on("session_compact_failed", async () => {
 		runState.stopCompaction();
@@ -870,15 +877,6 @@ export default function (pi: ExtensionAPI) {
 		currentModelName = event.model?.name || event.model?.id || "";
 		currentProviderName = event.model?.provider || "";
 		currentContextWindow = event.model?.contextWindow || 0;
-		refreshStatusline();
-	});
-
-	// Compaction reshapes the context picture — rerun the script (its data is
-	// cached; this is one debounced spawn, not a scan).
-	pi.on("session_compact", async () => {
-		refreshStatusline();
-	});
-	pi.on("session_before_compact", async () => {
 		refreshStatusline();
 	});
 
@@ -1028,7 +1026,7 @@ export default function (pi: ExtensionAPI) {
 	// column, like CC. Display-only: session and model context keep the
 	// original text.
 	// CC renders conversation text explicitly white; pi leaves it at the
-	// terminal default (which can be any color, e.g. Gruvbox cream). Force
+	// terminal default (which can be any color, e.g. Gruvbox cream).
 	// Assistant/user markdown styling lives in lib/cc-markdown.ts (pure,
 	// table-tested); the transformer itself only routes by message type.
 	pi.registerMarkdownTransformer((markdown, { messageType, availableWidth }) => {
