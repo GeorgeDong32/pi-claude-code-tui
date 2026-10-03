@@ -31,7 +31,7 @@ extensions/
     cc-skill-row.ts         #   skill 调用行 prototype patch（CC 式 ⏺ Skill(name)，保留点击展开）
     cc-markdown.ts          #   markdown transformer：assistant 白字 + user 灰条（纯函数）
     cc-status-line.ts       #   cc-status 行：右侧组（model·effort │ Ctx │ cost）、左右拼接、footer 模式标签
-    takeover-rules.ts       #   工具行接管决策矩阵（纯函数，矩阵全组合表测）
+    takeover-rules.ts       #   工具行接管决策矩阵 + resolver 计划层（纯函数，全组合表测；BUILTIN_SEVEN 单一来源）
     run-state.ts            #   run/compaction 状态机（注入 clock/timer，转移可测）
     host-status.ts          #   host 易变状态读取 seam（effort 读取，永不抛）
     claude-tui-editor.ts    #   CC 式编辑器（半开圆角边框、❯ 提示符、块状光标）
@@ -59,11 +59,11 @@ src/                        # 空目录残留（无文件，勿引用）
 - **纯模块优先**：凡是可以脱离 pi 运行时测的逻辑（渲染器、格式化、JSON 合成、prefs IO），都放 `lib/` 并保持可注入依赖（theme 鸭子类型、注入 RNG/path）。入口文件只做接线。
 - **渲染器字节级稳定**：`lib/cc-rows.ts` 的输出被 `test/cc-rows.golden.test.ts` 逐字节钉死。改渲染输出必须显式更新 golden 文件并在提交信息里说明视觉差异。
 - **鸭子类型镜像 pi 内部类型**：不要 import pi 未导出的类型；按本仓库惯例在 `lib/` 里写 `XxxLike` 镜像接口 + 版本号门控（参考 `pm-capability.ts`）。
-- 依赖版本：devDependencies 钉在当前 pi 版本（`0.99.x`），peerDependency 是 `>=0.85.0`。pi 升级带来的适配改动用 scope `0.99-adapt` 之类标注。
+- 依赖版本：devDependencies 钉在当前 pi 版本（`1.0.x`），peerDependency 是 `>=1.0.1`（工具行依赖 `pi.registerToolRenderer`，1.0.1 才有）。pi 升级带来的适配改动用 scope `1.0-adapt` 之类标注。
 
 ## 提交与发布
 
-- Conventional Commits：`feat(rows): …`、`fix(status): …`、`chore(release): 1.5.0`。scope 常用：`rows`、`tui`、`status`、`statusline`、`0.99-adapt`。
+- Conventional Commits：`feat(rows): …`、`fix(status): …`、`chore(release): 1.5.0`。scope 常用：`rows`、`tui`、`status`、`statusline`、`1.0-adapt`。
 - 发布流程（git-first）：改 `package.json` version → 更新 `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push。本机安装为 pi 的 git 安装形态（`git:github.com:GeorgeDong32/pi-claude-code-tui`），安装目录 `git pull` 后 `/reload` 即生效——**npm publish 不是必经步骤**（README 的安装引导也是 `pi install git:…`；如需同步发 npm，本机无官方 registry 凭据，须由用户本人 `npm login` 后执行）。`package-lock.json` 与 `AGENTS.md` 曾在 .gitignore；AGENTS.md 现已入库。
 
 ## 编写 / 修改扩展时的注意事项（踩过的坑）
@@ -73,8 +73,8 @@ src/                        # 空目录残留（无文件，勿引用）
 1. **`render()` / `updateDisplay()` 里绝不能抛异常**。渲染回调在 pi 无法捕获的调用栈里执行，抛了整个 pi 直接挂。所有容错（prefs 读失败、脚本失败、主题缺失）都吞掉并降级。
 2. **渲染热路径上不要 spawn、不要全量重扫**。每帧被调用的 render 只读缓存：会话用量靠 `UsageTracker`（`message_end` 时重算一次），statusline 是事件驱动 + 250ms debounce + in-flight 合并，每帧最多触发一次宽度变化检测。
 3. **`ctx` / `ctx.ui.theme` 会过期**。session 替换或 `/reload` 后旧 ctx 失效。不要在 enable 时捕获 theme 存闭包长期用；要么每帧从当前 ctx 取，要么像 `cc-compaction-row.ts` 那样传 `getFg()` 惰性读取。
-4. **prototype patch 必须幂等**。用 `__ccRowsPatched` / `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。
-5. **pi 的槽位是单占位、后写者胜**。工具行（7 个内置工具）、头图、编辑器各只有一个槽。与其他 TUI 扩展共存的策略是 auto 让路（`pi.getAllTools()` 源元数据探测）+ `/claude-tools on` 强制接管 + `FORCE_RESULT_EXEMPT`（pi-subagents 的 live 卡等不折叠）。
+4. **prototype patch 必须幂等**。用 `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。现存的 patch 只剩压缩行 / skill 行 / 用户消息条——工具行已改走官方 `pi.registerToolRenderer` 通道（1.8.0 起），不再依赖 patch。
+5. **工具行走官方渲染器通道（pi ≥ 1.0.1）**：`pi.registerToolRenderer` 的 resolver 只能在加载段注册、逐组件构造求值；让路必须原样返回 `next()`（吞掉会剥夺内置/他人渲染器）。头图、编辑器仍是单占位槽、后写者胜。与其他 TUI 扩展共存的策略是 auto 让路（`pi.getAllTools()` 源元数据探测——`next()` 无法区分内置渲染器与他人注册）+ `/claude-tools on` 强制接管 + `FORCE_RESULT_EXEMPT`（pi-subagents 的 live 卡等不折叠）。
 6. **加载顺序不可假设**。本包可能在 core / 其他扩展之前加载，`enable` 时探测不到后加载者。所有探测点都要有重试：`readPmStatus()` 每次调用幂等重试订阅核心总线，会话事件里再补一次。
 7. **运行时没有文件锚点**。jiti 以 data: URL 求值扩展文件，`import.meta.url` 不指向安装目录。需要文件内容的东西（默认 statusline 脚本）必须内联成 TS 字符串，且与 `scripts/statusline-default.sh` **字节级同步**（`test/statusline.test.ts` 校验）——改脚本两处一起改，或跑同步测试看红。
 8. **`keyText()` 在无 host 测试环境返回 `""`**。所有展开提示都要有字面量 fallback（如 `"ctrl+o"`）。

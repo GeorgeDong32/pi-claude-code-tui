@@ -6,7 +6,7 @@ This document describes the internal architecture of `@georgedong32/pi-claude-co
 
 ## 1. Overview
 
-This package is a pi extension + theme that runs entirely inside pi's TUI process and **touches only the display layer**: rendering takeover happens through pi's public extension API (re-registering tools via `pi.registerTool` with render overrides, `ctx.ui.setHeader/setEditorComponent/setWidget`, `registerMarkdownTransformer`) plus a small number of prototype patches. Tool `execute` and everything sent to the model are never modified.
+This package is a pi extension + theme that runs entirely inside pi's TUI process and **touches only the display layer**: rendering takeover happens through pi's public extension API (tool rows via the official `pi.registerToolRenderer` renderer channel, `ctx.ui.setHeader/setEditorComponent/setWidget`, `registerMarkdownTransformer`) plus a small number of prototype patches (compaction row / skill row / user message bar). Tool `execute` and everything sent to the model are never modified.
 
 ```
 package.json ("pi": { extensions, themes })
@@ -25,7 +25,7 @@ themes/claude-code.json         ← theme (pi theme system)
 | --- | --- | --- | --- |
 | `extensions/claude-code-tui.ts` | Entry. `export default function (pi)`; registers commands, subscribes to session events, mounts/unmounts every rendering slot | extension factory | (wiring layer; covered by lib unit tests + manual verification) |
 | `lib/cc-rows.ts` | CC tool rows: `⏺ Tool(args)` call row + `⎿` output gutter, colored diffs, collapse (3 physical-line cap), component memo, gutter-wrap layout, the args-summary table | `ccCall`, `ccResult`, `callArgsFor`, `renderMemoizedResult`, `gutterWrapRows` | `cc-rows.golden.test.ts` (byte-exact golden + memo/layout table tests) |
-| `lib/takeover-rules.ts` | Tool-row takeover decision matrix (user switches × MCP × builtin × force × exemptions, per call/result/shell slot); the single home of FORCE_RESULT_EXEMPT | `decideTakeover` | `takeover-rules.test.ts` (exhaustive boolean matrix) |
+| `lib/takeover-rules.ts` | Tool-row takeover decision matrix (user switches × MCP × builtin-seven × force × exemptions, call/result slots + shell derivation) and the resolver planner `planResolverTakeover`; single home of BUILTIN_SEVEN / FORCE_RESULT_EXEMPT | `decideTakeover` / `planResolverTakeover` | `takeover-rules.test.ts` (exhaustive boolean matrix + planner table) |
 | `lib/cc-markdown.ts` | Markdown transformers: assistant white paint (fence tracking, list-marker preservation), user grey bar (NBSP padding math) | `assistantWhiteText`, `userMessageBar` | `cc-markdown.test.ts` |
 | `lib/cc-status-line.ts` | cc-status row: right group (model·effort │ Ctx p% │ cost with pct clamping/omission rules), the left/right three-branch join, footer mode chip (MODE_META projection) | `buildStatusRightGroup`, `statusRowLayout`, `permissionModeLabel` | `cc-status-line.test.ts` |
 | `lib/run-state.ts` | Run/compaction state machine: single tick owner, verb sampled once per run, ≥1s completion gate, quiet stop on stale ctx | `RunStateMachine` | `run-state.test.ts` (event sequences on an injected clock/timer) |
@@ -50,7 +50,7 @@ Dependency direction: entry → lib, one-way; a few pure-function reuses between
 
 ## 3. Lifecycle & event flow
 
-The entry factory runs once at extension load, but **tool registration and slot takeover happen at `session_start`** (`enable(ctx)`) — ownership probing needs every extension registered, and non-TUI modes keep stock rendering.
+The entry factory runs once at extension load, where the **renderer resolver is registered** (`pi.registerToolRenderer`, pi >= 1.0.1 — the loader only accepts it while loading). It reads closure gates per tool-call construction; the ownership probe still runs at `session_start` (`enable(ctx)`) — it needs every extension registered, and non-TUI modes keep stock rendering.
 
 ```
 load (jiti)
@@ -80,31 +80,19 @@ Runtime events
 
 ## 4. Rendering takeover (the core)
 
-### 4.1 Built-in tool rows (7 tools)
+### 4.1 Tool rows: the official renderer channel (pi >= 1.0.1, `pi.registerToolRenderer`)
 
-`read` / `bash` / `grep` / `find` / `ls` / `write` / `edit` are taken over by **re-registering them via `pi.registerTool`** (pi has no separate renderer-registration API): the 7 built-in tool definitions are rebuilt with pi's exported `create*ToolDefinition(cwd)`, overlaid with the `renderCall` / `renderResult` overrides from `lib/cc-rows.ts` and `renderShell: "self"` (drops the background box so rows sit flush in the transcript); `execute` stays pi's native implementation, so tool semantics are unchanged. `/claude-tools off` re-registers the pristine definitions via the same mechanism (`registerNativeTools`). Renderers are pure functions: the theme is injected duck-typed and output is pinned by golden tests; `renderResult` is called every frame, kept cheap by the A6 component memo (reuses the component and its wrap cache while inputs are identical). The collapse cap is **3 physical lines** (counted after terminal wrapping) because a single-line minified JSON can wrap into dozens of terminal rows.
+All tool rows (builtin seven / third-party / MCP) are taken over by a **single resolver** (spec: `specs/design/2026-10-03-pi-1.0-tool-renderer-migration`). pi consults it on every `ToolExecutionComponent` construction (streaming / execution start / transcript rebuild), with `next()` returning what the remaining resolvers, the registered tool definition, and pi's builtin renderer table would use. The resolver decides via `planResolverTakeover` (`lib/takeover-rules.ts`) and **merges per slot**: taken-over slots get CC renderers, yielded slots keep `next()`'s value verbatim, and `renderShell` derives from the call decision (takeover → `"self"` flat; a yielding third-party tool also keeps the flat shell). Only renderers are swapped — `execute` and parameters are never touched.
 
-### 4.2 Third-party / MCP tool fallback (prototype patch)
+The decision matrix (single home, exhaustively table-tested): user switches gate everything; official MCP tools are always taken over (the CC row is the user-asked shape); the builtin seven (`BUILTIN_SEVEN`, **without powershell** — pi's builtin renderer-table eighth key, which stays stock) are ours whenever rows are on; third-party tools that ship renderers auto-yield (another TUI extension may own the visuals) and are taken over in `/claude-tools on` force mode; renderer-less third-party tools are always taken over; `FORCE_RESULT_EXEMPT` (the subagent live card / obs_recall paged view) exempts the result slot in force mode.
 
-pi's tool rendering is single-occupancy: one component class (`ToolExecutionComponent`) owns a single `getCallRenderer` / `getResultRenderer` pair. Third-party/MCP tools without their own renderers fall into pi's default 10-line fallback. This package patches both prototype methods:
+Memoization (plan A6): one resolver call corresponds to exactly one component construction (pi resolves per construction, uncached), so a closure-local `newResultMemoSlot()` is a per-component memo; `renderResult` is invoked every frame and reuses the component and its wrap cache. The collapse cap is **3 physical lines** (counted after terminal wrapping).
 
-```
-getCallRenderer():
-  orig = original method
-  if !enabled || !toolRowsEnabled           → orig (fully yield)
-  if official MCP tool (mcpDisplayName hit) → take over as a CC row (the user-asked shape)
-  if built-in tool                           → orig (already handled by §4.1)
-  if it ships a renderer and not force mode  → orig (the auto-yield contract)
-  otherwise                                  → CC call row (args summary)
-getResultRenderer():
-  same, but FORCE_RESULT_EXEMPT (= {"subagent"}) is exempt:
-  pi-subagents' live workflow card is information-dense UI and must not be
-  collapsed even in force mode
-```
+The pre-1.0 mechanisms (re-registering the builtin seven via `pi.registerTool` + the `ToolExecutionComponent` prototype patch) were removed in 1.8.0. Ownership probing still happens at `session_start` via `pi.getAllTools()` source metadata (`externalToolOwner`, name set imported from `BUILTIN_SEVEN`) — the resolver's `next()` cannot distinguish pi's builtin renderers from another extension's registered ones; extensions that register tools in a later `session_start` (e.g. SoL-Pi) are invisible to the probe, so the README recommends `/claude-tools on` when co-running them. On pi < 1.0.1 the extension loads but tool rows stay stock with a console.warn (git installs don't enforce peerDependencies).
 
-Three modes: `auto` (default; takes over when no other renderer owner exists), `on` (full takeover, including third-party tools that ship renderers — only the renderer is swapped, `execute` remains the other extension's implementation), `off` (yield). Tool ownership is probed at `session_start` via `pi.getAllTools()` source metadata; extensions that register tools in a later `session_start` (e.g. SoL-Pi) are invisible to the probe, so the README recommends `/claude-tools on` when co-running them.
+Three modes: `auto` (default), `on` (full takeover), `off` (yield). The switches affect **newly appearing tool rows only** (the resolver is consulted per construction); already-rendered rows keep their renderers. `off`/`auto-off` yield immediately and no longer clobber other extensions' registrations.
 
-### 4.3 Other rendering patches
+### 4.2 Other rendering patches
 
 - **Compaction row**: `CompactionSummaryMessageComponent.prototype.updateDisplay` becomes one `⏺ Context compacted from N tokens` line with the summary expanding under the `⎿` gutter; Box background/padding are stripped so the row sits flush in the transcript.
 - **Native compaction indicator silencing**: the class is not exported, so the TUI component tree is searched for a `CompactionStatusIndicator` instance whose `render` is overridden to zero rows (instance-level override; pi clears the indicator itself when compaction ends).
@@ -138,7 +126,7 @@ Writes go through `savePrefs`: read disk → spread → merge → write tmp → 
 
 - **permission-modes (pm)**: `Shift+Tab` is intercepted in the editor's `handleInput` (ahead of pi's built-in thinking cycle) to toggle Plan/Auto. pm status is read through `readPmStatus`'s three-level fallback chain: core bus snapshot `__piClaudeCodeCore.modes` (primary) → versioned `__piPermissionModes` capability object → legacy `__pmWorkingStats` string + the `PERMISSION_MODES_INHERITED_MODE` env var. Mode icons/labels come from pm's published `meta` (single-sourced from core's MODE_META).
 - **Notification display**: this package declares `notificationsConsumer: true` and consumes the core notification tail queue via the snapshot's `onChange` (diffing by `lastSeenId`); core then stops its own direct forward — version negotiation, no double display; older cores keep the forward.
-- **pi-subagents**: force mode has dedicated adaptations (call row = agent type + task summary, zero redundant running rows, live cards exempt from collapse), see §4.2 and the README.
+- **pi-subagents**: force mode has dedicated adaptations (call row = agent type + task summary, zero redundant running rows, live cards exempt from collapse), see §4.1 and the README.
 - **Slot coexistence**: header/editor slots are last-writer-wins; when co-running other TUI suites, put this package later in the packages list.
 
 ## 8. Runtime constraints (why the code looks like this)

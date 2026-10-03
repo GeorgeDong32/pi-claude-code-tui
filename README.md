@@ -24,7 +24,7 @@ Start Pi, open `/settings`, select the **claude-code** theme, and restart Pi. Th
 
 ### Requirements
 
-- Pi: declared peer support is `@earendil-works/pi-coding-agent >=0.85.0`; development and tests currently target **0.99.1**. Some visual features depend on Pi internals and may need adaptation on other versions.
+- Pi: declared peer support is `@earendil-works/pi-coding-agent >=1.0.1` (tool rows render through the official `pi.registerToolRenderer` channel, added in 1.0.1); development and tests currently target **1.0.1**. On older pi the extension loads but tool rows stay stock with a console warning. Some visual features depend on Pi internals and may need adaptation on other versions.
 - A dark terminal with Unicode support. True color gives the best match to the bundled palette.
 - **Bash and jq** for the optional bundled statusline script. They are not needed for the main UI.
 
@@ -61,7 +61,7 @@ Run these inside Pi:
 
 | Command | What it does |
 | --- | --- |
-| `/claude-tui` | Toggle the header, editor, working indicator, and status UI. Tool rows have their own control. |
+| `/claude-tui` | Toggle the header, editor, working indicator, and status UI. Tool rows have their own control; turning this off also restores stock tool rows. |
 | `/claude-tools auto` | Use automatic tool-row ownership detection; yield when another extension owns the built-in rows. **Default.** |
 | `/claude-tools on` | Force Claude Code-style call/result rendering, including tools with custom renderers, with the live-result exceptions below. |
 | `/claude-tools off` | Disable this package's tool-row overrides. |
@@ -156,7 +156,7 @@ Refreshes happen asynchronously on session events, model changes, compaction, te
 
 Pi's tool-renderer, header, editor, and footer slots can have competing owners. In the default `auto` mode, this package checks tool ownership at session start and yields to detected overrides of the built-in tools.
 
-- Use `/claude-tools on` to give this package control of tool rendering, or `/claude-tools off` to let another extension handle it. Run `/reload` after switching off if another extension needs to register its renderers again.
+- Use `/claude-tools on` to give this package control of tool rendering, or `/claude-tools off` to let another extension handle it. Switches apply to newly appearing tool rows immediately (already-rendered rows keep their renderers).
 - Put this package **after other TUI packages** in your settings' `packages` list if you want its header and editor to win.
 - Use `/claude-footer on` when you want Pi's native footer, including status information from other extensions.
 - Set `CC_TUI_TOOL_ROWS=0` before launching Pi to disable tool rows through the environment.
@@ -175,7 +175,7 @@ For SoL-Pi, `/claude-tools on` can unify rows even when its tools register after
 | --- | --- |
 | Header or editor is missing | Move this package after other TUI extensions in `packages`, then `/reload` or restart. Check the other extension's own header/editor settings. |
 | Tool rows use another style | `auto` may have yielded to another owner. Run `/claude-tools on` to override it. |
-| Tool rows conflict with another extension | Run `/claude-tools off`, then `/reload` so the other extension can register its renderers again. |
+| Tool rows conflict with another extension | Run `/claude-tools off` — new tool calls render stock immediately; no `/reload` needed. |
 | Another extension's footer information is missing | Run `/claude-footer on`. |
 | Statusline says `jq required` | Install jq, or choose a custom command with its own dependencies. |
 | Custom statusline fails or stays empty | Check that the command accepts JSON on stdin, writes display text to stdout, and finishes within two seconds. |

@@ -281,10 +281,10 @@ export const mcpArgsSummary = (args: unknown): string => {
 // ── Component memo (plan A6) ──────────────────────────────────────────────
 // pi re-invokes renderResult every frame; rebuilding the component each time
 // would drop ccResult's wrap cache and re-wrap every logical line per frame.
-// Both wiring paths (registerToolOverrides' ccRenderers closure and the
-// force-mode prototype patch) share this single implementation — the memo
-// semantics (key shape, factory identity, miss-on-new-reference) live here
-// once instead of drifting between copies.
+// The resolver channel (pi.registerToolRenderer, one resolver call per
+// ToolExecutionComponent construction) is the single wiring path — the
+// memo slot is created per resolver call, and the memo semantics (key
+// shape, factory identity, miss-on-new-reference) live here once.
 
 export interface ResultMemoKey {
 	result: unknown;

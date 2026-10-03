@@ -31,7 +31,7 @@ extensions/
     cc-skill-row.ts         #   Skill-row prototype patch (CC-style ⏺ Skill(name), click-to-expand kept)
     cc-markdown.ts          #   Markdown transformers: assistant white paint + user grey bar (pure)
     cc-status-line.ts       #   cc-status row: right group (model·effort │ Ctx │ cost), left/right join, footer mode chip
-    takeover-rules.ts       #   Tool-row takeover decision matrix (pure fn, exhaustive table tests)
+    takeover-rules.ts       #   Tool-row takeover matrix + resolver planner (pure fn, exhaustive table tests; BUILTIN_SEVEN single source)
     run-state.ts            #   Run/compaction state machine (injected clock/timer, tested transitions)
     host-status.ts          #   Host volatile-state read seam (effort level, never throws)
     claude-tui-editor.ts    #   CC-style editor (half-open rounded borders, ❯ prompt, bar cursor)
@@ -59,11 +59,11 @@ src/                        # Empty leftover directories (no files — do not re
 - **Pure modules first**: anything testable without the pi runtime (renderers, formatters, JSON synthesis, prefs IO) goes in `lib/` with injectable dependencies (duck-typed theme, injected RNG/path). The entry file only wires things up.
 - **Byte-stable renderers**: output of `lib/cc-rows.ts` is pinned byte-for-byte by `test/cc-rows.golden.test.ts`. Changing rendered output requires explicitly updating the golden files and explaining the visual diff in the commit message.
 - **Duck-typed mirrors of pi internals**: do not import types pi doesn't export; follow this repo's convention of `XxxLike` mirror interfaces + version gating in `lib/` (see `pm-capability.ts`).
-- Dependency versions: devDependencies are pinned to the current pi version (`0.99.x`); the peerDependency is `>=0.85.0`. Adaptation work for pi upgrades gets a scope like `0.99-adapt`.
+- Dependency versions: devDependencies are pinned to the current pi version (`1.0.x`); the peerDependency is `>=1.0.1` (tool rows need `pi.registerToolRenderer`, added in 1.0.1). Adaptation work for pi upgrades gets a scope like `1.0-adapt`.
 
 ## Commits & releases
 
-- Conventional Commits: `feat(rows): …`, `fix(status): …`, `chore(release): 1.5.0`. Common scopes: `rows`, `tui`, `status`, `statusline`, `0.99-adapt`.
+- Conventional Commits: `feat(rows): …`, `fix(status): …`, `chore(release): 1.5.0`. Common scopes: `rows`, `tui`, `status`, `statusline`, `1.0-adapt`.
 - Release flow (git-first): bump the `package.json` version → update `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push. The local install is pi's git-install form (`git:github.com/GeorgeDong32/pi-claude-code-tui`) — `git pull` in the install dir + `/reload` picks it up, so **npm publish is not a required step** (the README's install guide is `pi install git:…` too; if an npm release is wanted, this machine has no official-registry credentials — the user must `npm login` and publish personally). `package-lock.json` and `AGENTS.md` used to be gitignored; AGENTS.md is now tracked.
 
 ## Pitfalls when writing / modifying the extension
@@ -73,8 +73,8 @@ These are not style advice — they are **real constraints that crash pi or regr
 1. **Never throw inside `render()` / `updateDisplay()`**. Render callbacks run on call stacks pi cannot catch; a throw kills pi entirely. Degrade silently on every failure path (unreadable prefs, failing script, missing theme).
 2. **No spawning or full rescans on the render hot path**. Per-frame render only reads caches: session usage comes from `UsageTracker` (recomputed once per `message_end`), the statusline is event-driven + 250 ms debounce + in-flight coalescing, and each frame at most detects a width change.
 3. **`ctx` / `ctx.ui.theme` go stale**. Session replacement or `/reload` invalidates old contexts. Never capture the theme in a long-lived closure at enable time; read it per frame from the current ctx, or pass a lazy `getFg()` accessor like `cc-compaction-row.ts` does.
-4. **Prototype patches must be idempotent**. Guard with markers like `__ccRowsPatched` / `__ccCompact`. jiti's `moduleCache: false` can produce multiple module instances of the same class; a deep-path import may patch an instance nobody uses (that's why the compaction indicator is silenced via an instance-level render override + component-tree search instead).
-5. **pi slots are single-occupancy, last writer wins**. There is exactly one slot each for tool rows (7 built-in tools), the header, and the editor. The coexistence strategy is auto-yield (probing `pi.getAllTools()` source metadata) + `/claude-tools on` force takeover + `FORCE_RESULT_EXEMPT` (live cards such as pi-subagents' are never collapsed).
+4. **Prototype patches must be idempotent**. Guard with markers like `__ccCompact`. jiti's `moduleCache: false` can produce multiple module instances of the same class; a deep-path import may patch an instance nobody uses (that's why the compaction indicator is silenced via an instance-level render override + component-tree search instead). The remaining patches are the compaction row / skill row / user message bar — tool rows moved to the official `pi.registerToolRenderer` channel (since 1.8.0) and no longer rely on patching.
+5. **Tool rows go through the official renderer channel (pi >= 1.0.1)**: the `pi.registerToolRenderer` resolver can only be registered while loading and is consulted per component construction; yielding must return `next()` verbatim (swallowing it strips builtin/other renderers). The header and editor remain single-occupancy last-writer-wins slots. The coexistence strategy with other TUI extensions is auto-yield (`pi.getAllTools()` source-metadata probing — `next()` cannot distinguish builtin renderers from other extensions' registered ones) + `/claude-tools on` force takeover + `FORCE_RESULT_EXEMPT` (live cards such as pi-subagents' are never collapsed).
 6. **Never assume load order**. This package may load before core / other extensions, so enable-time probing can miss later loaders. Every probe needs a retry: `readPmStatus()` idempotently retries the core-bus subscription on every call, and session events re-attempt once more.
 7. **No filesystem anchor at runtime**. jiti evaluates extension files from data: URLs, so `import.meta.url` never points at the installed package. Anything needing file content (the default statusline script) must be inlined as a TS string and kept **byte-identical** with `scripts/statusline-default.sh` (`test/statusline.test.ts` enforces it) — change both together or watch the sync test go red.
 8. **`keyText()` returns `""` outside a host session (i.e. in tests)**. Every expand hint needs a literal fallback (e.g. `"ctrl+o"`).

@@ -5,15 +5,15 @@
  * - 启动头：Clawd 吉祥物 + "Claude Code vX" + 模型名（第三方模型名原样保留）+ cwd
  * - 输入框：CC 式半开圆角边框（只有上下边）+ accent 块状光标（移植自 MIT 的
  *   pi-claude-code-tui 包，见 lib/claude-tui-editor.ts）
- * - 工具行：用公共 API 实例化内置工具并原样委托 execute，只覆写渲染为
- *   CC 风格 `⏺ Tool(args)` + `⎿  输出`（错误红色、edit 带彩色 diff、
- *   read 折叠摘要），renderShell "self" 去掉背景盒；折叠按物理行封顶
- *   3 行（长 JSON 行 wrap 后也不会刷屏）
- * - 第三方/MCP 工具兜底：原型补丁 ToolExecutionComponent，凡无自带
- *   renderCall/renderResult 的工具（MCP、task 等）同样渲染为折叠的 CC 行；
- *   显式 on（/claude-tools on）时进一步接管自带渲染器的第三方工具
- *   （如 SoL-Pi 的 obs_recall / 融合 edit/write）——只换渲染器，
- *   execute 与参数保持对方实现，功能不受影响
+ * - 工具行（pi ≥ 1.0.1）：官方渲染器通道 pi.registerToolRenderer —— 单一
+ *   resolver 按槽位（call/result/shell）合并 CC 渲染器与 next() 的原渲染器，
+ *   内置七件 + 无自带渲染器的第三方/MCP 工具渲染为 CC 风格 `⏺ Tool(args)`
+ *   + `⎿  输出`（错误红色、edit 带彩色 diff、read 折叠摘要），renderShell
+ *   "self" 去掉背景盒；自带渲染器的第三方工具 auto 让路，显式 on
+ *   （/claude-tools on）时接管（subagent / obs_recall 的 result 豁免）。
+ *   只换渲染器，execute 与参数从不触碰；旧机制（registerTool 重注册
+ *   内置七件 + ToolExecutionComponent 原型补丁）已删，spec
+ *   2026-10-03-pi-1.0-tool-renderer-migration
  * - Thinking 折叠：折叠开关本身是 pi 原生设置（hideThinkingBlock / ctrl+t），
  *   本扩展只把折叠标签换成 CC 风格 `✻ Thinking… (ctrl+t to expand)`，
  *   并在用户未做过选择时一次性提示快捷键
@@ -25,13 +25,13 @@
  *   开原生底栏时自动隐藏，避免与 pi-mcp-adapter / pi-lens 的 footer 重复）
  *
  * Commands:
- *   /claude-tui  — 开/关整套复刻 UI（头 / 输入框 / 转圈 / 状态栏，不含工具行）
+ *   /claude-tui  — 开/关整套复刻 UI（头 / 输入框 / 转圈 / 状态栏；off 时工具行一并回 stock）
  *   /claude-tools — CC 工具行：on / off / auto（auto 碰到别家自动让路）
  *   /claude-verb — 立即换一个随机动词
  *   /claude-footer — 开/关原生底栏（开：兼容其它扩展 footer；关：CC 极简风）
  */
 
-import { ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition } from "@earendil-works/pi-coding-agent";
+import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
@@ -45,9 +45,8 @@ import {
 	renderMemoizedResult,
 	thinkingToggleHint,
 	type CCTheme,
-	type ResultMemoSlot,
 } from "./lib/cc-rows.ts";
-import { decideTakeover } from "./lib/takeover-rules.ts";
+import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { buildStatusRightGroup, permissionModeLabel, statusRowLayout } from "./lib/cc-status-line.ts";
 import { readEffortLevel } from "./lib/host-status.ts";
@@ -161,6 +160,12 @@ export default function (pi: ExtensionAPI) {
 	let statusLinePrefs = resolveStatusLinePrefs(initialPrefs.statusLine);
 	let toolRowsEnabled = toolRowsPref !== false && process.env.CC_TUI_TOOL_ROWS !== "0";
 	let autoYieldNotified = false;
+	// Resolver-channel gate (spec DEC-08): true only while the replica is
+	// enabled in a TUI session. The renderer resolver is registered at load
+	// (pi's loader only accepts registerToolRenderer while loading) and
+	// reads this flag per tool-call construction — non-TUI sessions and
+	// /claude-tui off yield stock renderers via next().
+	let channelActive = false;
 
 	// --- Thinking blocks: CC-style collapsed label + one-time tip ---
 	// pi natively collapses thinking blocks behind an italic one-line label
@@ -197,7 +202,7 @@ export default function (pi: ExtensionAPI) {
 	const externalToolOwner = (): string | undefined => {
 		try {
 			const tools = pi.getAllTools();
-			for (const name of ["read", "bash", "grep", "find", "ls", "write", "edit"]) {
+			for (const name of BUILTIN_SEVEN) {
 				const source = tools.find((tool) => tool?.name === name)?.sourceInfo?.source;
 				if (typeof source === "string" && source !== "builtin" && !source.includes("claude-code-tui")) return source;
 			}
@@ -252,73 +257,51 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
-	// --- Fallback CC rows for third-party/MCP tools ---
-	// Tools registered by other extensions (MCP adapters, pi-task, …) ship no
-	// renderCall/renderResult, so pi's fallback floods the transcript with 10+
-	// wrapped lines. Prototype-patch ToolExecutionComponent (same module
-	// instance pi's TUI uses, like the UserMessageComponent patch below) so any
-	// tool WITHOUT its own renderers gets CC-style collapsed rows; tools that
-	// do define renderers keep them — except in force mode (/claude-tools on,
-	// explicit pref): there the CC rows take over every non-built-in tool too
-	// (e.g. SoL-Pi's fused edit/write and obs_recall), because the factory
-	// only swaps the renderers — execute and parameters stay the other
-	// extension's, so behavior (action fusion, recall pages) is unchanged.
-	const patchThirdPartyToolRows = () => {
-		const proto = ToolExecutionComponent.prototype as unknown as {
-			toolName: string;
-			args: unknown;
-			toolDefinition?: unknown;
-			builtInToolDefinition?: unknown;
-			getCallRenderer: () => unknown;
-			getResultRenderer: () => unknown;
-			getRenderShell: () => string;
-			__ccRowsPatched?: boolean;
-		};
-		if (proto.__ccRowsPatched) return;
-		const origCall = proto.getCallRenderer;
-		const origResult = proto.getResultRenderer;
-		const origShell = proto.getRenderShell;
-		// pi internals moved: skip the third-party fallback patch loudly
-		// instead of rendering garbage (plan B4 guard).
-		if (typeof origCall !== "function" || typeof origResult !== "function") {
-			console.warn("[claude-tui] ToolExecutionComponent renderer hooks not found — third-party tool rows stay pi-default");
-			return;
-		}
-		// The whole take-over matrix (user switches × MCP × builtin × force ×
-		// FORCE_RESULT_EXEMPT per slot) lives in lib/takeover-rules.ts — one
-		// pure function, table-tested exhaustively. The blocks below only wire
-		// component state into it and build the CC renderer on "cc".
-		const takeover = (
-			self: { toolName: string; builtInToolDefinition?: unknown; toolDefinition?: unknown },
-			slot: "call" | "result" | "shell",
-			hasOrig?: boolean,
-		) =>
-			decideTakeover({
-				enabled,
+	// --- CC tool rows via the official renderer channel (pi >= 1.0.1) ---
+	// One resolver replaces the two pre-1.0 mechanisms: registerToolOverrides
+	// (re-registering the builtin seven with CC renderers) and the
+	// ToolExecutionComponent prototype patch. pi consults it per
+	// ToolExecutionComponent construction (streaming / execution start /
+	// transcript rebuild), passing next() = what the remaining resolvers,
+	// the registered tool, then pi's builtin renderer table would use.
+	// Merging keeps every slot we don't own at its next() value, so yielding
+	// never strips anyone's renderers; execute is never touched (pure
+	// display layer). Spec: 2026-10-03-pi-1.0-tool-renderer-migration.
+	if (typeof pi.registerToolRenderer !== "function") {
+		// Loud guard, no silent optional-chain no-op (spec DEC-02): on pi 0.x
+		// the extension still loads (git installs don't enforce peers), so say
+		// why the tool rows stay stock. Register-time only, never per render.
+		console.warn("[claude-tui] pi >= 1.0.1 required for CC tool rows (registerToolRenderer missing) — tool rows stay stock");
+	} else {
+		pi.registerToolRenderer((toolName, next) => {
+			const orig = next();
+			const plan = planResolverTakeover({
+				channelActive,
 				toolRowsEnabled,
 				forced: toolRowsPref === true,
-				isMcp: mcpDisplayName(self.toolName) !== null,
-				isBuiltin: self.builtInToolDefinition !== undefined,
-				hasOrig: slot === "shell" ? self.toolDefinition !== undefined : Boolean(hasOrig),
-				toolName: self.toolName,
-				slot,
+				isMcp: mcpDisplayName(toolName) !== null,
+				isBuiltin: isBuiltinToolName(toolName),
+				hasOrigCall: Boolean(orig?.renderCall),
+				hasOrigResult: Boolean(orig?.renderResult),
+				toolName,
 			});
-		// NOTE: theme must come from pi core's factory args (always live).
-		// Never capture ctx.ui.theme here: a session_start ctx goes stale
-		// after newSession/fork/switchSession/reload, and touching ctx.ui
-		// inside render() throws where pi can't catch it (kills pi).
-		proto.getCallRenderer = function () {
-			const orig = origCall.call(this);
-			if (takeover(this, "call", Boolean(orig)) === "orig") return orig;
-			const mcpName = mcpDisplayName(this.toolName);
-			// renderCall is a factory: (args, theme, ctx) => component. All
-			// summaries (obs_recall included, TR D2) come from callArgsFor —
-			// the single home for arg-to-summary rules.
-			return (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) => {
+			if (!plan) return orig;
+			// Component memo (plan A6): the resolver runs exactly once per
+			// ToolExecutionComponent construction (pi resolves per
+			// construction, uncached — spec DEC-07), so this closure-local
+			// slot is a per-component memo. Streaming partials miss naturally
+			// via the factory identity key inside renderMemoizedResult.
+			const memo = newResultMemoSlot();
+			// Call factory — MCP badge / builtin seven / third-party + then_run
+			// (TR D2/D3). For non-MCP names without then_run this is
+			// byte-identical to the pre-migration ccRenderers builtin branch
+			// (spec §3.4 provenance note).
+			const callFactory = (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) => {
+				const mcpName = mcpDisplayName(toolName);
 				const call = ccCall(
 					theme as CCTheme,
-					mcpName ?? this.toolName,
-					mcpName ? mcpArgsSummary(args) : callArgsFor(this.toolName, args),
+					mcpName ?? toolName,
+					mcpName ? mcpArgsSummary(args) : callArgsFor(toolName, args),
 					dotStatus(rctx),
 					undefined,
 					// CC's userFacingName suffix (`server - tool (MCP)`) — the dim
@@ -327,41 +310,29 @@ export default function (pi: ExtensionAPI) {
 				);
 				// TR D3: fused write/edit calls carry then_run — in force mode the
 				// core's own call badge is replaced by the CC row, so the badge is
-				// re-stated here as a dim second row (read-only; execute untouched).
+					// re-stated here as a dim second row (read-only; execute untouched).
 				const cmd = (args as { then_run?: { command?: string } } | null | undefined)?.then_run?.command;
 				return ccThenRunCall(theme as CCTheme, call, cmd);
 			};
-		};
-		proto.getResultRenderer = function () {
-			const orig = origResult.call(this);
-			if (takeover(this, "result", Boolean(orig)) === "orig") return orig;
-			const mcpName = mcpDisplayName(this.toolName);
-			// Component memo (plan A6): pi re-invokes getResultRenderer() every
-			// frame, so the memo slot rides on the component instance instead of
-			// a closure (which would be rebuilt per frame). The key/factory
-			// semantics live in cc-rows' renderMemoizedResult — one shared
-			// implementation for both wiring paths.
-			const self = this as { toolName: string; __ccResultMemo?: ResultMemoSlot };
-			return (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
-				const slot = (self.__ccResultMemo ??= newResultMemoSlot());
-				return renderMemoizedResult(slot, {
-					factory: orig,
+			// Result factory: memoized CC renderer. `factory` is an identity
+			// key only — never invoked (spec DEC-07); unknown result shapes fall
+			// back inside ccResult, not via this key.
+			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) =>
+				renderMemoizedResult(memo, {
+					factory: orig?.renderResult ?? toolName,
 					theme: theme as CCTheme,
-					name: mcpName ?? self.toolName,
+					name: mcpDisplayName(toolName) ?? toolName,
 					result,
 					options,
 					isError: Boolean(rctx?.isError),
 				});
+			return {
+					renderShell: plan.shell === "self" ? ("self" as const) : orig?.renderShell,
+					renderCall: plan.call === "cc" ? callFactory : orig?.renderCall,
+					renderResult: plan.result === "cc" ? resultFactory : orig?.renderResult,
 			};
-		};
-		// Drop the pending/success background box for third-party tools so they
-		// match the flat CC look of the overridden built-ins.
-		proto.getRenderShell = function () {
-			if (takeover(this, "shell") === "cc") return "self";
-			return origShell.call(this);
-		};
-		proto.__ccRowsPatched = true;
-	};
+		});
+	}
 
 	// Last-good usage numbers: widget render must survive a stale ctx
 	// (session replaced/reloaded) — see setStatusWidget below.
@@ -486,74 +457,6 @@ export default function (pi: ExtensionAPI) {
 			},
 		}));
 	};
-	// --- Tool rendering overrides: delegate execute to real built-ins ---
-	// Shared builder so the CC overrides and the stock natives stay in sync.
-	const buildBuiltins = () => {
-		const cwd = process.cwd();
-		return {
-			read: createReadToolDefinition(cwd),
-			bash: createBashToolDefinition(cwd),
-			grep: createGrepToolDefinition(cwd),
-			find: createFindToolDefinition(cwd),
-			ls: createLsToolDefinition(cwd),
-			write: createWriteToolDefinition(cwd),
-			edit: createEditToolDefinition(cwd),
-		};
-	};
-	const registerToolOverrides = () => {
-		const builtins = buildBuiltins();
-
-		const registerCC = (name: string, builtin: { name: string }, override: { renderCall: unknown; renderResult: unknown }) => {
-			pi.registerTool({
-				...builtin,
-				...override,
-				renderShell: "self" as const,
-			} as Parameters<typeof pi.registerTool>[0]);
-		};
-
-		const ccRenderers = (name: string) => {
-			// Component memo (plan A6): pi calls renderResult every frame; the
-			// shared renderMemoizedResult keeps the component (and its wrap
-			// cache) while the inputs stay reference-identical. A new result
-			// object (streaming partials) misses naturally.
-			const memo = newResultMemoSlot();
-			return {
-				renderCall(args: unknown, theme: unknown, context: unknown) {
-					return ccCall(theme as CCTheme, name, callArgsFor(name, args), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
-				},
-				renderResult(result: unknown, options: unknown, theme: unknown, context: unknown) {
-					return renderMemoizedResult(memo, {
-						factory: name,
-						theme: theme as CCTheme,
-						name,
-						result,
-						options: options as { expanded?: boolean },
-						isError: Boolean((context as { isError?: boolean })?.isError),
-					});
-				},
-			};
-		};
-
-		registerCC("read", builtins.read, ccRenderers("read"));
-		registerCC("bash", builtins.bash, ccRenderers("bash"));
-		registerCC("grep", builtins.grep, ccRenderers("grep"));
-		registerCC("find", builtins.find, ccRenderers("find"));
-		registerCC("ls", builtins.ls, ccRenderers("ls"));
-		registerCC("write", builtins.write, ccRenderers("write"));
-		registerCC("edit", builtins.edit, ccRenderers("edit"));
-	};
-
-	// Stock natives (same definitions, no render overrides): re-registered
-	// when the user turns the CC tool rows off at runtime, so the transcript
-	// immediately stops using CC rows. Another TUI extension that owns tool
-	// rendering takes over fully after a /reload (load order decides).
-	const registerNativeTools = () => {
-		const builtins = buildBuiltins();
-		for (const builtin of Object.values(builtins)) {
-			pi.registerTool(builtin as Parameters<typeof pi.registerTool>[0]);
-		}
-	};
-
 	// --- Footer line as belowEditor widget (native-on mode; keeps the
 	// footer slot free so other extensions' footers survive) ---
 	// One-line footer text shared by both footer modes (slot vs widget).
@@ -765,12 +668,13 @@ export default function (pi: ExtensionAPI) {
 		currentContextWindow = ctx.model?.contextWindow || 0;
 		// Tool rows: explicit choice wins; otherwise auto-detect. Detection
 		// runs here (not at load) so every extension has registered already.
-		// TUI-only: print/RPC modes keep stock rendering.
+		// TUI-only: print/RPC modes keep stock rendering. The resolver channel
+		// itself is registered at load — here we only resolve the effective
+		// switch; new tool-call rows pick it up per construction.
 		if (process.env.CC_TUI_TOOL_ROWS === "0" || toolRowsPref === false) {
 			toolRowsEnabled = false;
 		} else if (toolRowsPref === true) {
 			toolRowsEnabled = true;
-			registerToolOverrides();
 		} else {
 			const owner = externalToolOwner();
 			toolRowsEnabled = !owner;
@@ -779,11 +683,9 @@ export default function (pi: ExtensionAPI) {
 					autoYieldNotified = true;
 					ctx.ui.notify(`CC tool rows auto-off — tools owned by ${owner} (run /claude-tools on to override)`, "info");
 				}
-			} else {
-				registerToolOverrides();
 			}
 		}
-		patchThirdPartyToolRows();
+		channelActive = true; // TUI session active (non-TUI enable returned above)
 		patchCompactionRow(() => themeFg);
 		patchSkillRow(() => themeFg);
 		applyPiHeaderLook(pi, ctx);
@@ -802,6 +704,7 @@ export default function (pi: ExtensionAPI) {
 
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
+		channelActive = false; // resolver yields stock renderers from now on
 		withdrawCcTuiCapability();
 		teardownStatusline();
 		runState.halt();
@@ -915,16 +818,16 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const a = args.trim().toLowerCase();
 			if (a === "auto" || (a !== "on" && a !== "off" && toolRowsPref === undefined)) {
-				// Back to / explicit auto-detect.
+				// Back to / explicit auto-detect. The resolver reads these flags
+				// per tool-call construction, so new rows pick the mode up
+				// immediately; already-rendered rows keep their renderers.
 				toolRowsPref = undefined;
 				saveToolRowsPref(undefined);
 				const owner = externalToolOwner();
 				toolRowsEnabled = !owner;
 				if (owner) {
-					registerNativeTools();
 					ctx.ui.notify(`CC tool rows auto-off — tools owned by ${owner} (run /claude-tools on to override)`, "info");
 				} else {
-					registerToolOverrides();
 					ctx.ui.notify("CC tool rows auto-on — no other owner detected", "info");
 				}
 				return;
@@ -934,11 +837,9 @@ export default function (pi: ExtensionAPI) {
 			toolRowsEnabled = next;
 			saveToolRowsPref(next);
 			if (next) {
-				registerToolOverrides();
-				ctx.ui.notify("CC tool rows on — every tool renders as CC rows (other renderers yield; execute untouched)", "info");
+				ctx.ui.notify("CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)", "info");
 			} else {
-				registerNativeTools();
-				ctx.ui.notify("CC tool rows off — run /reload if another TUI extension should take over tool rendering", "info");
+				ctx.ui.notify("CC tool rows off — new tool calls render stock (another TUI extension, if any, takes over immediately)", "info");
 			}
 		},
 	});

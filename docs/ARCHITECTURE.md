@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-本包是一个 pi 扩展 + 主题包，全部代码运行在 pi 的 TUI 进程内，**只改显示层**：渲染接管通过 pi 公开的扩展 API（`pi.registerTool` 重注册 + 渲染覆盖、`ctx.ui.setHeader/setEditorComponent/setWidget`、`registerMarkdownTransformer`）和有限的原型补丁（prototype patch）实现，工具的 `execute` 与发给模型的内容一律不动。
+本包是一个 pi 扩展 + 主题包，全部代码运行在 pi 的 TUI 进程内，**只改显示层**：渲染接管通过 pi 公开的扩展 API（工具行走官方 `pi.registerToolRenderer` 渲染器通道、`ctx.ui.setHeader/setEditorComponent/setWidget`、`registerMarkdownTransformer`）和有限的原型补丁（prototype patch：压缩行 / skill 行 / 用户消息条）实现，工具的 `execute` 与发给模型的内容一律不动。
 
 ```
 package.json ("pi": { extensions, themes })
@@ -25,7 +25,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | --- | --- | --- | --- |
 | `extensions/claude-code-tui.ts` | 入口。`export default function (pi)`；注册命令、订阅会话事件、装/卸各渲染槽位 | extension factory | （接线层，靠 lib 单测 + 人工验证） |
 | `lib/cc-rows.ts` | CC 工具行渲染：`⏺ Tool(args)` call 行 + `⎿` 输出槽、彩色 diff、折叠（3 物理行上限）、component memo、gutter-wrap 布局、args 摘要表 | `ccCall`、`ccResult`、`callArgsFor`、`renderMemoizedResult`、`gutterWrapRows` | `cc-rows.golden.test.ts`（逐字节 golden + memo/布局表测） |
-| `lib/takeover-rules.ts` | 工具行接管决策矩阵（用户开关 × MCP × 内置 × force × 豁免，分 call/result/shell 三槽位）；FORCE_RESULT_EXEMPT 唯一定义点 | `decideTakeover` | `takeover-rules.test.ts`（布尔矩阵全组合） |
+| `lib/takeover-rules.ts` | 工具行接管决策矩阵（用户开关 × MCP × 内置七件 × force × 豁免，call/result 槽位 + shell 派生）与 resolver 计划层 `planResolverTakeover`；BUILTIN_SEVEN / FORCE_RESULT_EXEMPT 唯一定义点 | `decideTakeover` / `planResolverTakeover` | `takeover-rules.test.ts`（布尔矩阵全组合 + plan 表测） |
 | `lib/cc-markdown.ts` | markdown transformer：assistant 白字（fence 追踪、list marker 保留）、user 灰条（NBSP 填充数学） | `assistantWhiteText`、`userMessageBar` | `cc-markdown.test.ts` |
 | `lib/cc-status-line.ts` | cc-status 行：右侧组（model·effort │ Ctx p% │ cost，含 pct 截断/省略规则）、左右拼接三分支、footer 模式标签（MODE_META 投影） | `buildStatusRightGroup`、`statusRowLayout`、`permissionModeLabel` | `cc-status-line.test.ts` |
 | `lib/run-state.ts` | run/compaction 状态机：tick 单一 owner、verb 每 run 采样一次、≥1s 完成行门控、stale ctx 静默停摆 | `RunStateMachine` | `run-state.test.ts`（注入 clock/timer 的事件序） |
@@ -80,30 +80,19 @@ session_start → enable(ctx)
 
 ## 4. 渲染接管机制（核心）
 
-### 4.1 内置工具行（7 个）
+### 4.1 工具行：官方渲染器通道（pi ≥ 1.0.1，`pi.registerToolRenderer`）
 
-`read` / `bash` / `grep` / `find` / `ls` / `write` / `edit` 通过 **`pi.registerTool` 重注册**接管（pi 没有单独的 renderer 注册 API）：用 pi 导出的 `create*ToolDefinition(cwd)` 重建 7 个内置工具定义，叠加上 `lib/cc-rows.ts` 的 `renderCall` / `renderResult` 覆盖和 `renderShell: "self"`（去掉背景盒，行贴平转录区）；execute 保持 pi 原生实现，工具语义不变。`/claude-tools off` 时用同一机制重新注册无覆盖的原生定义（`registerNativeTools`）。渲染器是纯函数：theme 以鸭子类型注入，输出被 golden test 钉死；`renderResult` 每帧被调用，靠 A6 组件 memo（输入不变时复用组件与 wrap cache）控制成本。折叠上限是 **3 个物理行**（终端换行后的行数），因为单行压缩 JSON 可能折行成几十个终端行。
+全部工具行（内置七件 / 第三方 / MCP）经由**单一 resolver** 接管（spec：`specs/design/2026-10-03-pi-1.0-tool-renderer-migration`）。pi 在每次 `ToolExecutionComponent` 构造时（流式 / 执行开始 / 转录重建）调用 resolver，`next()` 返回「其余 resolver + 注册工具定义 + pi 内置渲染器表」的合成结果。resolver 按 `lib/takeover-rules.ts` 的 `planResolverTakeover` 决策，**按槽位合并**：接管的槽换成 CC 渲染器，让路的槽原样保留 `next()` 的值，`renderShell` 由 call 决策派生（接管→`"self"` 平铺；第三方让路也保平铺）。只换渲染器，`execute` 与参数从不触碰。
 
-### 4.2 第三方 / MCP 工具 fallback（prototype patch）
+决策矩阵（单一家园，全组合表测）：用户开关门控一切；官方 MCP 工具恒接管（CC 行即用户要的形状）；内置七件（`BUILTIN_SEVEN` 名单，**不含 powershell**——pi 内置渲染器表的第 8 键，保持 stock）rows-on 即接管；自带渲染器的第三方工具 auto 让路（另一 TUI 扩展可能拥有视觉）、`/claude-tools on` 强制接管；无渲染器的第三方工具恒接管；`FORCE_RESULT_EXEMPT`（subagent live 卡 / obs_recall 分页）豁免 forced 的 result 槽。
 
-pi 的工具渲染是单占位：一个组件类（`ToolExecutionComponent`）只有一份 `getCallRenderer` / `getResultRenderer`。没有自带渲染器的第三方/MCP 工具会落到 pi 默认的 10 行 fallback。本包 patch 这两个原型方法：
+memo（plan A6）：resolver 每次调用恰好对应一个组件构造（pi 不缓存），闭包内建 `newResultMemoSlot()` 即每组件一 memo；`renderResult` 每帧被调用时复用组件与 wrap cache。折叠上限是 **3 个物理行**（终端换行后的行数）。
 
-```
-getCallRenderer():
-  orig = 原方法
-  若 !enabled || !toolRowsEnabled            → orig（完全让路）
-  若是官方 MCP 工具（mcpDisplayName 命中）    → 接管为 CC 行（用户要的就是这个形状）
-  若是内置工具                                → orig（已由 §4.1 接管）
-  若有自带渲染器且非 force 模式               → orig（auto 让路契约）
-  否则                                       → CC call 行（args 摘要）
-getResultRenderer():
-  同上，但 FORCE_RESULT_EXEMPT（= {"subagent"}）豁免：
-  pi-subagents 的 live 工作流卡是信息密集 UI，强制模式也不折叠
-```
+旧机制（`pi.registerTool` 重注册内置七件 + `ToolExecutionComponent` 原型补丁）已于 1.8.0 删除。工具所有权探测仍在 `session_start` 用 `pi.getAllTools()` 源元数据（`externalToolOwner`，名单 import `BUILTIN_SEVEN`）——resolver 的 `next()` 无法区分内置渲染器与他人注册的渲染器；像 SoL-Pi 这种更晚 `session_start` 才注册工具的扩展探测不到，README 建议同用时手动 `/claude-tools on`。pi < 1.0.1 时扩展照常加载，但工具行走 stock 并打一条 console.warn（git 安装不强制 peerDependency）。
 
-三种模式的语义：`auto`（默认，无其他渲染器所有者时接管）、`on`（全量接管，含自带渲染器的第三方工具——只换渲染，execute 仍是对方扩展的实现）、`off`（让路）。工具所有权在 `session_start` 用 `pi.getAllTools()` 的源元数据探测；像 SoL-Pi 这种在更晚的 `session_start` 才注册工具的扩展探测不到，README 建议同用时手动 `/claude-tools on`。
+三种模式：`auto`（默认）、`on`（全量接管）、`off`（让路）。开关只影响**新出现的工具行**（resolver 逐构造求值）；已渲染行不回改。`off`/`auto-off` 让路即时生效，不再重注册踩掉他人定义。
 
-### 4.3 其他渲染层补丁
+### 4.2 其他渲染层补丁
 
 - **压缩行**：`CompactionSummaryMessageComponent.prototype.updateDisplay` 补丁成 `⏺ Context compacted from N tokens` 一行，摘要走 `⎿` 槽展开；同时剥掉 Box 背景/内边距，让行贴平转录区。
 - **原生压缩指示器静音**：类未导出，所以在 TUI 组件树上搜 `CompactionStatusIndicator` 实例并覆盖其 `render` 为零行（实例级覆盖，pi 自己会在压缩结束时清理）。
@@ -137,7 +126,7 @@ getResultRenderer():
 
 - **permission-modes（pm）**：`Shift+Tab` 在编辑器 `handleInput` 里拦截（先于 pi 内置思考循环），切 Plan/Auto。pm 状态经 `readPmStatus` 的三级降级链读取：核心总线快照 `__piClaudeCodeCore.modes`（主源）→ 版本化 `__piPermissionModes` 能力对象 → 遗留 `__pmWorkingStats` 字符串 + `PERMISSION_MODES_INHERITED_MODE` 环境变量。模式图标/标签取自 pm 发布的 `meta`（单一来源：core 的 MODE_META）。
 - **通知显示**：本包声明 `notificationsConsumer: true`，通过核心快照的 `onChange` 消费通知尾队列（按 `lastSeenId` 差分），核心随即停掉自己的直接转发——版本协商，避免双显；旧核心保持转发。
-- **pi-subagents**：`on` 模式专门适配（call 行 agent 类型 + 任务摘要、运行态零冗余行、live 卡豁免折叠），见 §4.2 与 README。
+- **pi-subagents**：`on` 模式专门适配（call 行 agent 类型 + 任务摘要、运行态零冗余行、live 卡豁免折叠），见 §4.1 与 README。
 - **槽位共存**：头图/编辑器槽位后写者胜；与其余 TUI 套件同用时建议本包排在 packages 列表后面。
 
 ## 8. 运行时约束（为什么代码长这样）
