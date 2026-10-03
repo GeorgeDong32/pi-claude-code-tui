@@ -37,13 +37,15 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	ccCall,
 	ccThenRunCall,
-	ccResult,
 	mcpArgsSummary,
 	mcpDisplayName,
 	callArgsFor,
 	dotStatus,
+	newResultMemoSlot,
+	renderMemoizedResult,
 	thinkingToggleHint,
 	type CCTheme,
+	type ResultMemoSlot,
 } from "./lib/cc-rows.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
@@ -325,39 +327,22 @@ export default function (pi: ExtensionAPI) {
 			const mcpName = mcpDisplayName(this.toolName);
 			if (!mcpName && isBuiltin(this)) return orig;
 			if (!mcpName && orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
-			// Component memo (plan A6, same as the registered-override path):
-			// pi re-invokes getResultRenderer() every frame, so a closure here
-			// would be rebuilt per frame — the cache rides on the component
-			// instance instead. Force mode serves edit diffs and read
-			// summaries through here, which are costly enough to notice.
-			const self = this as { toolName: string; __ccResultMemo?: {
-				factory: unknown;
-				key: { result: unknown; expanded: boolean | undefined; isError: boolean; theme: unknown };
-				component: ReturnType<typeof ccResult>;
-			} };
+			// Component memo (plan A6): pi re-invokes getResultRenderer() every
+			// frame, so the memo slot rides on the component instance instead of
+			// a closure (which would be rebuilt per frame). The key/factory
+			// semantics live in cc-rows' renderMemoizedResult — one shared
+			// implementation for both wiring paths.
+			const self = this as { toolName: string; __ccResultMemo?: ResultMemoSlot };
 			return (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
-				const isError = Boolean(rctx?.isError);
-				const expanded = options?.expanded;
-				const memo = self.__ccResultMemo;
-				if (memo && memo.factory === orig) {
-					// Same definition renderer means same tool identity for
-					// this component instance.
-					if (
-						memo.key.result === result &&
-						memo.key.expanded === expanded &&
-						memo.key.isError === isError &&
-						memo.key.theme === theme
-					) {
-						return memo.component;
-					}
-				}
-				const component = ccResult(theme as CCTheme, mcpName ?? self.toolName, result, options, isError);
-				self.__ccResultMemo = {
+				const slot = (self.__ccResultMemo ??= newResultMemoSlot());
+				return renderMemoizedResult(slot, {
 					factory: orig,
-					key: { result, expanded, isError, theme },
-					component,
-				};
-				return component;
+					theme: theme as CCTheme,
+					name: mcpName ?? self.toolName,
+					result,
+					options,
+					isError: Boolean(rctx?.isError),
+				});
 			};
 		};
 		// Drop the pending/success background box for third-party tools so they
@@ -554,34 +539,24 @@ export default function (pi: ExtensionAPI) {
 		};
 
 		const ccRenderers = (name: string) => {
-			// Component memo (plan A6): pi calls renderResult every frame; reuse
-			// the component (and its wrap cache) while the inputs are the same
-			// references. A new result object (streaming partials) misses naturally.
-			let resultMemo: {
-				key: { result: unknown; expanded: boolean | undefined; isError: boolean; theme: unknown };
-				component: ReturnType<typeof ccResult>;
-			} | null = null;
+			// Component memo (plan A6): pi calls renderResult every frame; the
+			// shared renderMemoizedResult keeps the component (and its wrap
+			// cache) while the inputs stay reference-identical. A new result
+			// object (streaming partials) misses naturally.
+			const memo = newResultMemoSlot();
 			return {
 				renderCall(args: unknown, theme: unknown, context: unknown) {
 					return ccCall(theme as CCTheme, name, callArgsFor(name, args), dotStatus(context as { isError?: boolean; isPartial?: boolean }));
 				},
 				renderResult(result: unknown, options: unknown, theme: unknown, context: unknown) {
-					const opts = options as { expanded?: boolean };
-					const isError = Boolean((context as { isError?: boolean })?.isError);
-					if (
-						resultMemo &&
-						resultMemo.key.result === result &&
-						resultMemo.key.expanded === opts?.expanded &&
-						resultMemo.key.isError === isError &&
-						resultMemo.key.theme === theme
-					) {
-						return resultMemo.component;
-					}
-					resultMemo = {
-						key: { result, expanded: opts?.expanded, isError, theme },
-						component: ccResult(theme as CCTheme, name, result, opts, isError),
-					};
-					return resultMemo.component;
+					return renderMemoizedResult(memo, {
+						factory: name,
+						theme: theme as CCTheme,
+						name,
+						result,
+						options: options as { expanded?: boolean },
+						isError: Boolean((context as { isError?: boolean })?.isError),
+					});
 				},
 			};
 		};

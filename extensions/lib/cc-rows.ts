@@ -278,6 +278,67 @@ export const mcpArgsSummary = (args: unknown): string => {
 	return pairs.length > 80 ? `${pairs.slice(0, 77)}…` : pairs;
 };
 
+// ── Component memo (plan A6) ──────────────────────────────────────────────
+// pi re-invokes renderResult every frame; rebuilding the component each time
+// would drop ccResult's wrap cache and re-wrap every logical line per frame.
+// Both wiring paths (registerToolOverrides' ccRenderers closure and the
+// force-mode prototype patch) share this single implementation — the memo
+// semantics (key shape, factory identity, miss-on-new-reference) live here
+// once instead of drifting between copies.
+
+export interface ResultMemoKey {
+	result: unknown;
+	expanded: boolean | undefined;
+	isError: boolean;
+	theme: unknown;
+}
+
+export interface ResultMemoSlot {
+	/** Renderer-definition identity (prototype path): a different factory on
+	 * the same slot means the tool identity changed under the instance. */
+	factory?: unknown;
+	key: ResultMemoKey | null;
+	component: ReturnType<typeof ccResult> | null;
+}
+
+export const newResultMemoSlot = (): ResultMemoSlot => ({ key: null, component: null });
+
+const sameResultKey = (a: ResultMemoKey, b: ResultMemoKey): boolean =>
+	a.result === b.result && a.expanded === b.expanded && a.isError === b.isError && a.theme === b.theme;
+
+/** Serve the memoized component when the inputs are reference-identical,
+ * else rebuild via ccResult and store. A new result object (streaming
+ * partials) misses naturally. */
+export const renderMemoizedResult = (
+	slot: ResultMemoSlot,
+	input: {
+		factory?: unknown;
+		theme: CCTheme;
+		name: string;
+		result: unknown;
+		options: { expanded?: boolean };
+		isError: boolean;
+	},
+): ReturnType<typeof ccResult> => {
+	if (input.factory !== undefined) {
+		// A foreign factory on this slot means a different renderer definition
+		// took over the component instance — reset before comparing.
+		if (slot.factory !== undefined && slot.factory !== input.factory) slot.key = null;
+		slot.factory = input.factory;
+	}
+	const key: ResultMemoKey = {
+		result: input.result,
+		expanded: input.options?.expanded,
+		isError: input.isError,
+		theme: input.theme,
+	};
+	if (slot.key && slot.component && sameResultKey(slot.key, key)) return slot.component;
+	const component = ccResult(input.theme, input.name, input.result, input.options, input.isError);
+	slot.key = key;
+	slot.component = component;
+	return component;
+};
+
 export const ccResult = (
 	theme: CCTheme,
 	name: string,
