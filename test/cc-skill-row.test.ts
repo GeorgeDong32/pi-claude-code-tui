@@ -110,3 +110,27 @@ test("patch is idempotent — a second call must not duplicate the row", () => {
 	const lines = renderPlain(component);
 	assert.equal(lines.filter((l) => l.startsWith("⏺ Skill(")).length, 1);
 });
+
+// Byte-level pin (identity fg): the expanded block must stay byte-identical
+// to the ccResult family's gutter layout — single pre-painted ⎿ gutter on
+// the first physical row, 5-space continuation indent, no trailing ANSI
+// noise. This is the equivalence net for the shared gutter-wrap helper.
+test("expanded block is byte-pinned: head, gutter row, continuation row", () => {
+	const component = makeComponent();
+	(component as unknown as { setExpanded(e: boolean): void }).setExpanded(true);
+	// The outer Container pads every row to the full width with trailing
+	// spaces — strip that before byte-comparing (content rows never end in
+	// meaningful spaces).
+	const raw = component.render(100).map((l) => l.replace(/ +$/, ""));
+	const WHITE = "\x1b[38;2;255;255;255m";
+	const BOLD = "\x1b[1m";
+	const BOLD_OFF = "\x1b[22m";
+	const RESET = "\x1b[39m";
+	assert.deepEqual(raw, [
+		`⏺ ${WHITE}${BOLD}Skill${BOLD_OFF}(improve-codebase-architecture)${RESET}`,
+		`  ⎿  Audit the architecture.`,
+		`     Propose deepening opportunities.`,
+	]);
+	// Repeat render at the same width serves the cache — still byte-identical.
+	assert.deepEqual(component.render(100).map((l) => l.replace(/ +$/, "")), raw);
+});

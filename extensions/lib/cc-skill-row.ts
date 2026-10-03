@@ -20,7 +20,8 @@
  * MouseRegion so the native click-to-expand keeps working.
  */
 import { keyText, SkillInvocationMessageComponent } from "@earendil-works/pi-coding-agent";
-import { Container, MouseRegion, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Container, MouseRegion, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { createWidthCache, gutterWrapRows } from "./cc-rows.ts";
 
 export type ThemeFg = (color: string, text: string) => string;
 
@@ -80,25 +81,19 @@ export function patchSkillRow(getFg: () => ThemeFg | null): void {
 		const content = new Container();
 		content.addChild(row);
 		if (expanded) {
-			// Skill body as ONE guttered block, byte-consistent with the
-		// ccResult family: only the first physical row carries the ⎿, every
-		// other row (wrapped continuations, blank lines) aligns under it
-		// with a 5-space indent. Wrap-once cache per width, same as ccResult.
+			// Skill body as ONE guttered block — the layout itself is cc-rows'
+			// gutterWrapRows (single ⤿ on the first physical row, 5-space
+			// continuations) with the same wrap-once width cache, so the block
+			// stays byte-consistent with the ccResult family by construction.
 			const lines = (this.skillBlock?.content ?? "").replace(/\n+$/, "").split("\n");
-			let cache: { width: number; rows: string[] } | null = null;
+			const bodyCache = createWidthCache();
 			content.addChild({
 				invalidate() {
-					cache = null;
+					bodyCache.clear();
 				},
 				render(width: number): string[] {
-					if (cache && cache.width === width) return cache.rows;
-					const cont = "     ";
-				const wrapW = Math.max(10, width - cont.length);
-					const physical: string[] = [];
-					for (const line of lines) physical.push(...wrapTextWithAnsi(line, wrapW));
-					const rows = physical.map((l, i) => `${i === 0 ? fg("dim", GUTTER) : cont}${fg("toolOutput", l)}`);
-					cache = { width, rows };
-					return rows;
+					return bodyCache.serve(width, (w) =>
+						gutterWrapRows(lines.map((l) => fg("toolOutput", l)), w, fg("dim", GUTTER)));
 				},
 			});
 		}

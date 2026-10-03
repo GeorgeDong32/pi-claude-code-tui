@@ -339,6 +339,41 @@ export const renderMemoizedResult = (
 	return component;
 };
 
+// ── Gutter-wrap layout (shared by the ccResult family and the skill row) ───
+// One implementation of the CC expansion shape: wrap pre-painted logical
+// lines at (width - 5), lay them out with a single pre-painted ⎿ gutter on
+// the first physical row and a 5-space continuation indent on the rest.
+
+export const GUTTER_CONT = "     ";
+
+export const gutterWrapRows = (logicalLines: readonly string[], width: number, gutter: string): string[] => {
+	const wrapW = Math.max(10, width - GUTTER_CONT.length);
+	const physical: string[] = [];
+	for (const line of logicalLines) physical.push(...wrapTextWithAnsi(line, wrapW));
+	return physical.map((l, i) => `${i === 0 ? gutter : GUTTER_CONT}${l}`);
+};
+
+/** Wrap-once cache keyed by width (plan A6): render() runs every frame and
+ * wrapping a large output costs one ANSI-aware wrap per logical line; a
+ * width change (terminal resize) recomputes. */
+export const createWidthCache = (): {
+	clear(): void;
+	serve(width: number, compute: (width: number) => string[]): string[];
+} => {
+	let cache: { width: number; rows: string[] } | null = null;
+	return {
+		clear() {
+			cache = null;
+		},
+		serve(width, compute) {
+			if (cache && cache.width === width) return cache.rows;
+			const rows = compute(width);
+			cache = { width, rows };
+			return rows;
+		},
+	};
+};
+
 export const ccResult = (
 	theme: CCTheme,
 	name: string,
@@ -350,36 +385,34 @@ export const ccResult = (
 	// large output costs one ANSI-aware wrap per logical line. All inputs the
 	// output depends on are factory arguments, so a (width) key is sufficient;
 	// a width change (terminal resize) recomputes.
-	let renderCache: { width: number; rows: string[] } | null = null;
+	const wrapCache = createWidthCache();
 	return {
 		invalidate() {
-			renderCache = null;
+			wrapCache.clear();
 		},
 		render(width: number): string[] {
-			if (renderCache && renderCache.width === width) return renderCache.rows;
-			const rows = renderRows(width);
-			renderCache = { width, rows };
-			return rows;
+			return wrapCache.serve(width, renderRows);
 		},
 	};
 
 	function renderRows(width: number): string[] {
 		const gutter = theme.fg("dim", "  ⎿  ");
-		const cont = "     ";
+		const cont = GUTTER_CONT;
 		const paint = (s: string) => (isError ? theme.fg("error", s) : theme.fg("toolOutput", s));
-		const wrapW = Math.max(10, width - cont.length);
 		const expandHint = theme.fg("dim", `(${expandKeyHint()} to expand)`);
 
 		// Wraps pre-colored logical lines into physical rows and, unless expanded,
 		// caps the block at MAX_RESULT_ROWS rows total (expand hint included).
 		const emit = (logicalLines: string[]): string[] => {
-			const physical: string[] = [];
-			for (const line of logicalLines) physical.push(...wrapTextWithAnsi(line, wrapW));
+			const physical = gutterWrapRows(logicalLines, width, gutter);
 			if (options.expanded || physical.length <= MAX_RESULT_ROWS) {
-				return physical.map((l, i) => `${i === 0 ? gutter : cont}${l}`);
+				return physical;
 			}
+			// Cap at MAX_RESULT_ROWS: keep the first rows as laid out (the slice
+			// preserves physical indices, so the lead row keeps the gutter) and
+			// close with the counted hint.
 			const shown = physical.slice(0, MAX_RESULT_ROWS - 1);
-			const rows = shown.map((l, i) => `${i === 0 ? gutter : cont}${l}`);
+			const rows = [...shown];
 			rows.push(`${cont}${theme.fg("dim", `... +${physical.length - shown.length} lines`)} ${expandHint}`);
 			return rows;
 		};
