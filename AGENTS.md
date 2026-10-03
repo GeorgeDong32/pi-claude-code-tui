@@ -26,18 +26,24 @@ node scripts/bench-statusline.mjs   # statusline 默认脚本性能基准（改�
 extensions/
   claude-code-tui.ts        # 扩展入口（default export factory）：事件接线、命令、模式开关
   lib/                      # 纯模块（无 pi 运行时依赖，可单测）
-    cc-rows.ts              #   CC 工具行渲染器（call/result 行、diff、折叠）
+    cc-rows.ts              #   CC 工具行渲染器（call/result 行、diff、折叠、component memo、gutter-wrap）
     cc-compaction-row.ts    #   压缩行 prototype patch + 原生压缩指示器静音
     cc-skill-row.ts         #   skill 调用行 prototype patch（CC 式 ⏺ Skill(name)，保留点击展开）
+    cc-markdown.ts          #   markdown transformer：assistant 白字 + user 灰条（纯函数）
+    cc-status-line.ts       #   cc-status 行：右侧组（model·effort │ Ctx │ cost）、左右拼接、footer 模式标签
+    takeover-rules.ts       #   工具行接管决策矩阵（纯函数，矩阵全组合表测）
+    run-state.ts            #   run/compaction 状态机（注入 clock/timer，转移可测）
+    host-status.ts          #   host 易变状态读取 seam（effort 读取，永不抛）
     claude-tui-editor.ts    #   CC 式编辑器（半开圆角边框、❯ 提示符、块状光标）
-    pi-startup-header.ts    #   Pi-look 启动头（动画 logo + tips 侧栏）
+    pi-startup-header.ts    #   Pi-look 启动头（动画 logo + tips 侧栏 + header 布局/tips 选取纯函数）
+    format.ts               #   纯值格式化（时长/token/cost/模型标签/完成行）
+    spinner-verbs.ts        #   spinner 动词表（187 词 CC 对齐 + 加权抽样 + Piing 彩蛋）
+    spinner-shimmer.ts      #   spinner 动词流光（CC computeShimmerSegments 移植，纯函数）
     statusline.ts           #   statusline JSON 合成、badge、子进程 runner、footer 组合
     statusline-default-script.ts  # 内置默认脚本的 TS 内联副本（与 scripts/ 字节同步）
     status-snapshot.ts      #   UsageTracker：会话用量快照（每事件重算，供每帧读缓存）
-    pm-capability.ts        #   permission-modes 能力通道消费端 + 核心通知队列消费
+    pm-capability.ts        #   permission-modes 能力通道消费端 + 核心通知队列消费（activate/withdraw 配对）
     prefs.ts                #   ~/.pi/agent/claude-tui.json 读改写（原子）
-    render-utils.ts         #   格式化/布局纯函数 + spinner 动词表（加权抽样 + Piing 彩蛋）
-    spinner-shimmer.ts      #   spinner 动词流光（CC computeShimmerSegments 移植，纯函数）
 themes/claude-code.json     # claude-code 主题（vars/colors）
 scripts/statusline-default.sh   # 默认 statusline 脚本（source of truth，与 TS 内联副本字节同步）
 scripts/bench-statusline.mjs    # statusline 性能基准

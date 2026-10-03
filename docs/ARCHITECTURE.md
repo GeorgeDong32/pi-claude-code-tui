@@ -24,21 +24,28 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | 模块 | 职责 | 关键导出 | 测试 |
 | --- | --- | --- | --- |
 | `extensions/claude-code-tui.ts` | 入口。`export default function (pi)`；注册命令、订阅会话事件、装/卸各渲染槽位 | extension factory | （接线层，靠 lib 单测 + 人工验证） |
-| `lib/cc-rows.ts` | CC 工具行渲染：`⏺ Tool(args)` call 行 + `⎿` 输出槽、彩色 diff、折叠（3 物理行上限，按换行后行数计） | `ccCall` 等渲染器 | `cc-rows.golden.test.ts`（逐字节 golden） |
+| `lib/cc-rows.ts` | CC 工具行渲染：`⏺ Tool(args)` call 行 + `⎿` 输出槽、彩色 diff、折叠（3 物理行上限）、component memo、gutter-wrap 布局、args 摘要表 | `ccCall`、`ccResult`、`callArgsFor`、`renderMemoizedResult`、`gutterWrapRows` | `cc-rows.golden.test.ts`（逐字节 golden + memo/布局表测） |
+| `lib/takeover-rules.ts` | 工具行接管决策矩阵（用户开关 × MCP × 内置 × force × 豁免，分 call/result/shell 三槽位）；FORCE_RESULT_EXEMPT 唯一定义点 | `decideTakeover` | `takeover-rules.test.ts`（布尔矩阵全组合） |
+| `lib/cc-markdown.ts` | markdown transformer：assistant 白字（fence 追踪、list marker 保留）、user 灰条（NBSP 填充数学） | `assistantWhiteText`、`userMessageBar` | `cc-markdown.test.ts` |
+| `lib/cc-status-line.ts` | cc-status 行：右侧组（model·effort │ Ctx p% │ cost，含 pct 截断/省略规则）、左右拼接三分支、footer 模式标签（MODE_META 投影） | `buildStatusRightGroup`、`statusRowLayout`、`permissionModeLabel` | `cc-status-line.test.ts` |
+| `lib/run-state.ts` | run/compaction 状态机：tick 单一 owner、verb 每 run 采样一次、≥1s 完成行门控、stale ctx 静默停摆 | `RunStateMachine` | `run-state.test.ts`（注入 clock/timer 的事件序） |
+| `lib/host-status.ts` | host 易变状态读取 seam（effort/思考档位，永不抛——render 栈安全） | `readEffortLevel` | `host-status.test.ts` |
 | `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
 | `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused）、补全面板弹到框上方 | `CodexStyleEditor`、`stripAnsi` 等 | （视觉效果靠人工验证） |
-| `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏 | `applyPiHeaderLook` | `render-utils.test.ts`（布局纯函数） |
+| `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏；header 布局宽度与 tips 选取纯函数同居于此（唯一使用者） | `applyPiHeaderLook`、`headerColumnWidths`、`pickSlashCommandTips` | `pi-startup-header.test.ts`（布局/tips 表测） |
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | 内置默认脚本的 TS 内联副本（运行时无文件锚点，见 §8） | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts`（与 scripts/ 字节同步） |
 | `lib/status-snapshot.ts` | `UsageTracker`：`message_end` 时扫一遍分支，缓存 used/cost/last/total 用量 | `UsageTracker` | `status-snapshot.test.ts` |
-| `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链）；核心通知队列消费；本包能力发布 | `readPmStatus`、`publishCcTuiCapability` | `pm-capability.test.ts` |
+| `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读）；核心通知队列消费（显式重试）；生命周期 activate/withdraw 配对 | `readPmStatus`、`activateCcTuiChannel`、`withdrawCcTuiCapability` | `pm-capability.test.ts` |
 | `lib/prefs.ts` | `~/.pi/agent/claude-tui.json` 读改写：合并写 + tmp/rename 原子替换，坏文件回退 `{}` | `loadPrefs`、`savePrefs` | `prefs.test.ts` |
-| `lib/render-utils.ts` | 格式化（时长/token/cost）、header 布局宽度、spinner 动词表、tips 选取 | `formatDuration`、`headerColumnWidths`、`pickWorkingVerb`… | `render-utils.test.ts` |
+| `lib/format.ts` | 纯值格式化：时长/token/cost、模型/effort 标签、完成行 | `formatDuration`、`formatTokens`、`formatCost`、`buildCompletionLine` | `format.test.ts` |
+| `lib/spinner-verbs.ts` | spinner 动词表：187 词与 CC 字节对齐（Clauding→Piing）、加权抽样（staples ×3 / eggs ×0.25） | `weightedVerbSample`、`SPINNER_VERBS` | `spinner-verbs.test.ts` |
+| `lib/spinner-shimmer.ts` | spinner 动词流光（CC computeShimmerSegments 移植） | `shimmerSegments`、`SPINNER_TICK_MS` | `spinner-shimmer.test.ts` |
 | `themes/claude-code.json` | claude-code 主题：vars（色板变量）+ colors（pi 语义色映射）+ export | — | — |
 | `scripts/statusline-default.sh` | 默认 statusline 脚本（source of truth） | — | 字节同步由 `statusline.test.ts` 钉住 |
 | `scripts/bench-statusline.mjs` | 默认脚本性能基准（p50 ≈ 30ms，bash fork 地板 ~25ms） | — | — |
 
-依赖方向：入口 → lib 单向；lib 之间基本不互相依赖（`pi-startup-header` → `render-utils` 是主要例外）。lib 不 import pi 运行时状态，只 import 纯函数（`pi-tui` 的 `visibleWidth` 等）与少量 pi-coding-agent 导出（`keyText`、`renderDiff`、被 patch 的组件类）。
+依赖方向：入口 → lib 单向；lib 之间有少量纯函数复用（`cc-skill-row` → `cc-rows` 的 gutter-wrap、`cc-status-line` → `format`、`pi-startup-header` → `format`/`host-status`/`cc-rows`），均为纯依赖、无环。lib 不 import pi 运行时状态，只 import 纯函数（`pi-tui` 的 `visibleWidth` 等）与少量 pi-coding-agent 导出（`keyText`、`renderDiff`、被 patch 的组件类）。
 
 ## 3. 生命周期与事件流
 
@@ -145,7 +152,7 @@ getResultRenderer():
 
 ## 10. 测试架构
 
-- **纯模块单测**（`node --test`，TS type stripping 直跑）：prefs 原子写、UsageTracker 语义（used=最后一条 assistant 的累计；cost=求和）、statusline JSON 形状与 badge 数学、pm 降级链、render-utils 格式化与布局。
+- **纯模块单测**（`node --test`，TS type stripping 直跑）：prefs 原子写、UsageTracker 语义（used=最后一条 assistant 的累计；cost=求和）、statusline JSON 形状与 badge 数学、pm 降级链与生命周期配对、format 格式化、header 布局/tips、markdown transformer、cc-status 行三分支、接管矩阵布尔全组合、run 状态机事件序、memo/gutter-wrap 复用。
 - **Golden 渲染测试**：`cc-rows.golden.test.ts` 用 identity/recording 两种 theme 钉住渲染字节与颜色路由，是 A6 wrap-cache 及后续渲染改动的等价网。`keyText()` 无 host 返回 `""` → 测试里断言字面量 fallback。
 - **字节同步测试**：`DEFAULT_STATUSLINE_SCRIPT` ↔ `scripts/statusline-default.sh`。
 - **人工验证**：`docs/manual-verification.md` 覆盖自动化测不到的视觉行为（spinner 帧推进、光标闪烁、resize 伪影、statusline 防抖回归等）。

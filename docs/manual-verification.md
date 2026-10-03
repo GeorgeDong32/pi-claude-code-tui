@@ -102,6 +102,25 @@ script renders `~dir │ ◆branch dirty │ model │ Ctx p% (u/w) │ $cost`.
 - [ ] Perf sanity: `node scripts/bench-statusline.mjs` — p50 ~30ms for the
       default script on a quiet machine (bash fork floor ~25ms; refreshes
       are async and event-driven, never on the render path).
+- [ ] Force-mode obs_recall row (`/claude-tools on`, then trigger an
+      obs_recall): the call row reads `⏺ obs_recall(obs_xxxx · +N.NKB)` —
+      the TR D2 summary format, now single-sourced from the callArgsFor
+      table. Broken looks like the raw `@bytes` offset format returning.
+- [ ] Skill expansion gutter: trigger a skill, expand (ctrl+o) — ONE ⎫
+      gutter on the first body row, continuations aligned with 5 spaces,
+      same shape as tool-result blocks (now the shared gutter-wrap helper;
+      byte-pinned by cc-skill-row tests).
+- [ ] cc-status three states: while generating (spinner + verb + shimmer),
+      during /compact ("Compacting context…" on the same line), idle after a
+      ≥1s run (dim `✻ Verb for Xs · HH:MM`). Weird sequences worth one pass:
+      /compact landing mid-run (spinner must not stall), /claude-tui off
+      mid-run (no orphan tick — a later requestRender proves the timer died).
+- [ ] Footer mode chip: with pi-permission-modes cycling shift+tab — icon +
+      label from MODE_META (◐ plan mode on…), unknown modes fall back to ●;
+      the chip never blanks the footer when no mode is published.
+- [ ] Assistant body color: plain prose renders white, headings/quotes/code
+      fences keep theme colors; user messages keep the full-width grey bar
+      with ❯ (both now live in lib/cc-markdown.ts — visually unchanged).
 
 Broken looks like: statusline row flickering on every keystroke (per-frame
 spawn — regression of the debounce); blank row between script rows and the

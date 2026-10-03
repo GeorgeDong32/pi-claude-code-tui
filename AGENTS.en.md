@@ -26,16 +26,24 @@ There is no build step and no lint config. A green `npm test` + `npm run typeche
 extensions/
   claude-code-tui.ts        # Extension entry (default-export factory): event wiring, commands, mode switches
   lib/                      # Pure modules (no pi runtime dependency, unit-testable)
-    cc-rows.ts              #   CC tool-row renderers (call/result rows, diffs, collapse)
+    cc-rows.ts              #   CC tool-row renderers (call/result rows, diffs, collapse, component memo, gutter-wrap)
     cc-compaction-row.ts    #   Compaction-row prototype patch + native indicator silencing
+    cc-skill-row.ts         #   Skill-row prototype patch (CC-style ⏺ Skill(name), click-to-expand kept)
+    cc-markdown.ts          #   Markdown transformers: assistant white paint + user grey bar (pure)
+    cc-status-line.ts       #   cc-status row: right group (model·effort │ Ctx │ cost), left/right join, footer mode chip
+    takeover-rules.ts       #   Tool-row takeover decision matrix (pure fn, exhaustive table tests)
+    run-state.ts            #   Run/compaction state machine (injected clock/timer, tested transitions)
+    host-status.ts          #   Host volatile-state read seam (effort level, never throws)
     claude-tui-editor.ts    #   CC-style editor (half-open rounded borders, ❯ prompt, bar cursor)
-    pi-startup-header.ts    #   Pi-look startup header (animated logo + tips sidebar)
+    pi-startup-header.ts    #   Pi-look startup header (animated logo + tips sidebar + header layout/tips pure fns)
+    format.ts               #   Pure value formatters (durations/tokens/cost/model labels/completion line)
+    spinner-verbs.ts        #   Spinner verb table (187 CC-aligned words + weighted sampling + Piing egg)
+    spinner-shimmer.ts      #   Spinner verb shimmer (CC computeShimmerSegments port, pure)
     statusline.ts           #   Statusline JSON synthesis, badge, child-process runner, footer composition
     statusline-default-script.ts  # TS inline copy of the bundled default script (byte-synced with scripts/)
     status-snapshot.ts      #   UsageTracker: session usage snapshot (recomputed per event, cached per frame)
-    pm-capability.ts        #   permission-modes capability-channel consumer + core notification-queue consumer
+    pm-capability.ts        #   permission-modes capability-channel consumer + core notification-queue consumer (activate/withdraw pair)
     prefs.ts                #   ~/.pi/agent/claude-tui.json read-modify-write (atomic)
-    render-utils.ts         #   Formatting/layout pure functions + spinner verb tables
 themes/claude-code.json     # claude-code theme (vars/colors)
 scripts/statusline-default.sh   # Default statusline script (source of truth, byte-synced with the TS inline copy)
 scripts/bench-statusline.mjs    # Statusline performance benchmark

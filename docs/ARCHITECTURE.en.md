@@ -24,21 +24,28 @@ themes/claude-code.json         ← theme (pi theme system)
 | Module | Responsibility | Key exports | Tests |
 | --- | --- | --- | --- |
 | `extensions/claude-code-tui.ts` | Entry. `export default function (pi)`; registers commands, subscribes to session events, mounts/unmounts every rendering slot | extension factory | (wiring layer; covered by lib unit tests + manual verification) |
-| `lib/cc-rows.ts` | CC tool rows: `⏺ Tool(args)` call row + `⎿` output gutter, colored diffs, collapse (3 physical-line cap, counted after wrapping) | `ccCall` and friends | `cc-rows.golden.test.ts` (byte-exact golden) |
+| `lib/cc-rows.ts` | CC tool rows: `⏺ Tool(args)` call row + `⎿` output gutter, colored diffs, collapse (3 physical-line cap), component memo, gutter-wrap layout, the args-summary table | `ccCall`, `ccResult`, `callArgsFor`, `renderMemoizedResult`, `gutterWrapRows` | `cc-rows.golden.test.ts` (byte-exact golden + memo/layout table tests) |
+| `lib/takeover-rules.ts` | Tool-row takeover decision matrix (user switches × MCP × builtin × force × exemptions, per call/result/shell slot); the single home of FORCE_RESULT_EXEMPT | `decideTakeover` | `takeover-rules.test.ts` (exhaustive boolean matrix) |
+| `lib/cc-markdown.ts` | Markdown transformers: assistant white paint (fence tracking, list-marker preservation), user grey bar (NBSP padding math) | `assistantWhiteText`, `userMessageBar` | `cc-markdown.test.ts` |
+| `lib/cc-status-line.ts` | cc-status row: right group (model·effort │ Ctx p% │ cost with pct clamping/omission rules), the left/right three-branch join, footer mode chip (MODE_META projection) | `buildStatusRightGroup`, `statusRowLayout`, `permissionModeLabel` | `cc-status-line.test.ts` |
+| `lib/run-state.ts` | Run/compaction state machine: single tick owner, verb sampled once per run, ≥1s completion gate, quiet stop on stale ctx | `RunStateMachine` | `run-state.test.ts` (event sequences on an injected clock/timer) |
+| `lib/host-status.ts` | Host volatile-state read seam (effort/thinking level, never throws — render-stack safety) | `readEffortLevel` | `host-status.test.ts` |
 | `lib/cc-compaction-row.ts` | Patches the native `[compaction]` box into a CC-style row; silences the native "Compacting…" indicator inside the component tree | `patchCompactionRow`, `silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
 | `lib/claude-tui-editor.ts` | CC-style editor: flat rules, gold `❯`, themed bar cursor (530 ms blink, focused only), autocomplete lifted above the box | `CodexStyleEditor`, `stripAnsi`, … | (visual behavior via manual verification) |
-| `lib/pi-startup-header.ts` | Pi-look startup header: 13-frame animated logo, "Let's build something great", model/effort/cwd, tips sidebar | `applyPiHeaderLook` | `render-utils.test.ts` (layout pure functions) |
+| `lib/pi-startup-header.ts` | Pi-look startup header: 13-frame animated logo, "Let's build something great", model/effort/cwd, tips sidebar; the header layout-width and tips-picking pure functions live here (their only consumer) | `applyPiHeaderLook`, `headerColumnWidths`, `pickSlashCommandTips` | `pi-startup-header.test.ts` (layout/tips table tests) |
 | `lib/statusline.ts` | CC-compatible statusline: JSON synthesis, badge math, one-shot child-process runner, footer composition | `buildStatuslineJson`, `composeFooterLines`, `StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | TS inline copy of the bundled default script (no filesystem anchor at runtime, see §8) | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts` (byte-sync with scripts/) |
 | `lib/status-snapshot.ts` | `UsageTracker`: scans the branch once per `message_end`, caches used/cost/last/total usage | `UsageTracker` | `status-snapshot.test.ts` |
-| `lib/pm-capability.ts` | permission-modes status consumer (versioned capability channel → bus snapshot → legacy-key fallback chain); core notification-queue consumer; publishes this package's presence | `readPmStatus`, `publishCcTuiCapability` | `pm-capability.test.ts` |
+| `lib/pm-capability.ts` | permission-modes status consumer (versioned capability channel → bus snapshot → legacy-key fallback chain, pure read); core notification-queue consumer (explicit retries); activate/withdraw lifecycle pair | `readPmStatus`, `activateCcTuiChannel`, `withdrawCcTuiCapability` | `pm-capability.test.ts` |
 | `lib/prefs.ts` | `~/.pi/agent/claude-tui.json` read-modify-write: merge + tmp/rename atomic swap; corrupt files fall back to `{}` | `loadPrefs`, `savePrefs` | `prefs.test.ts` |
-| `lib/render-utils.ts` | Formatting (durations/tokens/cost), header layout widths, spinner verb table, tips selection | `formatDuration`, `headerColumnWidths`, `pickWorkingVerb`, … | `render-utils.test.ts` |
+| `lib/format.ts` | Pure value formatters: durations/tokens/cost, model/effort labels, the completion line | `formatDuration`, `formatTokens`, `formatCost`, `buildCompletionLine` | `format.test.ts` |
+| `lib/spinner-verbs.ts` | Spinner verb table: 187 words byte-aligned with CC (Clauding→Piing), weighted sampling (staples ×3 / eggs ×0.25) | `weightedVerbSample`, `SPINNER_VERBS` | `spinner-verbs.test.ts` |
+| `lib/spinner-shimmer.ts` | Spinner verb shimmer (CC computeShimmerSegments port) | `shimmerSegments`, `SPINNER_TICK_MS` | `spinner-shimmer.test.ts` |
 | `themes/claude-code.json` | claude-code theme: `vars` (palette variables) + `colors` (pi semantic-color mapping) + `export` | — | — |
 | `scripts/statusline-default.sh` | Default statusline script (source of truth) | — | byte-sync pinned by `statusline.test.ts` |
 | `scripts/bench-statusline.mjs` | Default-script performance benchmark (p50 ≈ 30 ms; bash fork floor ~25 ms) | — | — |
 
-Dependency direction: entry → lib, one-way; libs rarely depend on each other (`pi-startup-header` → `render-utils` is the main exception). Libs never import pi runtime state — only pure functions (`visibleWidth` etc. from `pi-tui`) and a few pi-coding-agent exports (`keyText`, `renderDiff`, and the component classes being patched).
+Dependency direction: entry → lib, one-way; a few pure-function reuses between libs (`cc-skill-row` → `cc-rows` gutter-wrap, `cc-status-line` → `format`, `pi-startup-header` → `format`/`host-status`/`cc-rows`), all pure and acyclic. Libs never import pi runtime state — only pure functions (`visibleWidth` etc. from `pi-tui`) and a few pi-coding-agent exports (`keyText`, `renderDiff`, and the component classes being patched).
 
 ## 3. Lifecycle & event flow
 
@@ -146,7 +153,7 @@ Writes go through `savePrefs`: read disk → spread → merge → write tmp → 
 
 ## 10. Testing architecture
 
-- **Pure-module unit tests** (`node --test`, TS via type stripping): prefs atomicity, UsageTracker semantics (used = last assistant message's cumulative usage; cost = the sum), statusline JSON shape and badge math, the pm fallback chain, render-utils formatting and layout.
+- **Pure-module unit tests** (`node --test`, TS via type stripping): prefs atomicity, UsageTracker semantics (used = last assistant message's cumulative usage; cost = the sum), statusline JSON shape and badge math, the pm fallback chain + lifecycle pairing, format formatters, header layout/tips, markdown transformers, the cc-status row's three branches, the exhaustive takeover matrix, run-state event sequences, memo/gutter-wrap reuse.
 - **Golden render tests**: `cc-rows.golden.test.ts` pins rendered bytes and color routing with identity/recording themes — the equivalence net for the A6 wrap-cache and future render changes. `keyText()` returns `""` without a host, so tests assert literal fallbacks.
 - **Byte-sync test**: `DEFAULT_STATUSLINE_SCRIPT` ↔ `scripts/statusline-default.sh`.
 - **Manual verification**: `docs/manual-verification.md` covers the visual behavior automated tests cannot see (spinner frame advance, cursor blink, resize artifacts, statusline debounce regressions, …).
