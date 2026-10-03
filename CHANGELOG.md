@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0 (2026-10-03)
+
+### Changed (tool rows migrate to the official renderer channel, spec 2026-10-03-pi-1.0-tool-renderer-migration)
+- Tool rows (builtin seven / third-party / MCP) now render through pi's official `pi.registerToolRenderer` resolver channel (pi >= 1.0.1) — one resolver merges CC renderers with `next()`'s originals per slot (call/result/shell). The pre-1.0 mechanisms (re-registering the builtin seven via `pi.registerTool` + the `ToolExecutionComponent` prototype patch) are gone: tool `execute` is never re-registered, and the jiti multi-instance risk no longer applies to tool rows. Renderer output is byte-identical (golden tests untouched).
+- Peer requirement raised to `@earendil-works/pi-coding-agent >=1.0.1` (registerToolRenderer ships in 1.0.1). On pi 0.x the extension still loads (git installs don't enforce peers) but tool rows stay stock with a console warning.
+
+### Behavior deltas (deliberate, reviewed)
+- `/claude-tools off`/`auto` yields immediately — new tool calls render stock and other extensions' registrations are no longer clobbered until a `/reload` (the old path re-registered pristine definitions). Toggles apply to newly appearing tool rows; already-rendered rows keep their renderers.
+- `/claude-tui off` now restores stock tool rows too (previously CC rows persisted until `/reload` because disable() never re-registered).
+- Tools without any definition (resumed-session MCP tools whose server hasn't connected yet, hallucinated tool names) now render as CC rows instead of pi's generic JSON dump.
+- The builtin renderer-table's `powershell` key deliberately stays stock (BUILTIN_SEVEN is the seven migrated names only).
+- Interactive `/export` and `share` render taken-over rows CC-style; RPC export keeps stock (TUI-only principle).
+
+### Added
+- `BUILTIN_SEVEN` / `isBuiltinToolName` / `planResolverTakeover` in `lib/takeover-rules.ts` (single home; matrix isBuiltin route now live — the old `builtInToolDefinition` probe never fired). Table tests cover the full matrix plus the resolver planner, including the yield-path flat-shell regression pin.
+
 ## 1.7.0 (2026-10-03)
 
 ### Added (TR, spec 2026-10-02-core-tool-renderers)
