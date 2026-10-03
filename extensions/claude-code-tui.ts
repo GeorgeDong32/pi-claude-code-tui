@@ -48,6 +48,7 @@ import {
 	type ResultMemoSlot,
 } from "./lib/cc-rows.ts";
 import { decideTakeover } from "./lib/takeover-rules.ts";
+import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
@@ -1118,44 +1119,11 @@ export default function (pi: ExtensionAPI) {
 	// original text.
 	// CC renders conversation text explicitly white; pi leaves it at the
 	// terminal default (which can be any color, e.g. Gruvbox cream). Force
-	// white on plain lines; markdown-styled lines (headings, lists, code,
-	// tables) keep their own theme colors.
-	const WHITE = "\x1b[38;2;255;255;255m";
-	const plainLine = (l: string) => !/^(\s*[#>*`\-|]|\s*\d+\.)/.test(l) && l.trim() !== "";
-
+	// Assistant/user markdown styling lives in lib/cc-markdown.ts (pure,
+	// table-tested); the transformer itself only routes by message type.
 	pi.registerMarkdownTransformer((markdown, { messageType, availableWidth }) => {
-		if (messageType === "assistant") {
-			let inFence = false;
-			return markdown
-				.split("\n")
-				.map((l) => {
-					if (/^\s*```/.test(l)) {
-						inFence = !inFence;
-						return l;
-					}
-					if (inFence) return l; // keep syntax highlighting
-					// list items: wrap only the text after the marker so the
-					// markdown list structure survives
-					const m = l.match(/^(\s*(?:[-*+]|\d+\.)\s+)(.*)$/);
-					if (m && m[2]!.trim() !== "") return `${m[1]}${WHITE}${m[2]}${RESET}`;
-					return plainLine(l) ? `${WHITE}${l}${RESET}` : l;
-				})
-				.join("\n");
-		}
+		if (messageType === "assistant") return assistantWhiteText(markdown);
 		if (messageType !== "user") return markdown;
-		const bg = "\x1b[48;2;55;55;55m"; // CC userMessageBackground rgb(55,55,55)
-		const bgOff = "\x1b[49m";
-		const width = Math.max(1, Math.floor(availableWidth ?? 80));
-		// Pad with NBSPs: plain trailing spaces get trimmed by the markdown
-		// renderer, NBSPs survive, so the bar spans the full row.
-		return markdown
-			.split("\n")
-			.map((line, i) => {
-				const text = `${WHITE}${line}${RESET}`;
-				const content = i === 0 ? `${gray("❯")} ${text}` : `  ${text}`;
-				const pad = "\u00A0".repeat(Math.max(0, width - visibleWidth(content) - 1));
-				return `${bg}${content}${pad}${bgOff}`;
-			})
-			.join("\n");
+		return userMessageBar(markdown, Math.max(1, Math.floor(availableWidth ?? 80)), gray);
 	});
 }
