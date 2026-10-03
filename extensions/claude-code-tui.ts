@@ -74,7 +74,7 @@ import {
 } from "./lib/prefs.ts";
 import {
 	PM_MODE_ENV,
-	publishCcTuiCapability,
+	activateCcTuiChannel,
 	startCoreNotificationConsumer,
 	readPmStatus,
 	withdrawCcTuiCapability,
@@ -422,6 +422,9 @@ export default function (pi: ExtensionAPI) {
 			invalidate() {},
 			render(width: number): string[] {
 				dockTui = tui;
+				// Per-frame retry point for the DC5b subscription (idempotent:
+				// one null check once attached) — the read below is pure.
+				startCoreNotificationConsumer(displayCoreNotification);
 				// NOTE: never touch ctx.* in render — after session
 				// replacement/reload the captured ctx is stale and any
 				// access throws uncaught inside render (kills pi). Model
@@ -733,23 +736,25 @@ export default function (pi: ExtensionAPI) {
 	// (replaced on every enable; stale calls are try/caught downstream).
 	let latestCtx: ExtensionContext | null = null;
 
+	const displayCoreNotification = (msg: string, level: string): void => {
+		try {
+			latestCtx?.ui.notify(msg, level as "info" | "warning" | "error");
+		} catch {
+			// stale context — drop this one
+		}
+	};
+
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
 		latestCtx = ctx;
 		(pi as { getAllTools?: unknown }).getAllTools; // touch to fail fast on stale
-		publishCcTuiCapability();
-		// DC5b: consume core's notification tail queue ourselves (the
-		// capability declaration above makes core drop its direct forward).
-		// Returns false while the core bus is v1/not loaded — readPmStatus
-		// retries every frame, so it attaches right after core's first
-		// publish.
-		startCoreNotificationConsumer((msg, level) => {
-			try {
-				latestCtx?.ui.notify(msg, level as "info" | "warning" | "error");
-			} catch {
-				// stale context — drop this one
-			}
-		});
+		// DC5b: activate = publish the capability + start consuming core's
+		// notification tail queue in one call (withdraw is the single
+		// reverse). Returns false while the core bus is v1/not loaded — the
+		// explicit retries below re-attempt at session_start and on the
+		// status widget's per-frame render, so it attaches right after
+		// core's first publish.
+		activateCcTuiChannel(displayCoreNotification);
 		if (ctx.mode !== "tui") return;
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
@@ -848,6 +853,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		observeUsage(ctx);
+		// Retry point for the DC5b subscription (core may have published its
+		// bus only now — enable-time often misses, cctui loads before core).
+		startCoreNotificationConsumer(displayCoreNotification);
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 

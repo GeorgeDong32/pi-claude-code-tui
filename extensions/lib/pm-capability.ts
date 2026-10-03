@@ -59,11 +59,14 @@ function readLegacyStats(globalStore: Record<string, unknown>): string {
 }
 
 /** Read pm's published status with the full fallback chain. */
+/**
+ * Read pm's published status with the full fallback chain — a PURE read:
+ * no subscription side effects (2026-10-03; the DC5b retry hook moved to
+ * the explicit startCoreNotificationConsumer call sites — entry retries at
+ * enable / session_start / render, same idempotent semantics, but the
+ * read itself no longer hides an attach).
+ */
 export function readPmStatus(globalStore: Record<string, unknown> = globalThis as never): PmStatus {
-	// Every render frame is a free retry point for the notification
-	// consumer subscription (idempotent; attaches once the core bus v2
-	// snapshot exists — cctui loads before core, so enable-time often misses).
-	trySubscribeCoreNotifications(globalStore);
 	// DC5: the bus snapshot itself is the primary source (v1+; always-full
 	// stats under DC5 cores). The legacy projection below stays for older
 	// core builds until the version-gated removal window closes.
@@ -112,6 +115,17 @@ export function publishCcTuiCapability(globalStore: Record<string, unknown> = gl
 	globalStore.__piCcTui = { version: 1, active: true, notificationsConsumer: true };
 	// Legacy key (one compatibility cycle for older pm builds).
 	globalStore.__ccTuiActive = true;
+}
+
+/** Lifecycle pairing (2026-10-03): activate = publish + start consuming in
+ * one call; withdrawCcTuiCapability is the single reverse entry (it stops
+ * the consumer internally). Callers no longer juggle four functions. */
+export function activateCcTuiChannel(
+	display: (msg: string, level: string) => void,
+	globalStore: Record<string, unknown> = globalThis as never,
+): boolean {
+	publishCcTuiCapability(globalStore);
+	return startCoreNotificationConsumer(display, globalStore);
 }
 
 export function withdrawCcTuiCapability(globalStore: Record<string, unknown> = globalThis as never): void {

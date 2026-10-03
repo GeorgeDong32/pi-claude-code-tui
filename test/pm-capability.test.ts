@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 import {
 	PM_MODE_ENV,
+	activateCcTuiChannel,
 	publishCcTuiCapability,
 	startCoreNotificationConsumer,
 	stopCoreNotificationConsumer,
@@ -138,7 +139,7 @@ test("DC5b: consumer subscribes via snapshot onChange and diffs by lastSeenId (f
 	assert.equal(listeners.size, 0);
 });
 
-test("DC5b: readPmStatus retries the pending subscription idempotently", () => {
+test("DC5b: the subscription attach is explicit — readPmStatus never subscribes", () => {
 	const store: Record<string, unknown> = {};
 	const listeners = new Set<() => void>();
 	store.__piClaudeCodeCore = {
@@ -149,9 +150,34 @@ test("DC5b: readPmStatus retries the pending subscription idempotently", () => {
 	};
 	const shown: Array<[string, string]> = [];
 	stopCoreNotificationConsumer(); // isolate from prior tests (module singleton)
-	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
-	readPmStatus(store); // frame-path retry hook — already subscribed, no double
+	// Pure read: no listener appears no matter how many frames read status.
 	readPmStatus(store);
+	readPmStatus(store);
+	assert.equal(listeners.size, 0, "readPmStatus must not attach a subscription");
+	// The explicit retry hook is idempotent once attached.
+	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
+	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
 	assert.equal(listeners.size, 1);
 	stopCoreNotificationConsumer();
+});
+
+test("lifecycle pairing: activateCcTuiChannel publishes + attaches in one call", () => {
+	const store: Record<string, unknown> = {};
+	const listeners = new Set<() => void>();
+	store.__piClaudeCodeCore = {
+		version: 2,
+		onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); },
+		notifications: [],
+	};
+	stopCoreNotificationConsumer();
+	const attached = activateCcTuiChannel(() => {}, store);
+	assert.equal(attached, true);
+	assert.deepEqual(store.__piCcTui, { version: 1, active: true, notificationsConsumer: true });
+	assert.equal(store.__ccTuiActive, true);
+	assert.equal(listeners.size, 1);
+	// withdraw is the single reverse entry: capability keys gone, consumer stopped.
+	withdrawCcTuiCapability(store);
+	assert.equal(store.__piCcTui, undefined);
+	assert.equal(store.__ccTuiActive, undefined);
+	assert.equal(listeners.size, 0);
 });
