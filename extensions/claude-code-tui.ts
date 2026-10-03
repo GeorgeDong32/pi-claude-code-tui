@@ -51,6 +51,7 @@ import { decideTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { buildStatusRightGroup, permissionModeLabel, statusRowLayout } from "./lib/cc-status-line.ts";
 import { readEffortLevel } from "./lib/host-status.ts";
+import { RunStateMachine } from "./lib/run-state.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
@@ -205,9 +206,19 @@ export default function (pi: ExtensionAPI) {
 		}
 		return undefined;
 	};
-	let verb = weightedVerbSample();
-	let runStart = 0;
-	let tickTimer: ReturnType<typeof setInterval> | null = null;
+	// --- Run/compaction state machine (lib/run-state.ts): one owner for the
+	// tick timer and every transition; the render below reads view() only. ---
+	const runState = new RunStateMachine({
+		now: () => Date.now(),
+		setTick: (fn, ms) => setInterval(fn, ms),
+		clearTick: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+		tickMs: SPINNER_TICK_MS,
+		requestRender: () => dockTui?.requestRender(),
+		isEnabled: () => enabled,
+		pickRunVerb: weightedVerbSample,
+		pickCompletionVerb: () => randomOf(TURN_COMPLETION_VERBS),
+		completionLine: buildCompletionLine,
+	});
 	let currentModelName = "";
 	let currentProviderName = "";
 	let currentContextWindow = 0;
@@ -359,15 +370,8 @@ export default function (pi: ExtensionAPI) {
 			// stale ctx: keep the last-good snapshot
 		}
 	};
-	// Turn-completion line (✻ Verb for Xs) rendered at the end of the status
-	// widget row instead of being injected into the chat transcript.
-	let lastWorkedLine = "";
-	// Live spinner state for the cc-status left side (running vs completion).
-	let running = false;
-	// Compaction in flight (session_before_compact → session_compact/_failed):
-	// the cc-status spinner line mirrors it while pi's own indicator row runs.
-	let compacting = false;
-	let spinnerIdx = 0;
+	// Spinner accent paint, refreshed from a live ctx at each transition
+	// (state itself lives in runState above).
 	let spinnerPaint: (s: string) => string = (s) => s;
 
 	// --- Statusline runner (plan SL4): CC-compatible external script ---
@@ -441,18 +445,19 @@ export default function (pi: ExtensionAPI) {
 				const pmStats = readPmStatus().workingStats;
 				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
 				// narrow claudeShimmer band rides the 200ms tick across the word.
-				const verbText = `${verb}…`;
-				const seg = shimmerSegments(verbText, glimmerIndexAt(Date.now() - runStart, visibleWidth(verbText)));
+				const rv = runState.view();
+				const verbText = `${rv.verb}…`;
+				const seg = shimmerSegments(verbText, glimmerIndexAt(Date.now() - rv.runStart, visibleWidth(verbText)));
 				const verbPainted =
 					(seg.before ? spinnerPaint(seg.before) : "") +
 					(seg.shimmer ? theme.fg("borderAccent", seg.shimmer) : "") +
 					(seg.after ? spinnerPaint(seg.after) : "");
-				const left = compacting
-					? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
-					: running
-						? `${spinnerPaint(SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
-						: lastWorkedLine
-							? theme.fg("dim", lastWorkedLine)
+				const left = rv.compacting
+					? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
+					: rv.running
+						? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - rv.runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
+						: rv.lastWorkedLine
+							? theme.fg("dim", rv.lastWorkedLine)
 							: "";
 				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
 				// on the script row + right-aligned badge instead — the right
@@ -691,77 +696,17 @@ export default function (pi: ExtensionAPI) {
 	// Compaction spinner tick: same 200ms cadence as run ticks, but only the
 	// frame advances (no verb rotation). Runs alongside pi's native
 	// "Compacting context..." indicator; cleared on compact/failed when idle.
-	const startCompactionTick = () => {
-		if (tickTimer) return;
-		tickTimer = setInterval(() => {
-			try {
-				spinnerIdx++;
-				dockTui?.requestRender();
-			} catch {
-				if (tickTimer) {
-					clearInterval(tickTimer);
-					tickTimer = null;
-				}
-			}
-		}, 200);
-	};
-	const stopCompactionState = () => {
-		compacting = false;
-		if (!running && tickTimer) {
-			clearInterval(tickTimer);
-			tickTimer = null;
-		}
-		dockTui?.requestRender();
-	};
-
+	// Thin event adapters: the transition rules (tick ownership, verb-once,
+	// ≥1s completion gating, quiet stop on stale ctx) live in run-state.ts —
+	// table-tested there on an injected clock/timer.
 	const startRun = (ctx: ExtensionContext) => {
 		if (!enabled) return;
-		lastWorkedLine = "";
-		running = true;
-		runStart = Date.now();
-		verb = weightedVerbSample();
 		spinnerPaint = accentFg(ctx);
-		if (tickTimer) clearInterval(tickTimer);
-		// 200ms per spinner frame (SPINNER_TICK_MS) — the settled cadence
-		// (CC's native 120ms reads busy; a 300ms trial read sluggish and
-		// was rolled back). The verb is sampled ONCE per run (CC
-		// Spinner.tsx: useState(() => sample()) on mount) and never rotates;
-		// liveliness comes from the shimmer band sweeping the word
-		// (lib/spinner-shimmer.ts), which reads elapsed time at render so it
-		// rides this same tick. No new timer.
-		tickTimer = setInterval(() => {
-			try {
-				spinnerIdx++;
-				// Non-forced render keeps pi's line-diff cache intact (plan A8).
-				dockTui?.requestRender();
-			} catch {
-				// ctx went stale (session replaced/reloaded mid-run): stop
-				// ticking quietly instead of throwing uncaught (kills pi).
-				if (tickTimer) {
-					clearInterval(tickTimer);
-					tickTimer = null;
-				}
-			}
-		}, SPINNER_TICK_MS);
+		runState.startRun();
 	};
 
-	const endRun = (ctx: ExtensionContext) => {
-		if (tickTimer) {
-			clearInterval(tickTimer);
-			tickTimer = null;
-		}
-		running = false;
-		if (!enabled || runStart === 0) return;
-		const endTs = Date.now();
-		const elapsed = endTs - runStart;
-		runStart = 0;
-		if (elapsed >= 1000) {
-			// Completion line lives in the status widget (bottom of the screen)
-			// instead of being injected into the chat transcript. Plan SL1/D0:
-			// duration + wall-clock end time, rendered dim below.
-			lastWorkedLine = buildCompletionLine(randomOf(TURN_COMPLETION_VERBS), elapsed, endTs);
-			dockTui?.requestRender();
-		}
+	const endRun = (_ctx: ExtensionContext) => {
+		runState.endRun();
 	};
 
 	// Accent open-sequence cached from a live ctx (setEditorComponent's
@@ -849,13 +794,9 @@ export default function (pi: ExtensionAPI) {
 
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
-		running = false;
 		withdrawCcTuiCapability();
 		teardownStatusline();
-		if (tickTimer) {
-			clearInterval(tickTimer);
-			tickTimer = null;
-		}
+		runState.halt();
 		if (ctx.mode !== "tui") return;
 		disposePiHeaderLook();
 		try {
@@ -885,9 +826,8 @@ export default function (pi: ExtensionAPI) {
 	// Mirror compaction progress on the cc-status spinner line.
 	pi.on("session_before_compact", async (_event, ctx) => {
 		if (!enabled) return;
-		compacting = true;
 		spinnerPaint = accentFg(ctx);
-		startCompactionTick();
+		runState.startCompaction();
 		// pi shows its native indicator row before this event fires; mute it
 		// so compaction lives only on the cc-status spinner line. Retry a
 		// couple of times in case show lands a tick later.
@@ -900,10 +840,10 @@ export default function (pi: ExtensionAPI) {
 		hush(4);
 	});
 	pi.on("session_compact", async () => {
-		stopCompactionState();
+		runState.stopCompaction();
 	});
 	pi.on("session_compact_failed", async () => {
-		stopCompactionState();
+		runState.stopCompaction();
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -943,10 +883,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		if (tickTimer) {
-			clearInterval(tickTimer);
-			tickTimer = null;
-		}
+		runState.halt();
 		teardownStatusline();
 		if (ctx.mode === "tui") {
 			ctx.ui.setWorkingIndicator();
@@ -1003,8 +940,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("claude-verb", {
 		description: "Reroll the Claude Code spinner verb",
 		handler: async (_args, ctx) => {
-			verb = weightedVerbSample();
-			ctx.ui.notify(`✻ ${verb}…`, "info");
+			ctx.ui.notify(`✻ ${runState.rerollVerb()}…`, "info");
 		},
 	});
 
