@@ -47,6 +47,7 @@ import {
 	type CCTheme,
 	type ResultMemoSlot,
 } from "./lib/cc-rows.ts";
+import { decideTakeover } from "./lib/takeover-rules.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
 import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
 import { patchSkillRow } from "./lib/cc-skill-row.ts";
@@ -263,42 +264,33 @@ export default function (pi: ExtensionAPI) {
 			console.warn("[claude-tui] ToolExecutionComponent renderer hooks not found — third-party tool rows stay pi-default");
 			return;
 		}
-		const isBuiltin = (self: { builtInToolDefinition?: unknown }) => self.builtInToolDefinition !== undefined;
-		// Force mode = explicit user choice (toolRowsPref === true). Auto mode
-		// keeps the old yield-to-renderers contract.
-		const forceRows = () => enabled && toolRowsEnabled && toolRowsPref === true;
-		// Tools whose own result renderer is live, information-dense UI that
-		// force mode must NOT flatten into a 3-row preview: pi-subagents'
-		// `subagent` renders a live workflow card (per-agent progress, tokens,
-		// checklists) inside the tool block — taking it over pushed all that
-		// state down into the belowEditor "Async agents" widget and left a
-		// bare "Workflow running." line (the CC design keeps progress INLINE
-		// under the call row; pi-subagents' coverage mechanism also hides
-		// widget rows already covered by the inline card, so exempting the
-		// result restores that split). Banner-style renderers (SoL-Pi's ⚡
-		// blocks) stay taken over — they carry no live detail. The call row
-		// is still ours (CC ⏺ row + subagentCallSummary), inside the same
-		// flat "self" container.
-		// TR D1 (spec 2026-10-02-core-tool-renderers): obs_recall's own result
-		// renderer is a dense paged view (size/lines/range + content preview) —
-		// flattening it to a 3-row CC preview would throw away exactly the
-		// paging state that makes recall readable. Same exemption class as
-		// subagent: keep the tool's own renderer in force mode.
-		const FORCE_RESULT_EXEMPT = new Set(["subagent", "obs_recall"]);
+		// The whole take-over matrix (user switches × MCP × builtin × force ×
+		// FORCE_RESULT_EXEMPT per slot) lives in lib/takeover-rules.ts — one
+		// pure function, table-tested exhaustively. The blocks below only wire
+		// component state into it and build the CC renderer on "cc".
+		const takeover = (
+			self: { toolName: string; builtInToolDefinition?: unknown; toolDefinition?: unknown },
+			slot: "call" | "result" | "shell",
+			hasOrig?: boolean,
+		) =>
+			decideTakeover({
+				enabled,
+				toolRowsEnabled,
+				forced: toolRowsPref === true,
+				isMcp: mcpDisplayName(self.toolName) !== null,
+				isBuiltin: self.builtInToolDefinition !== undefined,
+				hasOrig: slot === "shell" ? self.toolDefinition !== undefined : Boolean(hasOrig),
+				toolName: self.toolName,
+				slot,
+			});
 		// NOTE: theme must come from pi core's factory args (always live).
 		// Never capture ctx.ui.theme here: a session_start ctx goes stale
 		// after newSession/fork/switchSession/reload, and touching ctx.ui
 		// inside render() throws where pi can't catch it (kills pi).
 		proto.getCallRenderer = function () {
 			const orig = origCall.call(this);
-			// SPEC 0.99-adapt DEC-03/MCP-02: official MCP tools ship their own
-			// renderer; we take them over on purpose (the user-asked shape is the
-			// CC row). The MCP exception exempts ONLY the builtin check and the
-			// auto-yield — the user's enabled/toolRowsEnabled switches stay in charge.
-			if (!enabled || !toolRowsEnabled) return orig;
+			if (takeover(this, "call", Boolean(orig)) === "orig") return orig;
 			const mcpName = mcpDisplayName(this.toolName);
-			if (!mcpName && isBuiltin(this)) return orig;
-			if (!mcpName && orig && !forceRows()) return orig;
 			// renderCall is a factory: (args, theme, ctx) => component. All
 			// summaries (obs_recall included, TR D2) come from callArgsFor —
 			// the single home for arg-to-summary rules.
@@ -322,11 +314,8 @@ export default function (pi: ExtensionAPI) {
 		};
 		proto.getResultRenderer = function () {
 			const orig = origResult.call(this);
-			// MCP takeover (DEC-03): same switch discipline as the call renderer.
-			if (!enabled || !toolRowsEnabled) return orig;
+			if (takeover(this, "result", Boolean(orig)) === "orig") return orig;
 			const mcpName = mcpDisplayName(this.toolName);
-			if (!mcpName && isBuiltin(this)) return orig;
-			if (!mcpName && orig && (!forceRows() || FORCE_RESULT_EXEMPT.has(this.toolName))) return orig;
 			// Component memo (plan A6): pi re-invokes getResultRenderer() every
 			// frame, so the memo slot rides on the component instance instead of
 			// a closure (which would be rebuilt per frame). The key/factory
@@ -348,13 +337,7 @@ export default function (pi: ExtensionAPI) {
 		// Drop the pending/success background box for third-party tools so they
 		// match the flat CC look of the overridden built-ins.
 		proto.getRenderShell = function () {
-			if (
-				enabled &&
-				toolRowsEnabled &&
-				(mcpDisplayName(this.toolName) || !isBuiltin(this)) &&
-				this.toolDefinition !== undefined
-			)
-				return "self";
+			if (takeover(this, "shell") === "cc") return "self";
 			return origShell.call(this);
 		};
 		proto.__ccRowsPatched = true;
