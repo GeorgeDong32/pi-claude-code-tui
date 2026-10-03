@@ -9,12 +9,14 @@
 
 - **启动头** — 像素风 Clawd 吉祥物 + 粗体 `Claude Code` 标题 + 当前模型名与 cwd（第三方模型名原样显示）
 - **精简提示栏** — 平面分隔线、金色 `❯` 提示符、金色条状光标；编辑器为空时显示暗色旋转的 `Try "..."` 建议
-- **CC 风格工具行** — `⏺ Tool(args)` 格式 + 暗色 `⎿` 输出槽、彩色 diff、红色错误提示（内置工具的执行逻辑完全不动，仅渲染层改造）。折叠输出上限为 **3 个物理行**（单行压缩 JSON 可能换行成几十个终端行，所以折叠按换行后的行数计算，而非逻辑行数），并带展开提示。
-- **第三方 / MCP 工具回退** — 其他扩展注册的工具（MCP 适配器、`task` 等）没有自带渲染器，会用 pi 默认的 10 行 fallback 淹没对话记录；本扩展通过 prototype-patch `ToolExecutionComponent`，让任何没有 `renderCall`/`renderResult` 的工具都能获得同样的 CC 风格折叠行。
-- **旋转状态动词** — 全套 187 个 Claude Code 俏皮动词（`Pondering…`、`Vibing…`、`Flibbertigibbeting…`），配花瓣旋转动画，完成时显示 `✻ Worked for 12s` 收尾行
+- **CC 风格工具行** — `⏺ Tool(args)` 格式 + 暗色 `⎿` 输出槽、彩色 diff、红色错误提示（内置工具的执行逻辑完全不动，仅渲染层改造）。折叠输出上限为 **3 个物理行**（单行压缩 JSON 可能换行成几十个终端行，所以折叠按换行后的行数计算，而非逻辑行数），并带展开提示。调用进行中 `⏺` 圆点以 600ms 闪烁，成功/出错后定格。
+- **Skill 调用行** — 原生 `[skill]` 盒子改为 CC 式 `⏺ Skill(name)`，SKILL.md 正文在 `⎿` 槽下展开（与其他工具行同款 gutter）；点击展开保留。
+- **压缩（compaction）行** — `/compact` 时渲染为 `⏺ Context compacted from N tokens`（可展开摘要），进度同步镜像到状态行动词位置。
+- **第三方 / MCP 工具回退** — 其他扩展注册的工具（MCP 适配器、`task` 等）没有自带渲染器，会用 pi 默认的 10 行 fallback 淹没对话记录；本扩展通过 prototype-patch `ToolExecutionComponent`，让任何没有 `renderCall`/`renderResult` 的工具都能获得同样的 CC 风格折叠行。官方 MCP 工具显示为 CC 同款 `server - tool (MCP)` 名字（`(MCP)` 后缀暗色）。
+- **状态动词 + 流光** — 每次 run 从 187 个 Claude Code 俏皮动词中抽一个（`Pondering…`、`Vibing…`、`Flibbertigibbeting…`，加权抽样，彩蛋 `Piing…` 稀有）全程固定，花瓣帧动画推进、一道流光滑过动词（对齐 CC：动词不轮换，动感来自流光）；run 结束显示 `✻ Baked for 1m 12s · 13:54` 风格的收尾行，`/claude-verb` 可手动重掷。
 - **状态行** — 提示栏上方显示 `model │ Context 23% (50k/200k) │ $0.042`。运行 `/claude-footer on` 可换回 pi 原生 footer（保留其他扩展的 footer，如 MCP 适配器——CC 状态组件会自动隐藏，避免重复）
 - **底部提示行** — `⏵⏵ auto mode on …` 按键提示；输入框有内容时自动压缩为仅模式标签
-- **历史消息** — 已发送的消息渲染为细长全宽条，带暗色 `❯` 前缀
+- **历史消息** — 已发送的消息渲染为细长全宽灰条，带暗色 `❯` 前缀；assistant 正文纯白、markdown 样式行（标题/引用/代码）保留主题色（对齐 CC 的对话配色）
 - **claude-code 主题** — 将 Claude Code 暗色调色板应用到整个 TUI
 
 以上全部只是显示层：**不会改变任何发给模型的内容**。
@@ -22,7 +24,7 @@
 ## 安装
 
 ```bash
-pi install git:github.com/Shiorangerin/pi-claude-code-tui
+pi install git:github.com/GeorgeDong32/pi-claude-code-tui
 ```
 
 然后在 pi 中打开 `/settings`，选择 **claude-code** 主题，重启 pi。
@@ -31,7 +33,7 @@ pi install git:github.com/Shiorangerin/pi-claude-code-tui
 
 ```text
 请帮我安装 pi 包 "pi-claude-code-tui"：
-1. 运行：pi install git:github.com/Shiorangerin/pi-claude-code-tui
+1. 运行：pi install git:github.com/GeorgeDong32/pi-claude-code-tui
 2. 打开 pi，运行 /settings，选择 "claude-code" 主题
 3. 重启 pi
 ```
@@ -43,7 +45,7 @@ pi install git:github.com/Shiorangerin/pi-claude-code-tui
 | `/claude-tui` | 整体开关复刻效果（头图 / 编辑器 / 旋转动画 / 状态行；工具行独立控制，见下） |
 | `/claude-tools` | 独立开关 CC 工具行：`on`（全量接管）/ `off` / `auto`（默认，自动让路） |
 | `/claude-footer` | 切换 pi 原生 footer（`on`：保留 MCP 等扩展的 footer、隐藏 CC 状态组件；`off`：纯 CC 干净外观） |
-| `/claude-verb` | 重新掷一个旋转动画动词 |
+| `/claude-verb` | 重新掷当前 run 的状态动词 |
 | `/claude-statusline` | CC 兼容可配置状态行：`on` / `off` / `badge on\|off` / `set <command>`（详见下文「Statusline」） |
 | `Shift+Tab` 或 `/mode` | 切换 **Plan Mode** / **Auto Mode** |
 
@@ -65,7 +67,7 @@ pi 中工具渲染是单占位机制：`read` / `bash` / `grep` / `find` / `ls` 
 
 ### 与 SoL-Pi 同用
 
-SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后面），会静默夺走 `edit`/`write` 的渲染权，`auto` 的启动检测看不到它。同用 SoL-Pi 时建议运行一次 `/claude-tools on`：所有工具（含 `obs_recall` 的 Sol-Pi 横幅回显）统一为 CC 行，Action Fusion 照常工作。
+SoL-Pi 在 `session_start` 里才注册工具（且排在 packages 列表更后面），会静默夺走 `edit`/`write` 的渲染权，`auto` 的启动检测看不到它。同用 SoL-Pi 时建议运行一次 `/claude-tools on`：调用行（含 `obs_recall`，显示为 `⏺ obs_recall(obs_xxxx · +15.5KB)` 摘要）统一为 CC 行，Action Fusion / Observation Pack 照常工作；`obs_recall` 自带的分页结果视图与 `then_run` 徽章照常保留（TR 豁免，不被折叠成 3 行预览）。
 
 ### 与 pi-subagents 同用
 
@@ -135,7 +137,7 @@ Claude Code 默认折叠思考内容；pi 原生同样支持（`settings.json` �
 - **头图（Clawd）不见了** — 很可能是另一个 TUI 扩展在本包之后加载，清空了共享头图槽位。请在 `settings.json` 的 `packages` 列表里把本包放在它**后面**，然后 `/reload`。另外检查对方扩展自己的头图开关（pi-cc-extensions 是 `~/.pi/agent/claude-code-style.json` 里的 `showStartupHeader`）。
 - **工具行显示异常 / 双重样式** — 两个扩展在样式化同一批工具行。运行 `/claude-tools off`（`/reload` 后依然生效）把工具渲染让给另一个扩展，或 `/claude-tools on` 收回。
 - **切换了选项但没有任何变化** — pi 会在磁盘上缓存编译后的扩展。运行 `rm $TMPDIR/jiti/*claude-tui* $TMPDIR/jiti/*claude-code-tui*`，重启 pi 再试。
-- **`/claude-tools off` 在 `/reload` 后失效** — 你用的是 ≤ 1.2.2 版本。重新运行 `pi install git:github.com/Shiorangerin/pi-claude-code-tui` 升级到 ≥ 1.3.1，该版本会持久化选择。
+- **`/claude-tools off` 在 `/reload` 后失效** — 你用的是 ≤ 1.2.2 版本。重新运行 `pi install git:github.com/GeorgeDong32/pi-claude-code-tui` 升级到 ≥ 1.3.1，该版本会持久化选择。
 
 如果以上都没用，请开一个 issue，附上你的 pi 版本（`pi --version`）、包版本和 `packages` 列表顺序。
 
