@@ -64,7 +64,7 @@ src/                        # 空目录残留（无文件，勿引用）
 ## 提交与发布
 
 - Conventional Commits：`feat(rows): …`、`fix(status): …`、`chore(release): 1.5.0`。scope 常用：`rows`、`tui`、`status`、`statusline`、`0.99-adapt`。
-- 发布流程：改 `package.json` version → 更新 `CHANGELOG.md` → `chore(release): vX.Y.Z` → `npm publish`（`publishConfig.access: public`）。`package-lock.json` 与 `AGENTS.md` 曾在 .gitignore；AGENTS.md 现已入库。
+- 发布流程（git-first）：改 `package.json` version → 更新 `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push。本机安装为 pi 的 git 安装形态（`git:github.com:GeorgeDong32/pi-claude-code-tui`），安装目录 `git pull` 后 `/reload` 即生效——**npm publish 不是必经步骤**（README 的安装引导也是 `pi install git:…`；如需同步发 npm，本机无官方 registry 凭据，须由用户本人 `npm login` 后执行）。`package-lock.json` 与 `AGENTS.md` 曾在 .gitignore；AGENTS.md 现已入库。
 
 ## 编写 / 修改扩展时的注意事项（踩过的坑）
 
