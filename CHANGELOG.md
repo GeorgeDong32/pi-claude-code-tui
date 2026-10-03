@@ -1,9 +1,21 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 (2026-10-03)
 
 ### Added (TR, spec 2026-10-02-core-tool-renderers)
 - Force mode exempts obs_recall dense paged result view (FORCE_RESULT_EXEMPT - same class as subagent); obs_recall args in CC call rows collapse to a short "obs_4b1d7b39 - +15.5KB" form; fused write/edit calls re-state the "then_run: command" badge as a dim second row under the CC row (core own call badge is replaced in force mode). Auto mode unchanged (core renderers flow through natively).
+
+### Fixed
+- Startup header's effort label read `pi.getThinkingLevel()` unguarded — a throwing/stale host could kill pi on the render stack. All effort reads now go through one never-throwing seam (`lib/host-status.ts` `readEffortLevel`).
+- The run/compaction spinner interval is `unref()`d again (regression of the 2026-10-03 state-machine extraction, caught by code review) — the package's longest-lived timer can no longer hold the event loop open.
+
+### Changed (architecture, zero visual delta — golden render assertions untouched)
+- **Tool-row wiring converged** (review 2026-10-03): the obs_recall arg summary has a single definition in the `callArgsFor` table (the force-mode path's local copy is gone — the TR D2 format was already the effective one, so production output is byte-identical); the per-frame component memo is one shared implementation (`renderMemoizedResult`) for both wiring paths (registered overrides + force-mode prototype patch); the ⎿-gutter expansion layout is one shared `gutterWrapRows`/`createWidthCache` pair (ccResult family + skill-row expansion, which is now byte-pinned); the takeover decision matrix (user switches × MCP × builtin × force × exemptions, per call/result/shell slot) is a pure function in `lib/takeover-rules.ts`, pinned by an exhaustive boolean-matrix table test including an edf4fce regression case.
+- **Entry slimmed to wiring** (1215 → 1037 lines): the markdown transformer (assistant white paint + user grey bar), the cc-status row composition (right group / left-right join / footer mode chip), and the effort-read seam now live in pure, table-tested lib modules (`cc-markdown.ts`, `cc-status-line.ts`, `host-status.ts`).
+- **render-utils drawer dissolved**: dead code dropped (~130 lines: the orphaned 108-word legacy verb table, dead imports, `shortenCwd`, an identity fn) with `noUnusedLocals` on to keep it out; header layout/tips functions homed in their only consumer (`pi-startup-header.ts`, now node-test-loadable via explicit constructor fields); the remaining seven formatters became `lib/format.ts`.
+- **Run/compaction state machine** (`lib/run-state.ts`): the seven scattered mutable vars and the double-owned tick timer became one module with injected clock/timer and transition tests (mid-run compact, disable mid-run, throwing-tick containment, ≥1s completion gate).
+- **pm-capability**: `readPmStatus` is a pure read now (the DC5b subscription retry used to hide inside it); lifecycle pairs up as `activateCcTuiChannel` / `withdrawCcTuiCapability`, with the entry retrying explicitly at enable / session_start / each status-widget frame.
+- Tests 101 → 133 (takeover matrix, memo dimensions, gutter bytes, markdown/cc-status tables, header layout/tips, run-state transitions, pm purity). Docs: AGENTS + ARCHITECTURE (zh/en) module maps refreshed; manual-verification checklist gains six checkpoints for the refactor's visually-sensitive surfaces.
 
 ## 1.6.0 (2026-10-02)
 
