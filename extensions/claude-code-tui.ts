@@ -31,9 +31,9 @@
  *   /claude-footer — 开/关原生底栏（开：兼容其它扩展 footer；关：CC 极简风）
  */
 
-import { VERSION, keyText, ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition, renderDiff } from "@earendil-works/pi-coding-agent";
+import { ToolExecutionComponent, UserMessageComponent, createBashToolDefinition, createEditToolDefinition, createFindToolDefinition, createGrepToolDefinition, createLsToolDefinition, createReadToolDefinition, createWriteToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	ccCall,
 	ccThenRunCall,
@@ -64,7 +64,6 @@ import {
 	resolveStatusLinePrefs,
 	savePrefs,
 	type ClaudeTuiPrefs,
-	type StatusLinePrefs,
 } from "./lib/prefs.ts";
 import {
 	PM_MODE_ENV,
@@ -116,11 +115,6 @@ const TURN_COMPLETION_VERBS = [
 ];
 
 const randomOf = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
-
-const shortenCwd = (): string => {
-	const cwd = process.cwd();
-	return cwd.replace(/^\/Users\/[^/]+/, "~");
-};
 
 // --- CC tool rows (`⏺ Tool(args)` + `⎿  output`) ---
 // Built-in tool definitions are instantiated via pi's public API and their

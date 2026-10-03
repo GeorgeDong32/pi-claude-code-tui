@@ -6,16 +6,13 @@ import {
 	collectPiCommandNames,
 	formatCwd,
 	formatModelLabel,
-	formatThinkingLabel,
 	headerColumnWidths,
 	padRight,
 	pickSlashCommandTips,
-	pickWorkingVerb,
 } from "./render-utils.ts";
 
 const LOGO_CELL = "███";
 const LOGO_ANIMATION_INTERVAL_MS = 120;
-const WORKING_VERB_INTERVAL_MS = 2400;
 
 type LogoColor = "panel" | "cyan" | "red" | "green" | "orange" | "white" | "flash" | "brand";
 type LogoFrame = {
@@ -226,7 +223,7 @@ class PiStartupHeader implements Component {
 		const innerWidth = width - 2;
 		const { leftWidth, rightWidth, useTips } = headerColumnWidths(innerWidth);
 		const model = formatModelLabel(this.ctx.model);
-		const effort = formatThinkingLabel(this.pi.getThinkingLevel());
+		const effort = this.pi.getThinkingLevel();
 		const cwd = formatCwd(this.ctx.cwd);
 
 		const leftLines = [
