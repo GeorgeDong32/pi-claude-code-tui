@@ -11,7 +11,7 @@
  *   single-sourced from core's MODE_META via the bus projection)
  */
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { formatCost, formatTokens } from "./render-utils.ts";
+import { formatCost, formatTokens } from "./format.ts";
 
 export interface StatusRightInput {
 	model: string;

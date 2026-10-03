@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCompletionLine, effortBadgeSymbol, formatCost, formatDuration, formatTokens } from "../extensions/lib/render-utils.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatCost, formatDuration, formatTokens } from "../extensions/lib/format.ts";
 
 test("formatDuration table", () => {
 	assert.equal(formatDuration(0), "0s");

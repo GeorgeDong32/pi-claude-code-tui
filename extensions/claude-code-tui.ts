@@ -63,7 +63,7 @@ import {
 	StatuslineRunner,
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
-import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/render-utils.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/format.ts";
 import {
 	defaultPrefsPath,
 	loadPrefs,
