@@ -69,3 +69,30 @@ export class UsageTracker {
 		return this.snapshot;
 	}
 }
+
+/**
+ * Host event-ordering knowledge for usage sampling (spec 8.2), verified
+ * against pi 1.0.2's agent-session.js:
+ *
+ * - `message_end` reaches extensions BEFORE `sessionManager.appendMessage`
+ *   persists the just-finished message. A branch scan there lags by exactly
+ *   one assistant message — still correct for every earlier turn.
+ * - `agent_settled` fires after the run loop finishes, i.e. after the final
+ *   append. Observing there guarantees the final value even when no user
+ *   message follows (the exact miss this fixes).
+ * - `session_tree` (branch switch/resume) and `session_compact` (branch
+ *   rewrite) invalidate the snapshot: the next observation must recompute
+ *   from the new branch, never carry stale numbers over.
+ *
+ * The event message's own usage is deliberately NOT merged into a branch
+ * scan — appending it double-counts once the message persists.
+ */
+export const USAGE_OBSERVATION_POINTS = [
+	"message_end", // tool-turn timeliness (lags one message by design)
+	"agent_settled", // post-append: guarantees the final value
+	"session_start", // branch (re)load
+	"session_tree", // branch switch / resume
+	"session_compact", // compaction rewrote the branch
+] as const;
+
+export type UsageObservationPoint = (typeof USAGE_OBSERVATION_POINTS)[number];

@@ -781,8 +781,9 @@ export default function (pi: ExtensionAPI) {
 		};
 		hush(4);
 	});
-	pi.on("session_compact", async () => {
+	pi.on("session_compact", async (_event, ctx) => {
 		runState.stopCompaction();
+		observeUsageEvent(ctx, true);
 		refreshStatusline();
 	});
 	pi.on("session_compact_failed", async () => {
@@ -797,8 +798,15 @@ export default function (pi: ExtensionAPI) {
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 
-	// Assistant usage finalizes at message_end — that is the only moment the
-	// branch's usage totals can change (plan A7).
+	// Assistant usage: observe at the points USAGE_OBSERVATION_POINTS pins
+	// (spec 8.2). message_end alone lags one message — pi notifies extensions
+	// before appendMessage persists it — so agent_settled (post-append)
+	// guarantees the final value; branch switches and compaction recompute.
+	const observeUsageEvent = (ctx: { sessionManager?: { getBranch?: () => unknown } }, refresh: boolean) => {
+		observeUsage(ctx);
+		if (refresh) refreshStatusline();
+	};
+
 	pi.on("message_end", async (_event, ctx) => {
 		observeUsage(ctx);
 		refreshStatusline();
@@ -817,6 +825,17 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		endRun(ctx);
+		// Post-append guarantee (spec 8.2): the final assistant message is in
+		// the branch by the time the run settles — no follow-up user message
+		// needed for the statusline to show the real totals.
+		observeUsageEvent(ctx, true);
+	});
+
+	// Branch invalidations (spec 8.2): switching/resuming a branch and
+	// compaction both replace what getBranch() returns — recompute, never
+	// carry stale totals across.
+	pi.on("session_tree", async (_event, ctx) => {
+		observeUsageEvent(ctx, true);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
