@@ -22,6 +22,7 @@
 import { keyText, SkillInvocationMessageComponent } from "@earendil-works/pi-coding-agent";
 import { Container, MouseRegion, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { createWidthCache, gutterWrapRows } from "./cc-rows.ts";
+import { PrototypeMethodAdapter } from "./pi-proto-adapter.ts";
 
 export type ThemeFg = (color: string, text: string) => string;
 
@@ -46,22 +47,26 @@ interface SkillInvocationProto {
 	__ccSkillRowPatched?: boolean;
 }
 
-/** Idempotent prototype patch. `getFg` is read lazily per render so a
- * re-cached theme (session replace) is always current. */
-export function patchSkillRow(getFg: () => ThemeFg | null): void {
-	const proto = SkillInvocationMessageComponent.prototype as unknown as SkillInvocationProto;
-	if (proto.__ccSkillRowPatched) return;
-	proto.__ccSkillRowPatched = true;
-	proto.updateDisplay = function (this: SkillInvocationProto) {
+/** Centralized lifecycle (spec 8.3): same rules as the compaction row. */
+const skillRowAdapter = new PrototypeMethodAdapter({
+	proto: SkillInvocationMessageComponent.prototype,
+	method: "updateDisplay",
+	marker: "__ccSkillRowPatched",
+	hostMatches: (host): boolean =>
+		typeof (host as SkillInvocationProto)?.setBgFn === "function"
+		&& typeof (host as SkillInvocationProto)?.clear === "function"
+		&& typeof (host as SkillInvocationProto)?.addChild === "function"
+		&& typeof (host as SkillInvocationProto)?.setExpanded === "function",
+	body: (host, fg) => {
+		const self = host as unknown as SkillInvocationProto;
 		// Strip the Box chrome: no customMessageBg, no 1x1 padding — the row
 		// must sit flush in the transcript like the CC tool rows.
-		this.setBgFn(undefined);
-		this.paddingX = 0;
-		this.paddingY = 0;
-		this.clear();
-		const fg = (color: string, text: string) => getFg()?.(color, text) ?? text;
-		const name = this.skillBlock?.name ?? "";
-		const expanded = !!this.expanded;
+		self.setBgFn(undefined);
+		self.paddingX = 0;
+		self.paddingY = 0;
+		self.clear();
+		const name = self.skillBlock?.name ?? "";
+		const expanded = !!self.expanded;
 		// Call-row head, same shape as cc-rows ccCall's resolved state:
 		// success dot + white bold "Skill(" — a resolved tool use in the
 		// CC family (SkillTool/UI.tsx shows the name, nothing else).
@@ -85,7 +90,7 @@ export function patchSkillRow(getFg: () => ThemeFg | null): void {
 			// gutterWrapRows (single ⤿ on the first physical row, 5-space
 			// continuations) with the same wrap-once width cache, so the block
 			// stays byte-consistent with the ccResult family by construction.
-			const lines = (this.skillBlock?.content ?? "").replace(/\n+$/, "").split("\n");
+			const lines = (self.skillBlock?.content ?? "").replace(/\n+$/, "").split("\n");
 			const bodyCache = createWidthCache();
 			content.addChild({
 				invalidate() {
@@ -100,10 +105,20 @@ export function patchSkillRow(getFg: () => ThemeFg | null): void {
 		// Re-arm the native click-to-expand (the compaction patch drops its
 		// MouseRegion; the skill row always had one, keep the behavior).
 		// Native structure: the content is added ONCE, wrapped in the region.
-		this.addChild(new MouseRegion(content, (event) => {
+		self.addChild(new MouseRegion(content, (event) => {
 			if (event.type !== "click" || event.button !== "left") return undefined;
-			this.setExpanded(!this.expanded);
+			self.setExpanded(!self.expanded);
 			return { handled: true };
 		}));
-	};
+	},
+});
+
+/** Apply (first call) or refresh the getter (re-enable / reload). */
+export function patchSkillRow(getFg: () => ThemeFg | null): void {
+	skillRowAdapter.apply(getFg);
+}
+
+/** Withdraw — only while our wrapper is still the installed method. */
+export function restoreSkillRow(): void {
+	skillRowAdapter.restore();
 }

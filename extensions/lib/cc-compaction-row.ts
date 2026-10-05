@@ -10,6 +10,7 @@
 import { CompactionSummaryMessageComponent } from "@earendil-works/pi-coding-agent";
 import { keyText } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { PrototypeMethodAdapter } from "./pi-proto-adapter.ts";
 
 export type ThemeFg = (color: string, text: string) => string;
 
@@ -25,41 +26,57 @@ interface CompactionProto {
 	__ccRowsPatched?: boolean;
 }
 
-/** Idempotent prototype patch. `getFg` is read lazily per render so a
- * re-cached theme (session replace) is always current. */
-export function patchCompactionRow(getFg: () => ThemeFg | null): void {
-	const proto = CompactionSummaryMessageComponent.prototype as unknown as CompactionProto;
-	if (proto.__ccRowsPatched) return;
-	proto.__ccRowsPatched = true;
-	proto.updateDisplay = function (this: CompactionProto) {
+/** Centralized lifecycle (spec 8.3): original saved, getter refreshed per
+ * apply, shape-checked per call, degraded to the original on any failure,
+ * restored only while we still own the method. */
+const compactionRowAdapter = new PrototypeMethodAdapter({
+	proto: CompactionSummaryMessageComponent.prototype,
+	method: "updateDisplay",
+	marker: "__ccRowsPatched",
+	hostMatches: (host): boolean =>
+		typeof (host as CompactionProto)?.setBgFn === "function"
+		&& typeof (host as CompactionProto)?.clear === "function"
+		&& typeof (host as CompactionProto)?.addChild === "function"
+		&& typeof (host as { message?: { tokensBefore?: unknown } })?.message?.tokensBefore === "number",
+	body: (host, fg) => {
+		const self = host as unknown as CompactionProto;
 		// Strip the Box chrome: no customMessageBg, no 1x1 padding — the row
 		// must sit flush in the transcript like the CC tool rows.
-		this.setBgFn(undefined);
-		this.paddingX = 0;
-		this.paddingY = 0;
-		this.clear();
-		const fg = (color: string, text: string) => getFg()?.(color, text) ?? text;
+		self.setBgFn(undefined);
+		self.paddingX = 0;
+		self.paddingY = 0;
+		self.clear();
 		// One quiet grey family for the whole row — the token count must not
 		// pop white against the dim compaction line.
-		const tokens = this.message.tokensBefore.toLocaleString("en-US");
+		const tokens = self.message.tokensBefore.toLocaleString("en-US");
 		const expandHint = keyText("app.tools.expand") || "ctrl+o";
-		if (!this.expanded) {
-			this.addChild(new Text(
+		if (!self.expanded) {
+			self.addChild(new Text(
 				`${fg("dim", "\u23fa")} ${fg("toolOutput", `Context compacted from ${tokens} tokens`)} ${fg("dim", `(${expandHint} to expand)`)}`,
 				0,
 				0,
 			));
 			return;
 		}
-		this.addChild(new Text(
+		self.addChild(new Text(
 			`${fg("dim", "\u23fa")} ${fg("toolOutput", `Context compacted ${tokens} tokens`)}`,
 			0,
 			0,
 		));
-		for (const line of this.message.summary.split("\n")) {
-			this.addChild(new Text(`${fg("dim", "  \u23bf  ")}${fg("toolOutput", line)}`, 0, 0));
+		for (const line of self.message.summary.split("\n")) {
+			self.addChild(new Text(`${fg("dim", "  \u23bf  ")}${fg("toolOutput", line)}`, 0, 0));
 		}
-	};
+	},
+});
+
+/** Apply (first call) or refresh the getter (re-enable / reload). */
+export function patchCompactionRow(getFg: () => ThemeFg | null): void {
+	compactionRowAdapter.apply(getFg);
+}
+
+/** Withdraw — only while our wrapper is still the installed method. */
+export function restoreCompactionRow(): void {
+	compactionRowAdapter.restore();
 }
 
 /**

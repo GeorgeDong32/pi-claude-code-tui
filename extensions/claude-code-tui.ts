@@ -52,8 +52,9 @@ import { buildStatusRightGroup, permissionModeLabel, statusRowLayout } from "./l
 import { readEffortLevel } from "./lib/host-status.ts";
 import { RunStateMachine } from "./lib/run-state.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
-import { patchCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
-import { patchSkillRow } from "./lib/cc-skill-row.ts";
+import { patchCompactionRow, restoreCompactionRow, silenceNativeCompactionIndicator } from "./lib/cc-compaction-row.ts";
+import { patchSkillRow, restoreSkillRow } from "./lib/cc-skill-row.ts";
+import { PrototypeMethodAdapter } from "./lib/pi-proto-adapter.ts";
 import { weightedVerbSample } from "./lib/spinner-verbs.ts";
 import { glimmerIndexAt, shimmerSegments, SPINNER_TICK_MS } from "./lib/spinner-shimmer.ts";
 import { UsageTracker } from "./lib/status-snapshot.ts";
@@ -713,6 +714,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		patchCompactionRow(() => themeFg);
 		patchSkillRow(() => themeFg);
+		applyUserBarPatch();
 		applyPiHeaderLook(pi, ctx);
 		setEditor(ctx);
 		applyFooterMode(ctx);
@@ -746,6 +748,11 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setEditorComponent(undefined);
 		activeEditor?.release(); // spec 8.1: disable releases the blink timer too
 		activeEditor = null;
+		// spec 8.3: withdraw our prototype rewrites (only the ones we still
+		// own) so /claude-tui off restores stock rendering.
+		restoreCompactionRow();
+		restoreSkillRow();
+		restoreUserBarPatch();
 		// Replica fully off: relinquish the footer slot (restores pi's
 		// built-in footer). Single-occupancy caveat still applies, but an
 		// explicit off means the user wants stock pi back.
@@ -957,17 +964,20 @@ export default function (pi: ExtensionAPI) {
 	// Compact CC-style user bars: UserMessageComponent wraps content in a Box
 	// with hardcoded paddingY=1 (a blank row above and below the bar). Patch
 	// rebuild to zero it so the bar sits tight against neighboring messages.
-	const userProto = UserMessageComponent.prototype as unknown as { rebuild: () => void; __ccCompact?: boolean };
-	if (!userProto.__ccCompact) {
-		const origRebuild = userProto.rebuild;
-		userProto.rebuild = function (this: { children?: Array<{ paddingY?: number }> }) {
-			origRebuild.call(this);
-			for (const child of this.children ?? []) {
+	// Same centralized lifecycle as the compaction/skill rows (spec 8.3).
+	const userBarAdapter = new PrototypeMethodAdapter({
+		proto: UserMessageComponent.prototype,
+		method: "rebuild",
+		marker: "__ccCompact",
+		hostMatches: (host): boolean => Array.isArray((host as { children?: unknown })?.children),
+		body: (host) => {
+			for (const child of (host as { children?: Array<{ paddingY?: number }> }).children ?? []) {
 				if (child && typeof child.paddingY === "number" && child.paddingY > 0) child.paddingY = 0;
 			}
-		};
-		userProto.__ccCompact = true;
-	}
+		},
+	});
+	const applyUserBarPatch = (): void => userBarAdapter.apply(() => null);
+	const restoreUserBarPatch = (): void => userBarAdapter.restore();
 
 	// History user messages: CC-style slim bar — dim `❯` at column 0 (outputPad
 	// setting is 0) on a one-row near-black background spanning the content
