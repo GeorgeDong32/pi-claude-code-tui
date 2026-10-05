@@ -250,8 +250,10 @@ export default function (pi: ExtensionAPI) {
 			// setEditorComponent (ctx live), but cursorOpen fires on every
 			// editor render — it must not touch ctx (stale after session
 			// replace/reload → uncaught throw kills pi).
-			// The prompt follows the theme accent; the cursor bar mimics a
-			// terminal-native caret (light gray block, dark text).
+			// Replacing the editor releases the old instance's blink timer
+			// (spec 8.1): pi does not do this, and a leaked 530ms interval
+			// would keep rendering into a dead TUI.
+			activeEditor?.release();
 			activeEditor = new CodexStyleEditor(tui, theme, keybindings, () =>
 				cursorOpenFromFgAnsi("\x1b[38;2;215;215;215m"),
 			);
@@ -742,6 +744,8 @@ export default function (pi: ExtensionAPI) {
 		}
 		ctx.ui.setHeader(undefined);
 		ctx.ui.setEditorComponent(undefined);
+		activeEditor?.release(); // spec 8.1: disable releases the blink timer too
+		activeEditor = null;
 		// Replica fully off: relinquish the footer slot (restores pi's
 		// built-in footer). Single-occupancy caveat still applies, but an
 		// explicit off means the user wants stock pi back.
@@ -818,6 +822,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async (_event, ctx) => {
 		runState.halt();
 		teardownStatusline();
+		activeEditor?.release(); // spec 8.1: no blink timer outlives the session
 		if (ctx.mode === "tui") {
 			ctx.ui.setWorkingIndicator();
 			ctx.ui.setEditorComponent(undefined);

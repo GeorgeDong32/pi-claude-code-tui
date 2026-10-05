@@ -121,20 +121,24 @@ export function cursorOpenFromFgAnsi(fgOpen: string): string {
 }
 
 export class CodexStyleEditor extends CustomEditor {
+	private readonly cursorOpen: () => string;
+
 	constructor(
 		tui: TUI,
 		theme: EditorTheme,
 		keybindings: KeybindingsManager,
-		private readonly cursorOpen: () => string,
+		cursorOpen: () => string,
 	) {
 		super(tui, theme, keybindings, { paddingX: 1 });
+		this.cursorOpen = cursorOpen;
 	}
 
 	private blinkOn = true;
 	private blinkTimer: ReturnType<typeof setInterval> | undefined;
+	private released = false;
 
 	private ensureBlink(): void {
-		if (this.blinkTimer) return;
+		if (this.blinkTimer || this.released) return;
 		this.blinkTimer = setInterval(() => {
 			// Only blink while focused (plan A8): an unfocused editor must not
 			// force repaints every 530ms — park the cursor solid instead.
@@ -146,6 +150,24 @@ export class CodexStyleEditor extends CustomEditor {
 			// Non-forced render keeps pi's line-diff cache intact.
 			this.tui.requestRender();
 		}, 530);
+		// Never hold the event loop open for a cursor blink (spec 8.1).
+		this.blinkTimer.unref?.();
+	}
+
+	/**
+	 * Release the blink timer and permanently park this instance (spec 8.1).
+	 * Idempotent; the entry calls it before replacing the editor and on
+	 * disable/shutdown. After release, render no longer (re)creates the
+	 * timer, so a stale instance can never touch an old TUI again.
+	 */
+	release(): void {
+		if (this.released) return;
+		this.released = true;
+		if (this.blinkTimer !== undefined) {
+			clearInterval(this.blinkTimer);
+			this.blinkTimer = undefined;
+		}
+		this.blinkOn = true;
 	}
 
 	// Shift+Tab (backtab) toggles Plan/Auto Mode. Intercepted here, before
