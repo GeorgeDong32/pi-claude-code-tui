@@ -1,0 +1,56 @@
+# row-budget-overflow [tone] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+[0m.[0m ⟦dim⟧8.0k·24s⟦/fg⟧
+[0m.[0m ⟦dim⟧7.0k·21s⟦/fg⟧
+[0m.[0m ⟦dim⟧6.0k·18s⟦/fg⟧
+[0m.[0m ⟦dim⟧5.0k·15s⟦/fg⟧
+[0m.[0m ⟦dim⟧4.0k·12s⟦/fg⟧
+[0m..[0m ⟦dim⟧3.0k·9s⟦/fg⟧
+  ⟦dim⟧↓ 2 more⟦/fg⟧
+
+
+===== width=40 =====
+  ● main
+  ○ agent-8           ⟦dim⟧8.0k·24s⟦/fg⟧
+  ○ agent-7           ⟦dim⟧7.0k·21s⟦/fg⟧
+  ○ agent-6           ⟦dim⟧6.0k·18s⟦/fg⟧
+  ○ agent-5           ⟦dim⟧5.0k·15s⟦/fg⟧
+  ○ agent-4           ⟦dim⟧4.0k·12s⟦/fg⟧
+  ○ agent-3            ⟦dim⟧3.0k·9s⟦/fg⟧
+                      ⟦dim⟧↓ 2 more⟦/fg⟧
+
+
+===== width=60 =====
+  ● main
+  ○ agent-8                               ⟦dim⟧8.0k·24s⟦/fg⟧
+  ○ agent-7                               ⟦dim⟧7.0k·21s⟦/fg⟧
+  ○ agent-6                               ⟦dim⟧6.0k·18s⟦/fg⟧
+  ○ agent-5                               ⟦dim⟧5.0k·15s⟦/fg⟧
+  ○ agent-4                               ⟦dim⟧4.0k·12s⟦/fg⟧
+  ○ agent-3                                ⟦dim⟧3.0k·9s⟦/fg⟧
+                                          ⟦dim⟧↓ 2 more⟦/fg⟧
+
+
+===== width=80 =====
+  ● main
+  ○ agent-8                                                   ⟦dim⟧8.0k·24s⟦/fg⟧
+  ○ agent-7                                                   ⟦dim⟧7.0k·21s⟦/fg⟧
+  ○ agent-6                                                   ⟦dim⟧6.0k·18s⟦/fg⟧
+  ○ agent-5                                                   ⟦dim⟧5.0k·15s⟦/fg⟧
+  ○ agent-4                                                   ⟦dim⟧4.0k·12s⟦/fg⟧
+  ○ agent-3                                                    ⟦dim⟧3.0k·9s⟦/fg⟧
+                                                              ⟦dim⟧↓ 2 more⟦/fg⟧
+
+
+===== width=120 =====
+  ● main
+  ○ agent-8                                                                                           ⟦dim⟧8.0k·24s⟦/fg⟧
+  ○ agent-7                                                                                           ⟦dim⟧7.0k·21s⟦/fg⟧
+  ○ agent-6                                                                                           ⟦dim⟧6.0k·18s⟦/fg⟧
+  ○ agent-5                                                                                           ⟦dim⟧5.0k·15s⟦/fg⟧
+  ○ agent-4                                                                                           ⟦dim⟧4.0k·12s⟦/fg⟧
+  ○ agent-3                                                                                            ⟦dim⟧3.0k·9s⟦/fg⟧
+                                                                                                      ⟦dim⟧↓ 2 more⟦/fg⟧

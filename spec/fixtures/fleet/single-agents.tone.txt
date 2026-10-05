@@ -1,0 +1,31 @@
+# single-agents [tone] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+ [0m...[0m ⟦dim⟧0·25s⟦/fg⟧
+[0m.[0m ⟦dim⟧8.1k·16s⟦/fg⟧
+
+
+===== width=40 =====
+  ● main
+  ○ writer               ⟦dim⟧0·25s⟦/fg⟧
+  ○ reviewer          ⟦dim⟧8.1k·16s⟦/fg⟧
+
+
+===== width=60 =====
+  ● main
+  ○ writer                                   ⟦dim⟧0·25s⟦/fg⟧
+  ○ reviewer                              ⟦dim⟧8.1k·16s⟦/fg⟧
+
+
+===== width=80 =====
+  ● main
+  ○ writer                                                       ⟦dim⟧0·25s⟦/fg⟧
+  ○ reviewer                                                  ⟦dim⟧8.1k·16s⟦/fg⟧
+
+
+===== width=120 =====
+  ● main
+  ○ writer                                                                                               ⟦dim⟧0·25s⟦/fg⟧
+  ○ reviewer                                                                                          ⟦dim⟧8.1k·16s⟦/fg⟧

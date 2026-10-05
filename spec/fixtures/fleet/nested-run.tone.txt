@@ -1,0 +1,36 @@
+# nested-run [tone] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+ [0m...[0m ⟦dim⟧0·30s⟦/fg⟧
+    ├─ ⟦success⟧✓[0m...[0m
+    └─ ⟦accent⟧●⟦[0m...[0m
+
+
+===== width=40 =====
+  ● main
+  ○ owner                ⟦dim⟧0·30s⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦syntaxType⟧sc[0m...[0m
+    └─ ⟦accent⟧●⟦/fg⟧ ⟦syntaxVariable[0m...[0m
+
+
+===== width=60 =====
+  ● main
+  ○ owner                                    ⟦dim⟧0·30s⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦syntaxType⟧scout⟦/fg⟧ · complete⟦[0m...[0m
+    └─ ⟦accent⟧●⟦/fg⟧ ⟦syntaxVariable⟧tester⟦/fg⟧ · runni[0m...[0m
+
+
+===== width=80 =====
+  ● main
+  ○ owner                                                        ⟦dim⟧0·30s⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦syntaxType⟧scout⟦/fg⟧ · complete⟦dim⟧ · 8s⟦/fg⟧⟦dim⟧⟦[0m...[0m
+    └─ ⟦accent⟧●⟦/fg⟧ ⟦syntaxVariable⟧tester⟦/fg⟧ · running⟦dim⟧ · 12s⟦/fg⟧⟦d[0m...[0m
+
+
+===== width=120 =====
+  ● main
+  ○ owner                                                                                                ⟦dim⟧0·30s⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦syntaxType⟧scout⟦/fg⟧ · complete⟦dim⟧ · 8s⟦/fg⟧⟦dim⟧⟦/fg⟧
+    └─ ⟦accent⟧●⟦/fg⟧ ⟦syntaxVariable⟧tester⟦/fg⟧ · running⟦dim⟧ · 12s⟦/fg⟧⟦dim⟧⟦/fg⟧

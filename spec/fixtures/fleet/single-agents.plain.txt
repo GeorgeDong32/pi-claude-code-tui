@@ -1,0 +1,31 @@
+# single-agents [plain] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+  ○ writer     0·25s
+  ○ revi[0m...[0m 8.1k·16s
+
+
+===== width=40 =====
+  ● main
+  ○ writer                         0·25s
+  ○ reviewer                    8.1k·16s
+
+
+===== width=60 =====
+  ● main
+  ○ writer                                             0·25s
+  ○ reviewer                                        8.1k·16s
+
+
+===== width=80 =====
+  ● main
+  ○ writer                                                                 0·25s
+  ○ reviewer                                                            8.1k·16s
+
+
+===== width=120 =====
+  ● main
+  ○ writer                                                                                                         0·25s
+  ○ reviewer                                                                                                    8.1k·16s

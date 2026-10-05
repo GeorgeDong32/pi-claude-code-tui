@@ -1,0 +1,36 @@
+# nested-run [plain] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+  ○ owner      0·30s
+    ├─ ✓ scout · [0m...[0m
+    └─ ● tester ·[0m...[0m
+
+
+===== width=40 =====
+  ● main
+  ○ owner                          0·30s
+    ├─ ✓ scout · complete · 8s
+    └─ ● tester · running · 12s
+
+
+===== width=60 =====
+  ● main
+  ○ owner                                              0·30s
+    ├─ ✓ scout · complete · 8s
+    └─ ● tester · running · 12s
+
+
+===== width=80 =====
+  ● main
+  ○ owner                                                                  0·30s
+    ├─ ✓ scout · complete · 8s
+    └─ ● tester · running · 12s
+
+
+===== width=120 =====
+  ● main
+  ○ owner                                                                                                          0·30s
+    ├─ ✓ scout · complete · 8s
+    └─ ● tester · running · 12s

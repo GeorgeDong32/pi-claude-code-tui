@@ -1,0 +1,46 @@
+# workflow-tree [tone] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+ ⟦dim⟧usage on ch[0m...[0m
+ ⟦dim⟧119.2k·12s⟦[0m...[0m
+    ├─ ⟦accent⟧●⟦[0m...[0m
+    ├─ ⟦success⟧✓[0m...[0m
+    └─ ⟦muted⟧◦⟦/[0m...[0m
+
+
+===== width=40 =====
+  ● main
+  ○ wor[0m...[0m ⟦dim⟧usage on child rows⟦/fg⟧
+    ├─ ○ reviewe[0m...[0m ⟦dim⟧119.2k·12s⟦/fg⟧
+    ├─ ⟦accent⟧●⟦/fg⟧ ⟦muted⟧Tasks · [0m...[0m
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦muted⟧collect[0m...[0m
+    └─ ⟦muted⟧◦⟦/fg⟧ ⟦muted⟧verify (t[0m...[0m
+
+
+===== width=60 =====
+  ● main
+  ○ workflow                   ⟦dim⟧usage on child rows⟦/fg⟧
+    ├─ ○ reviewer  review               ⟦dim⟧119.2k·12s⟦/fg⟧
+    ├─ ⟦accent⟧●⟦/fg⟧ ⟦muted⟧Tasks · 1 done · running · 1[0m...[0m
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦muted⟧collect (scout)⟦/fg⟧ · ⟦suc[0m...[0m
+    └─ ⟦muted⟧◦⟦/fg⟧ ⟦muted⟧verify (tester)⟦/fg⟧ · ⟦muted[0m...[0m
+
+
+===== width=80 =====
+  ● main
+  ○ workflow                                       ⟦dim⟧usage on child rows⟦/fg⟧
+    ├─ ○ reviewer  review                                   ⟦dim⟧119.2k·12s⟦/fg⟧
+    ├─ ⟦accent⟧●⟦/fg⟧ ⟦muted⟧Tasks · 1 done · running · 1 queued⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦muted⟧collect (scout)⟦/fg⟧ · ⟦success⟧complete⟦/fg⟧⟦d[0m...[0m
+    └─ ⟦muted⟧◦⟦/fg⟧ ⟦muted⟧verify (tester)⟦/fg⟧ · ⟦muted⟧pending⟦/fg⟧
+
+
+===== width=120 =====
+  ● main
+  ○ workflow                                                                               ⟦dim⟧usage on child rows⟦/fg⟧
+    ├─ ○ reviewer  review                                                                           ⟦dim⟧119.2k·12s⟦/fg⟧
+    ├─ ⟦accent⟧●⟦/fg⟧ ⟦muted⟧Tasks · 1 done · running · 1 queued⟦/fg⟧
+    ├─ ⟦success⟧✓⟦/fg⟧ ⟦muted⟧collect (scout)⟦/fg⟧ · ⟦success⟧complete⟦/fg⟧⟦dim⟧ · 8s · ↓ 2.2k window · 2.4k spent⟦/fg⟧
+    └─ ⟦muted⟧◦⟦/fg⟧ ⟦muted⟧verify (tester)⟦/fg⟧ · ⟦muted⟧pending⟦/fg⟧

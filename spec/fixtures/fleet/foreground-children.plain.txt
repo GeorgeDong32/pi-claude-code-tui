@@ -1,0 +1,31 @@
+# foreground-children [plain] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+  ○ revi[0m...[0m 8.1k·16s
+  ○ test[0m...[0m 3.0k·12s
+
+
+===== width=40 =====
+  ● main
+  ○ reviewer  检查展示接口      8.1k·16s
+  ○ tester  验证 reload         3.0k·12s
+
+
+===== width=60 =====
+  ● main
+  ○ reviewer  检查展示接口                          8.1k·16s
+  ○ tester  验证 reload                             3.0k·12s
+
+
+===== width=80 =====
+  ● main
+  ○ reviewer  检查展示接口                                              8.1k·16s
+  ○ tester  验证 reload                                                 3.0k·12s
+
+
+===== width=120 =====
+  ● main
+  ○ reviewer  检查展示接口                                                                                      8.1k·16s
+  ○ tester  验证 reload                                                                                         3.0k·12s

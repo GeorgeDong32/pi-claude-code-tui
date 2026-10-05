@@ -1,0 +1,31 @@
+# selection-walk [plain] — 按 ↓↓↓↑ 逐步渲染，width=80, Date.now=1000000000000
+
+
+===== 初始（未激活） =====
+  ● main
+  ○ writer                                                                 0·25s
+  ○ reviewer                                                            8.1k·16s
+
+
+===== 按键 "\u001b[B"（第 1 步） =====
+> ● main
+  ○ writer                                                                 0·25s
+  ○ reviewer                                                            8.1k·16s
+
+
+===== 按键 "\u001b[B"（第 2 步） =====
+  ● main
+> ○ writer                                                                 0·25s
+  ○ reviewer                                                            8.1k·16s
+
+
+===== 按键 "\u001b[B"（第 3 步） =====
+  ● main
+  ○ writer                                                                 0·25s
+> ○ reviewer                                                            8.1k·16s
+
+
+===== 按键 "\u001b[A"（第 4 步） =====
+  ● main
+> ○ writer                                                                 0·25s
+  ○ reviewer                                                            8.1k·16s

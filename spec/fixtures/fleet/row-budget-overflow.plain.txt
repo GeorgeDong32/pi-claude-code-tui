@@ -1,0 +1,56 @@
+# row-budget-overflow [plain] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+  ○ agent-8 8.0k·24s
+  ○ agent-7 7.0k·21s
+  ○ agent-6 6.0k·18s
+  ○ agent-5 5.0k·15s
+  ○ agent-4 4.0k·12s
+  ○ agent-3  3.0k·9s
+            ↓ 2 more
+
+
+===== width=40 =====
+  ● main
+  ○ agent-8                     8.0k·24s
+  ○ agent-7                     7.0k·21s
+  ○ agent-6                     6.0k·18s
+  ○ agent-5                     5.0k·15s
+  ○ agent-4                     4.0k·12s
+  ○ agent-3                      3.0k·9s
+                                ↓ 2 more
+
+
+===== width=60 =====
+  ● main
+  ○ agent-8                                         8.0k·24s
+  ○ agent-7                                         7.0k·21s
+  ○ agent-6                                         6.0k·18s
+  ○ agent-5                                         5.0k·15s
+  ○ agent-4                                         4.0k·12s
+  ○ agent-3                                          3.0k·9s
+                                                    ↓ 2 more
+
+
+===== width=80 =====
+  ● main
+  ○ agent-8                                                             8.0k·24s
+  ○ agent-7                                                             7.0k·21s
+  ○ agent-6                                                             6.0k·18s
+  ○ agent-5                                                             5.0k·15s
+  ○ agent-4                                                             4.0k·12s
+  ○ agent-3                                                              3.0k·9s
+                                                                        ↓ 2 more
+
+
+===== width=120 =====
+  ● main
+  ○ agent-8                                                                                                     8.0k·24s
+  ○ agent-7                                                                                                     7.0k·21s
+  ○ agent-6                                                                                                     6.0k·18s
+  ○ agent-5                                                                                                     5.0k·15s
+  ○ agent-4                                                                                                     4.0k·12s
+  ○ agent-3                                                                                                      3.0k·9s
+                                                                                                                ↓ 2 more

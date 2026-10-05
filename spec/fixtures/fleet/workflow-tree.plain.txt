@@ -1,0 +1,46 @@
+# workflow-tree [plain] — fork surface-tuning @ 0ebb9c83, Date.now=1000000000000
+
+
+===== width=20 =====
+  ● main
+ usage on child rows
+    ├─[0m...[0m 119.2k·12s
+    ├─ ● Tasks · [0m...[0m
+    ├─ ✓ collect [0m...[0m
+    └─ ◦ verify ([0m...[0m
+
+
+===== width=40 =====
+  ● main
+  ○ workflow         usage on child rows
+    ├─ ○ reviewer  review     119.2k·12s
+    ├─ ● Tasks · 1 done · running · 1[0m...[0m
+    ├─ ✓ collect (scout) · complete ·[0m...[0m
+    └─ ◦ verify (tester) · pending
+
+
+===== width=60 =====
+  ● main
+  ○ workflow                             usage on child rows
+    ├─ ○ reviewer  review                         119.2k·12s
+    ├─ ● Tasks · 1 done · running · 1 queued
+    ├─ ✓ collect (scout) · complete · 8s · ↓ 2.2k window [0m...[0m
+    └─ ◦ verify (tester) · pending
+
+
+===== width=80 =====
+  ● main
+  ○ workflow                                                 usage on child rows
+    ├─ ○ reviewer  review                                             119.2k·12s
+    ├─ ● Tasks · 1 done · running · 1 queued
+    ├─ ✓ collect (scout) · complete · 8s · ↓ 2.2k window · 2.4k spent
+    └─ ◦ verify (tester) · pending
+
+
+===== width=120 =====
+  ● main
+  ○ workflow                                                                                         usage on child rows
+    ├─ ○ reviewer  review                                                                                     119.2k·12s
+    ├─ ● Tasks · 1 done · running · 1 queued
+    ├─ ✓ collect (scout) · complete · 8s · ↓ 2.2k window · 2.4k spent
+    └─ ◦ verify (tester) · pending
