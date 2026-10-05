@@ -280,3 +280,148 @@ export async function probeSubagentPresentation(options: {
 		options.events.emit(SUBAGENT_PRESENTATION_PROBE_EVENT, { protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION });
 	});
 }
+
+// ---- Bridge (P3): registration lifecycle for the CC adapters ----
+
+export type SubagentPresentationBridgeStatus =
+	| "off"
+	| "registering"
+	| "active"
+	| "unsupported"
+	| "no-host";
+
+export interface SubagentPresentationBridgeOptions {
+	events: SubagentPresentationEventBus;
+	/** Drawing per surface this bridge registers. */
+	surfaces: Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>;
+	identity?: string;
+	/** Diagnostics surfacing (upstream already dedupes per session+reason). */
+	onDiagnostic?: (payload: SubagentPresentationDiagnosticPayload) => void;
+	onStatusChange?: (status: SubagentPresentationBridgeStatus) => void;
+	/** Bounded handshake waits only — never a permanent retry timer. */
+	handshakeTimeoutMs?: number;
+}
+
+/**
+ * Owns the CC side of the presentation seam: probe at session start,
+ * register once a host answers, re-register when a host becomes ready later
+ * (load order independence), and withdraw cleanly on stop. Withdraw and
+ * re-registration are idempotent; stale handles from an older runtime are
+ * generation-guarded upstream and never withdrawn twice here.
+ *
+ * The bridge holds no theme, no ctx, and no timers beyond the bounded
+ * handshake — frames carry the current theme per draw, so nothing captured
+ * here can go stale.
+ */
+export class SubagentPresentationBridge {
+	private readonly options: SubagentPresentationBridgeOptions;
+	private handle: SubagentPresentationRegistrationHandle | undefined;
+	private session: string | null = null;
+	private state: SubagentPresentationBridgeStatus = "off";
+	private readonly unsubscribers: Array<() => void> = [];
+
+	constructor(options: SubagentPresentationBridgeOptions) {
+		this.options = options;
+		this.unsubscribers.push(options.events.on(SUBAGENT_PRESENTATION_READY_EVENT, (payload) => {
+			const ready = payload as SubagentPresentationReadyPayload;
+			if (ready?.protocol !== SUBAGENT_PRESENTATION_PROTOCOL_VERSION) {
+				this.setStatus("unsupported");
+				return;
+			}
+			// A host became (or re-became) ready: (re)register whenever the
+			// bridge is not explicitly stopped — including after a probe miss
+			// (host loaded later than the probe window).
+			if (this.state !== "off") void this.register(ready);
+		}));
+		this.unsubscribers.push(options.events.on(SUBAGENT_PRESENTATION_DIAGNOSTIC_EVENT, (payload) => {
+			const diagnostic = payload as SubagentPresentationDiagnosticPayload;
+			if (diagnostic?.protocol === SUBAGENT_PRESENTATION_PROTOCOL_VERSION) this.options.onDiagnostic?.(diagnostic);
+		}));
+	}
+
+	/** Session activation point (enable / session_start). */
+	start(session: string | null): void {
+		this.session = session;
+		this.setStatus("registering");
+		void this.probeAndRegister();
+	}
+
+	/** Withdraw point (disable / session_shutdown). Idempotent. */
+	stop(): void {
+		this.withdraw();
+		this.session = null;
+		this.setStatus("off");
+	}
+
+	dispose(): void {
+		this.stop();
+		for (const unsubscribe of this.unsubscribers) unsubscribe();
+		this.unsubscribers.length = 0;
+	}
+
+	status(): SubagentPresentationBridgeStatus {
+		return this.state;
+	}
+
+	currentSession(): string | null {
+		return this.session;
+	}
+
+	private async probeAndRegister(): Promise<void> {
+		const ready = await probeSubagentPresentation({ events: this.options.events, timeoutMs: this.options.handshakeTimeoutMs ?? 250 });
+		if (this.state !== "registering") return;
+		if (!ready) {
+			this.setStatus("no-host");
+			return;
+		}
+		await this.register(ready);
+	}
+
+	private async register(ready: SubagentPresentationReadyPayload): Promise<void> {
+		// Only register surfaces the host actually offers; the full bottom-bar
+		// capability needs both, partial availability still displays.
+		const surfaces = Object.fromEntries(Object.entries(this.options.surfaces).filter(([surface]) => ready.surfaces.includes(surface as SubagentPresentationSurface)));
+		if (!Object.keys(surfaces).length) {
+			this.setStatus("unsupported");
+			return;
+		}
+		const result = await registerSubagentPresentation({
+			events: this.options.events,
+			identity: this.options.identity ?? "cc-tui",
+			surfaces: surfaces as Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>,
+			session: ready.session ?? this.session,
+			runtimeGeneration: ready.runtimeGeneration,
+			timeoutMs: this.options.handshakeTimeoutMs ?? 250,
+		});
+		// Ignore responses that arrive after an explicit stop(); any other
+		// late arrival (probe + ready overlap, no-host recovery) is valid.
+		if (this.state === "off") return;
+		if (result.status === "activated" || result.status === "replaced") {
+			this.withdraw();
+			this.handle = result.handle;
+			this.setStatus("active");
+		} else if (result.status === "not-ready") {
+			// Session/generation raced (host restarted between probe and
+			// register). The next ready broadcast re-registers.
+			this.withdraw();
+			this.setStatus("registering");
+		} else {
+			this.setStatus("unsupported");
+		}
+	}
+
+	private withdraw(): void {
+		try {
+			this.handle?.dispose();
+		} catch {
+			// A stale handle from a replaced runtime: nothing to restore.
+		}
+		this.handle = undefined;
+	}
+
+	private setStatus(status: SubagentPresentationBridgeStatus): void {
+		if (this.state === status) return;
+		this.state = status;
+		this.options.onStatusChange?.(status);
+	}
+}

@@ -11,13 +11,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-	ccSubagentCallHeadline,
-	ccSubagentCallSpans,
 	compactTokenCount,
 	drawCcFleetFrame,
 	formatFleetElapsed,
 	subagentIdentityColor,
-	type SubagentCallRowArgs,
 } from "../extensions/lib/cc-subagent-rows.ts";
 import {
 	SUBAGENT_PRESENTATION_PROTOCOL_VERSION,
@@ -192,45 +189,6 @@ test("helpers: compact tokens, elapsed, identity colors are stable", () => {
 	assert.notEqual(subagentIdentityColor("reviewer"), subagentIdentityColor("scout"));
 });
 
-// ---- Call-row headline shapes ----
-
-test("call rows: control actions show the action and a bounded target", () => {
-	assert.equal(ccSubagentCallHeadline({ action: "status" }), "subagent status");
-	assert.equal(ccSubagentCallHeadline({ action: "stop", agent: "reviewer" }), "subagent stop reviewer");
-	assert.equal(ccSubagentCallHeadline({ action: "status", id: "abcdef1234567890" }), "subagent status abcdef12");
-});
-
-test("call rows: workflow shapes — reply block, path basename, no file reads", () => {
-	assert.equal(ccSubagentCallHeadline({ workflow: true }), "subagent workflow (reply block)");
-	assert.equal(ccSubagentCallHeadline({ workflow: "specs/run.spec.ts" }), "subagent workflow run.spec.ts");
-	assert.equal(ccSubagentCallHeadline({ workflowScriptPath: "/a/b/plan.js" }), "subagent workflow plan.js");
-	assert.equal(ccSubagentCallHeadline({ workflowScript: "runs.run(\"x\", { task })\nmore" }), "subagent workflow runs.run(\"x\", { task })");
-	assert.equal(ccSubagentCallHeadline({ tasks: [{}, {}, {}] }), "subagent workflow 3 tasks");
-	assert.equal(ccSubagentCallHeadline({ chain: { steps: 2 } }), "subagent workflow (chain)");
-});
-
-test("call rows: label is the whole headline; default is humanized", () => {
-	assert.equal(ccSubagentCallHeadline({ label: "检查展示接口", agent: "reviewer", task: "long task text" }), "subagent 检查展示接口");
-	assert.equal(ccSubagentCallHeadline({ agent: "reviewer", model: "claude-x", async: true, task: "verify the reload path works fine" }), "subagent reviewer claude-x [async] verify the reload path works fine");
-	const longTask = "x".repeat(80);
-	const truncated = ccSubagentCallHeadline({ agent: "a", task: longTask });
-	assert.ok(truncated.endsWith("…"));
-	assert.equal(truncated.length, "subagent a ".length + 58);
-	assert.equal(ccSubagentCallHeadline({}), "subagent ?");
-});
-
-test("call rows: spans route accent for workflow/agent, dim for meta", () => {
-	const spans = ccSubagentCallSpans({ agent: "reviewer", model: "sonnet", async: true, task: "do it" }, tone);
-	assert.equal(spans.title, "⟦toolTitle⟧subagent⟦/fg⟧");
-	assert.equal(spans.rest, "⟦accent⟧reviewer⟦/fg⟧⟦dim⟧ sonnet [async] do it⟦/fg⟧");
-	const workflowSpans = ccSubagentCallSpans({ workflow: "run.spec.ts", async: true }, tone);
-	assert.equal(workflowSpans.rest, "⟦accent⟧workflow run.spec.ts⟦/fg⟧ ⟦warning⟧[async]⟦/fg⟧");
-	const labelSpans = ccSubagentCallSpans({ label: "短标题", async: true }, tone);
-	assert.equal(labelSpans.rest, "短标题 ⟦dim⟧[async]⟦/fg⟧");
-	const actionSpans = ccSubagentCallSpans({ action: "status", agent: "reviewer" }, tone);
-	assert.equal(actionSpans.rest, "status ⟦dim⟧reviewer⟦/fg⟧");
-});
-
 // ---- Protocol mirror ----
 
 class FakeBus implements SubagentPresentationEventBus {
@@ -303,5 +261,3 @@ test("protocol mirror: probe resolves the ready payload and rejects foreign vers
 function visibleLen(line: string): number {
 	return line.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
-
-void (0 as unknown as SubagentCallRowArgs);

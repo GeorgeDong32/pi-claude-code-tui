@@ -64,6 +64,8 @@ import {
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
 import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/format.ts";
+import { drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
+import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
 import {
 	defaultPrefsPath,
 	loadPrefs,
@@ -651,6 +653,20 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// --- Subagent presentation bridge (spec P3) ---
+	// Registers the CC fleet drawing with pi-subagents' presentation seam.
+	// The bridge owns no theme and no timers: frames carry the current theme
+	// per draw and handshakes are bounded. Any failure path leaves the
+	// upstream native roster in place — degraded, never blank.
+	const subagentBridge = new SubagentPresentationBridge({
+		events: pi.events,
+		surfaces: { fleet: drawCcFleetFrame },
+		onDiagnostic: (diagnostic) => {
+			// Upstream dedupes per session+reason; this tail is per occurrence.
+			console.warn(`[claude-tui] subagent ${diagnostic.surface} drawing fell back to native: ${diagnostic.reason}`);
+		},
+	});
+
 	const enable = (ctx: ExtensionContext) => {
 		enabled = true;
 		latestCtx = ctx;
@@ -686,6 +702,13 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		channelActive = true; // TUI session active (non-TUI enable returned above)
+		// Presentation seam: probe → register (or re-register on late hosts).
+		// Bounded handshake; no host means native roster stays — never blank.
+		try {
+			subagentBridge.start(ctx.sessionManager.getSessionId() ?? null);
+		} catch {
+			// seam transport hiccup: stay native, stay quiet
+		}
 		patchCompactionRow(() => themeFg);
 		patchSkillRow(() => themeFg);
 		applyPiHeaderLook(pi, ctx);
@@ -705,6 +728,7 @@ export default function (pi: ExtensionAPI) {
 	const disable = (ctx: ExtensionContext) => {
 		enabled = false;
 		channelActive = false; // resolver yields stock renderers from now on
+		subagentBridge.stop(); // withdraw the CC adapters; native roster returns
 		withdrawCcTuiCapability();
 		teardownStatusline();
 		runState.halt();
