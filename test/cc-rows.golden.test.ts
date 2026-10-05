@@ -20,8 +20,6 @@ import {
 	callArgsFor,
 	collapseCommand,
 	dotStatus,
-	newResultMemoSlot,
-	renderMemoizedResult,
 	strArg,
 	subagentCallSummary,
 	textOfResult,
@@ -274,31 +272,6 @@ test("ccResult wrap cache: repeat renders identical, width change recomputes, in
 	assert.deepEqual(component.render(80), at80, "after invalidate the output is still identical");
 });
 
-// The single component-memo implementation shared by both wiring paths
-// (registerToolOverrides' closure and the force-mode prototype slot).
-test("renderMemoizedResult: reference-identical inputs reuse, any changed dimension rebuilds (plan A6)", () => {
-	const slot = newResultMemoSlot();
-	const theme = identity;
-	const r1 = { text: "one" };
-	const r2 = { text: "two" };
-	const call = (result: unknown, expanded?: boolean, isError = false, th: unknown = theme) =>
-		renderMemoizedResult(slot, { factory: "f", theme: th as never, name: "bash", result, options: { expanded }, isError });
-
-	const a = call(r1);
-	assert.equal(call(r1), a, "same references (incl. undefined expanded) → same component");
-	assert.notEqual(call(r1, false), a, "expanded undefined → false is a rebuild");
-	const b = call(r1, false);
-	assert.equal(call(r1, false), b, "stable again");
-	assert.notEqual(call(r1, false, true), b, "isError change rebuilds");
-	const c = call(r1, false, true);
-	assert.notEqual(call(r1, false, true, {}), c, "theme identity change rebuilds");
-	const d = call(r1, false, true, {});
-	assert.notEqual(call(r2, false, true, {}), d, "new result reference rebuilds (streaming partial miss)");
-	// Factory rotation on a shared slot (prototype path): foreign factory
-	// resets the memo even with identical inputs.
-	const e = renderMemoizedResult(slot, { factory: "g", theme: {} as never, name: "bash", result: r2, options: { expanded: false }, isError: true });
-	assert.notEqual(e, call(r2, false, true, {}), "foreign factory on the slot resets the memo");
-});
 
 // SPEC 0.99-adapt MCP-01/02: official MCP tools (which carry their own
 // renderers since pi 0.99) must render as CC rows.

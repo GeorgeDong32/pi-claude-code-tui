@@ -41,10 +41,9 @@ import {
 	mcpDisplayName,
 	callArgsFor,
 	dotStatus,
-	newResultMemoSlot,
-	renderMemoizedResult,
 	thinkingToggleHint,
 	type CCTheme,
+	ccResult,
 } from "./lib/cc-rows.ts";
 import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
@@ -291,12 +290,6 @@ export default function (pi: ExtensionAPI) {
 				toolName,
 			});
 			if (!plan) return orig;
-			// Component memo (plan A6): the resolver runs exactly once per
-			// ToolExecutionComponent construction (pi resolves per
-			// construction, uncached — spec DEC-07), so this closure-local
-			// slot is a per-component memo. Streaming partials miss naturally
-			// via the factory identity key inside renderMemoizedResult.
-			const memo = newResultMemoSlot();
 			// Call factory — MCP badge / builtin seven / third-party + then_run
 			// (TR D2/D3). For non-MCP names without then_run this is
 			// byte-identical to the pre-migration ccRenderers builtin branch
@@ -319,18 +312,12 @@ export default function (pi: ExtensionAPI) {
 				const cmd = (args as { then_run?: { command?: string } } | null | undefined)?.then_run?.command;
 				return ccThenRunCall(theme as CCTheme, call, cmd);
 			};
-			// Result factory: memoized CC renderer. `factory` is an identity
-			// key only — never invoked (spec DEC-07); unknown result shapes fall
-			// back inside ccResult, not via this key.
+			// Result factory: direct CC renderer (spec 8.4 — the reference
+			// memo never hit: hosts rebuild the envelope on every
+			// updateDisplay and reuse the component tree on plain frames;
+			// ccResult's width cache absorbs resizes).
 			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) =>
-				renderMemoizedResult(memo, {
-					factory: orig?.renderResult ?? toolName,
-					theme: theme as CCTheme,
-					name: mcpDisplayName(toolName) ?? toolName,
-					result,
-					options,
-					isError: Boolean(rctx?.isError),
-				});
+				ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? toolName, result, options, Boolean(rctx?.isError));
 			return {
 					renderShell: plan.shell === "self" ? ("self" as const) : orig?.renderShell,
 					renderCall: plan.call === "cc" ? callFactory : orig?.renderCall,
