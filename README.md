@@ -167,6 +167,15 @@ Tool-row overrides replace presentation only; the owning tool's execution and pa
 
 In forced tool-row mode, `subagent` calls get concise agent/task summaries while their custom live result cards stay intact, preserving progress, token counts, and checklists.
 
+The **subagent bottom bar (Fleet roster)** is drawn by this package through the
+pi-subagents presentation seam (`pi-subagents:presentation:v1:*`): the CC look
+is registered at session start and any adapter failure falls back to the
+native roster with one deduplicated console warning. Requires pi-subagents
+with the `presentation-seam` branch (fork `GeorgeDong32/pi-subagents`); without
+it the native roster stays — no timers, no blank placeholders. `/claude-tui off`
+withdraws the adapter and restores the native roster immediately. See
+`spec/2026-10-05-cc-tui-subagent-presentation.md` and `docs/ARCHITECTURE.md` §7.
+
 For SoL-Pi, `/claude-tools on` can unify rows even when its tools register after startup detection. `obs_recall` gets a short call summary while its dense paged result view is preserved. Fused `write`/`edit` calls retain a visible `then_run` badge. These integrations do not alter Action Fusion or Observation Pack execution.
 
 ## Troubleshooting

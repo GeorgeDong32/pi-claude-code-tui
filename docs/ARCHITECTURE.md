@@ -24,20 +24,23 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | 模块 | 职责 | 关键导出 | 测试 |
 | --- | --- | --- | --- |
 | `extensions/claude-code-tui.ts` | 入口。`export default function (pi)`；注册命令、订阅会话事件、装/卸各渲染槽位 | extension factory | （接线层，靠 lib 单测 + 人工验证） |
-| `lib/cc-rows.ts` | CC 工具行渲染：`⏺ Tool(args)` call 行 + `⎿` 输出槽、彩色 diff、折叠（3 物理行上限）、component memo、gutter-wrap 布局、args 摘要表 | `ccCall`、`ccResult`、`callArgsFor`、`renderMemoizedResult`、`gutterWrapRows` | `cc-rows.golden.test.ts`（逐字节 golden + memo/布局表测） |
+| `lib/cc-rows.ts` | CC 工具行渲染：`⏺ Tool(args)` call 行 + `⎿` 输出槽、彩色 diff、折叠（3 物理行上限）、gutter-wrap 布局、args 摘要表（result 引用 memo 已删——spec 8.4 评估证明全路径不命中） | `ccCall`、`ccResult`、`callArgsFor`、`gutterWrapRows` | `cc-rows.golden.test.ts`（逐字节 golden + 布局表测） |
 | `lib/takeover-rules.ts` | 工具行接管决策矩阵（用户开关 × MCP × 内置七件 × force × 豁免，call/result 槽位 + shell 派生）与 resolver 计划层 `planResolverTakeover`；BUILTIN_SEVEN / FORCE_RESULT_EXEMPT 唯一定义点 | `decideTakeover` / `planResolverTakeover` | `takeover-rules.test.ts`（布尔矩阵全组合 + plan 表测） |
 | `lib/cc-markdown.ts` | markdown transformer：assistant 白字（fence 追踪、list marker 保留）、user 灰条（NBSP 填充数学） | `assistantWhiteText`、`userMessageBar` | `cc-markdown.test.ts` |
 | `lib/cc-status-line.ts` | cc-status 行：右侧组（model·effort │ Ctx p% │ cost，含 pct 截断/省略规则）、左右拼接三分支、footer 模式标签（MODE_META 投影） | `buildStatusRightGroup`、`statusRowLayout`、`permissionModeLabel` | `cc-status-line.test.ts` |
 | `lib/run-state.ts` | run/compaction 状态机：tick 单一 owner、verb 每 run 采样一次、≥1s 完成行门控、stale ctx 静默停摆 | `RunStateMachine` | `run-state.test.ts`（注入 clock/timer 的事件序） |
 | `lib/host-status.ts` | host 易变状态读取 seam（effort/思考档位，永不抛——render 栈安全） | `readEffortLevel` | `host-status.test.ts` |
-| `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
-| `lib/cc-skill-row.ts` | 把原生 `[skill]` 盒子补丁成 CC 式 `⏺ Skill(name)` 行；展开块复用 cc-rows 的 gutter-wrap（字节钉死），保留原生点击展开 | `patchSkillRow` | `cc-skill-row.test.ts`（含字节级展开块断言） |
-| `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused）、补全面板弹到框上方 | `CodexStyleEditor`、`stripAnsi` 等 | （视觉效果靠人工验证） |
+| `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行（经 pi-proto-adapter 生命周期）；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`restoreCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
+| `lib/cc-skill-row.ts` | 把原生 `[skill]` 盒子补丁成 CC 式 `⏺ Skill(name)` 行（经 pi-proto-adapter）；展开块复用 cc-rows 的 gutter-wrap（字节钉死），保留原生点击展开 | `patchSkillRow`、`restoreSkillRow` | `cc-skill-row.test.ts`（含字节级展开块断言） |
+| `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused、unref、release 幂等——spec 8.1）、补全面板弹到框上方 | `CodexStyleEditor` | `claude-tui-editor.test.ts`（timer 生命周期）+ 人工验证 |
 | `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏；header 布局宽度与 tips 选取纯函数同居于此（唯一使用者） | `applyPiHeaderLook`、`headerColumnWidths`、`pickSlashCommandTips` | `pi-startup-header.test.ts`（布局/tips 表测） |
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | 内置默认脚本的 TS 内联副本（运行时无文件锚点，见 §8） | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts`（与 scripts/ 字节同步） |
-| `lib/status-snapshot.ts` | `UsageTracker`：`message_end` 时扫一遍分支，缓存 used/cost/last/total 用量 | `UsageTracker` | `status-snapshot.test.ts` |
+| `lib/status-snapshot.ts` | `UsageTracker`：按 USAGE_OBSERVATION_POINTS 采样（agent_settled 保证最终值、session_tree/compact 失效——spec 8.2） | `UsageTracker`、`USAGE_OBSERVATION_POINTS` | `status-snapshot.test.ts` |
 | `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读）；核心通知队列消费（显式重试）；生命周期 activate/withdraw 配对 | `readPmStatus`、`activateCcTuiChannel`、`withdrawCcTuiCapability` | `pm-capability.test.ts` |
+| `lib/subagent-presentation.ts` | subagent 展示 seam 消费端镜像：v1 协议常量/事件名、frame/row/layout 类型、有界 register/probe 客户端、bridge 生命周期（probe→注册→晚宿主补注册→撤回） | `SubagentPresentationBridge`、`registerSubagentPresentation`、`probeSubagentPresentation` | `subagent-presentation.test.ts`（7 生命周期）+ `cc-subagent-rows.test.ts` 协议段 |
+| `lib/cc-subagent-rows.ts` | CC subagent 纯绘制：Fleet roster（glyph/树分支/选择箭头原位/紧凑 tok·time 右列/双向 overflow/identity 色散列）消费只读 frame，产出 lines+layout；无 IO、无 runtime | `drawCcFleetFrame`、`subagentIdentityColor` | `cc-subagent-rows.test.ts`（行型×选择×宽度×布局钉死） |
+| `lib/pi-proto-adapter.ts` | pi 自有组件原型补丁的集中生命周期：原方法保存、marker=refresh 函数（重装刷新 getter）、宿主形状检查、异常降级到原方法、restore 仅撤自己仍拥有的改写 | `PrototypeMethodAdapter` | `pi-proto-adapter.test.ts`（8 生命周期） |
 | `lib/prefs.ts` | `~/.pi/agent/claude-tui.json` 读改写：合并写 + tmp/rename 原子替换，坏文件回退 `{}` | `loadPrefs`、`savePrefs` | `prefs.test.ts` |
 | `lib/format.ts` | 纯值格式化：时长/token/cost、模型/effort 标签、完成行 | `formatDuration`、`formatTokens`、`formatCost`、`buildCompletionLine` | `format.test.ts` |
 | `lib/spinner-verbs.ts` | spinner 动词表：187 词与 CC 字节对齐（Clauding→Piing）、加权抽样（staples ×3 / eggs ×0.25） | `weightedVerbSample`、`SPINNER_VERBS` | `spinner-verbs.test.ts` |
@@ -126,7 +129,8 @@ memo（plan A6）：resolver 每次调用恰好对应一个组件构造（pi 不
 
 - **permission-modes（pm）**：`Shift+Tab` 在编辑器 `handleInput` 里拦截（先于 pi 内置思考循环），切 Plan/Auto。pm 状态经 `readPmStatus` 的三级降级链读取：核心总线快照 `__piClaudeCodeCore.modes`（主源）→ 版本化 `__piPermissionModes` 能力对象 → 遗留 `__pmWorkingStats` 字符串 + `PERMISSION_MODES_INHERITED_MODE` 环境变量。模式图标/标签取自 pm 发布的 `meta`（单一来源：core 的 MODE_META）。
 - **通知显示**：本包声明 `notificationsConsumer: true`，通过核心快照的 `onChange` 消费通知尾队列（按 `lastSeenId` 差分），核心随即停掉自己的直接转发——版本协商，避免双显；旧核心保持转发。
-- **pi-subagents**：`on` 模式专门适配（call 行 agent 类型 + 任务摘要、运行态零冗余行、live 卡豁免折叠），见 §4.1 与 README。
+- **pi-subagents（展示 seam）**：subagent **底栏**（Fleet roster）经 `pi-subagents:presentation:v1:*` 事件族接管绘制——本包的 `SubagentPresentationBridge` 在 session_start 时 probe/注册 `drawCcFleetFrame`，宿主侧投影只读 frame、校验 layout、失败自动回退原生并去重诊断（console.warn 一条）。spec：`spec/2026-10-05-cc-tui-subagent-presentation.md`。工具行走原有 resolver 决策不变（auto 让路 / `/claude-tools on` 强制）；`/claude-tui off` 撤回 adapter 即恢复原生。要求 pi-subagents ≥ presentation-seam 分支（fork GeorgeDong32/pi-subagents），无 seam 时保持原生底栏、无 timer 无空白占位。
+- **pi-subagents（工具行）**：`on` 模式专门适配（call 行 agent 类型 + 任务摘要、live 卡豁免折叠），见 §4.1 与 README。
 - **槽位共存**：头图/编辑器槽位后写者胜；与其余 TUI 套件同用时建议本包排在 packages 列表后面。
 
 ## 8. 运行时约束（为什么代码长这样）

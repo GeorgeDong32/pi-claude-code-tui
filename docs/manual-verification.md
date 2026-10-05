@@ -126,3 +126,16 @@ Broken looks like: statusline row flickering on every keystroke (per-frame
 spawn — regression of the debounce); blank row between script rows and the
 hints row; toolRows/statusLine keys overwriting each other in the prefs
 file; badge overlapping wide CJK output.
+
+## 10. Subagent Fleet 底栏（展示 seam，spec P4 验收）
+
+前置：pi-subagents 装上 presentation-seam 分支（≥ 7ce8518），本包 ≥ a785ccb。
+
+- [ ] 底栏外观与本仓库 CC 视觉语言一致：`● main` 实心标记、agent 空心 `○`、树分支 `├─/└─` 明确父子、右侧紧凑 `tok·time`（如 `8.1k·16s`，dim）。
+- [ ] 无原生折叠摘要行（"N active agents · ↓/← to inspect"）——那是无 CC-TUI 时的原生形态；出现即说明 bridge 未注册（查 console 的 `[claude-tui] subagent fleet drawing fell back to native`）。
+- [ ] 默认展开；`↓`/`←`（编辑器空且聚焦）进入选择：`>` 箭头原位替换标记列，行与右列不跳列；`↑` 在顶部退出；Enter 开 inspector（main 上 Enter 退出）；Esc 退出。
+- [ ] 超行预算：>6 行时出现 `↓ N more`（滚动后 `↑ N more`），选中项始终可见。
+- [ ] 40/60/80/120 列与极窄 20 列：无异常、无错位；窄宽度先保标记与身份，token/time 退让。
+- [ ] `/claude-tui off` → 底栏立即恢复原生形态（折叠摘要行 + 交互时上游样式）；`/claude-tui` 再开 → CC 底栏回来。
+- [ ] workflow 底栏：wrapper 行右侧 "usage on child rows"、phase 行（`● Tasks · …`）、完成 lane `✓ name · complete · 8s · ↓ N window · M spent`。
+- [ ] 对应 async 树被 Fleet 完整覆盖时折叠（coverage），不完整时保持双显——中途 resize/展开不应闪烁丢行。
