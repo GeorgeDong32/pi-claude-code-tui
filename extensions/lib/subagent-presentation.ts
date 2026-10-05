@@ -1,0 +1,282 @@
+/**
+ * Subagent presentation seam — consumer-side mirror of the pi-subagents v1
+ * presentation protocol (spec/2026-10-05-cc-tui-subagent-presentation.md §5).
+ *
+ * This module deliberately mirrors the upstream contract instead of importing
+ * it: the runtime install path is not an import surface, jiti module identity
+ * is not shared across extensions, and a versioned wire protocol deserves a
+ * version-gated mirror on each side (the repo convention for pi internals,
+ * cf. pm-capability.ts). When upstream publishes typed entry points, this
+ * mirror can shrink to a re-export.
+ *
+ * Red line: nothing here executes tools, touches schemas, or reads model-
+ * visible content. The seam carries read-only display frames in and text
+ * layout facts out.
+ */
+
+/** Exact major version; mismatches are "unsupported", never best-effort. */
+export const SUBAGENT_PRESENTATION_PROTOCOL_VERSION = 1;
+
+export const SUBAGENT_PRESENTATION_READY_EVENT = "pi-subagents:presentation:v1:ready";
+export const SUBAGENT_PRESENTATION_PROBE_EVENT = "pi-subagents:presentation:v1:probe";
+export const SUBAGENT_PRESENTATION_REGISTER_EVENT = "pi-subagents:presentation:v1:register";
+export const SUBAGENT_PRESENTATION_WITHDRAW_EVENT = "pi-subagents:presentation:v1:withdraw";
+export const SUBAGENT_PRESENTATION_DIAGNOSTIC_EVENT = "pi-subagents:presentation:v1:diagnostic";
+
+export type SubagentPresentationSurface = "fleet" | "async";
+
+/** Minimal structural mirror of the pi event bus as the seam needs it. */
+export interface SubagentPresentationEventBus {
+	emit(channel: string, data: unknown): void;
+	on(channel: string, handler: (data: unknown) => void): () => void;
+}
+
+/** Theme the drawing may assume. Drawing must tolerate missing keys. */
+export interface SubagentPresentationTheme {
+	fg: (name: string, text: string) => string;
+	bold?: (text: string) => string;
+	getThinkingBorderColor?: (level: string) => (text: string) => string;
+}
+
+export interface SubagentPresentationUsage {
+	tokens: number;
+	window?: number;
+}
+
+export interface SubagentPresentationTiming {
+	startedAt?: number;
+	endedAt?: number;
+	durationMs?: number;
+}
+
+export interface SubagentPresentationWorkflowPreflightHints {
+	mode?: string;
+	decision?: string;
+	claims?: string[];
+	expectedOutput?: string;
+	independence?: string;
+}
+
+export interface SubagentPresentationRowDetails {
+	provider?: string;
+	role?: string;
+	target?: string;
+	detail?: string;
+	reasonCode?: string;
+	freshness?: { stale?: boolean; observedRef?: string };
+	reportPath?: string;
+}
+
+export interface SubagentPresentationWorkflowLaneRow extends SubagentPresentationTiming, SubagentPresentationRowDetails {
+	rowKind: "workflow-lane";
+	rowKey: string;
+	ownerKey: string;
+	branch: "├─" | "└─";
+	kind?: string;
+	name: string;
+	context?: string;
+	modelThinking?: string;
+	thinking?: string;
+	state: string;
+	verdict?: string;
+	activity?: string;
+	preflight?: SubagentPresentationWorkflowPreflightHints;
+	usage?: SubagentPresentationUsage;
+	overflow?: number;
+}
+
+export interface SubagentPresentationWorkflowPhaseRow {
+	rowKind: "workflow-phase";
+	rowKey: string;
+	ownerKey: string;
+	branch: "├─" | "└─";
+	label: string;
+	text: string;
+	state: string;
+}
+
+export interface SubagentPresentationNestedRow extends SubagentPresentationTiming {
+	rowKind: "nested";
+	rowKey: string;
+	ownerKey: string;
+	branch: "├─" | "└─";
+	name: string;
+	agentIdentity?: string;
+	state: string;
+	modelThinking?: string;
+	thinking?: string;
+	activity?: string;
+	usage?: SubagentPresentationUsage;
+	depth: number;
+	overflow?: number;
+}
+
+export interface SubagentPresentationAgentRow extends SubagentPresentationTiming {
+	rowKind: "agent";
+	rowKey: string;
+	targetKey?: string;
+	parentKey?: string;
+	branch?: "├─" | "└─";
+	agentIdentity: string;
+	label?: string;
+	modelThinking?: string;
+	state: string;
+	usage?: SubagentPresentationUsage;
+	workflowWrapperUsageOnChildren?: boolean;
+	projectPane?: { summary?: string; refreshedAt: number };
+	external?: boolean;
+	selected?: boolean;
+}
+
+export type SubagentPresentationFleetRow =
+	| { rowKind: "main"; rowKey: "main"; selected?: boolean }
+	| { rowKind: "overflow"; rowKey: string; direction: "above" | "below"; hidden: number }
+	| SubagentPresentationAgentRow
+	| SubagentPresentationWorkflowLaneRow
+	| SubagentPresentationWorkflowPhaseRow
+	| SubagentPresentationNestedRow
+	| { rowKind: "section-header"; rowKey: string; text: string };
+
+export interface SubagentPresentationFrameBase {
+	protocol: typeof SUBAGENT_PRESENTATION_PROTOCOL_VERSION;
+	surface: SubagentPresentationSurface;
+	revision: string;
+	session: string | null;
+	runtimeGeneration: number;
+	width: number;
+	theme: SubagentPresentationTheme;
+	now: number;
+}
+
+export interface SubagentPresentationFleetFrame extends SubagentPresentationFrameBase {
+	surface: "fleet";
+	rows: SubagentPresentationFleetRow[];
+	selection: { active: boolean; selectedKey: string | null };
+	budget: { visibleRows: number; hiddenAbove: number; hiddenBelow: number; maxRows: number };
+}
+
+export type SubagentPresentationFrame = SubagentPresentationFleetFrame;
+
+export interface SubagentPresentationLayoutRow {
+	rowKey: string;
+	fromLine: number;
+	toLine: number;
+	truncated: boolean;
+}
+
+export interface SubagentPresentationDrawResult {
+	lines: string[];
+	layout: SubagentPresentationLayoutRow[];
+}
+
+export type SubagentPresentationDraw = (frame: SubagentPresentationFrame) => SubagentPresentationDrawResult;
+
+export interface SubagentPresentationRegistrationHandle {
+	token: string;
+	identity: string;
+	generation: number;
+	surfaces: SubagentPresentationSurface[];
+	dispose(): void;
+}
+
+export type SubagentPresentationRegistrationStatus =
+	| { status: "activated"; handle: SubagentPresentationRegistrationHandle; surfaces: SubagentPresentationSurface[] }
+	| { status: "replaced"; handle: SubagentPresentationRegistrationHandle; surfaces: SubagentPresentationSurface[] }
+	| { status: "not-ready"; reason: string }
+	| { status: "incompatible"; reason: string }
+	| { status: "conflict"; reason: string };
+
+export interface SubagentPresentationReadyPayload {
+	protocol: number;
+	surfaces: SubagentPresentationSurface[];
+	session: string | null;
+	runtimeGeneration: number;
+	events: {
+		ready: typeof SUBAGENT_PRESENTATION_READY_EVENT;
+		register: typeof SUBAGENT_PRESENTATION_REGISTER_EVENT;
+		withdraw: typeof SUBAGENT_PRESENTATION_WITHDRAW_EVENT;
+		diagnostic: typeof SUBAGENT_PRESENTATION_DIAGNOSTIC_EVENT;
+	};
+}
+
+export interface SubagentPresentationDiagnosticPayload {
+	protocol: number;
+	identity: string;
+	surface: SubagentPresentationSurface;
+	reason: string;
+	occurrence: number;
+}
+
+const REPLY_CHANNEL_PREFIX = "pi-subagents:presentation:v1:reply:";
+
+/**
+ * Register drawing adapters with the pi-subagents presentation host. The
+ * handshake is bounded (no permanent retry timers); a miss resolves
+ * "not-ready" so the caller can fall back to native and stay diagnostic.
+ */
+export async function registerSubagentPresentation(options: {
+	events: SubagentPresentationEventBus;
+	identity: string;
+	surfaces: Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>;
+	session?: string | null;
+	runtimeGeneration?: number;
+	timeoutMs?: number;
+}): Promise<SubagentPresentationRegistrationStatus> {
+	const replyChannel = `${REPLY_CHANNEL_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+	return new Promise((resolve) => {
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const unsubscribe = options.events.on(replyChannel, (payload) => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			unsubscribe();
+			resolve(payload as SubagentPresentationRegistrationStatus);
+		});
+		if (options.timeoutMs !== undefined) {
+			timer = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				unsubscribe();
+				resolve({ status: "not-ready", reason: "registration handshake timed out" });
+			}, options.timeoutMs);
+			timer.unref?.();
+		}
+		options.events.emit(SUBAGENT_PRESENTATION_REGISTER_EVENT, {
+			protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION,
+			replyChannel,
+			request: {
+				identity: options.identity,
+				session: options.session,
+				runtimeGeneration: options.runtimeGeneration,
+				surfaces: options.surfaces,
+			},
+		});
+	});
+}
+
+/** Probe for a live presentation host; null when nobody answers in time. */
+export async function probeSubagentPresentation(options: {
+	events: SubagentPresentationEventBus;
+	timeoutMs?: number;
+}): Promise<SubagentPresentationReadyPayload | null> {
+	return new Promise((resolve) => {
+		let settled = false;
+		const unsubscribe = options.events.on(SUBAGENT_PRESENTATION_READY_EVENT, (payload) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			unsubscribe();
+			const ready = payload as SubagentPresentationReadyPayload;
+			resolve(ready?.protocol === SUBAGENT_PRESENTATION_PROTOCOL_VERSION ? ready : null);
+		});
+		const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
+			if (settled) return;
+			settled = true;
+			unsubscribe();
+			resolve(null);
+		}, options.timeoutMs ?? 1_000);
+		timer.unref?.();
+		options.events.emit(SUBAGENT_PRESENTATION_PROBE_EVENT, { protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION });
+	});
+}
