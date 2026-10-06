@@ -176,7 +176,7 @@ it the native roster stays — no timers, no blank placeholders. `/claude-tui of
 withdraws the adapter and restores the native roster immediately. See
 `spec/2026-10-05-cc-tui-subagent-presentation.md` and `docs/ARCHITECTURE.md` §7.
 
-For SoL-Pi, `/claude-tools on` can unify rows even when its tools register after startup detection. `obs_recall` gets a short call summary while its dense paged result view is preserved. Fused `write`/`edit` calls retain a visible `then_run` badge. These integrations do not alter Action Fusion or Observation Pack execution.
+For SoL-Pi, `/claude-tools on` can unify rows even when its tools register after startup detection. `obs_recall` gets a short call summary and its recall detail renders in the unified CC result slot (⎿ gutter with collapse/expand). Fused `write`/`edit` calls retain a visible `then_run` badge. These integrations do not alter Action Fusion or Observation Pack execution.
 
 ## Troubleshooting
 

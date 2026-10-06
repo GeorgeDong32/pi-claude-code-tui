@@ -28,8 +28,8 @@
  *   resolver path — putting it in would flip it to CC rows).
  * - Third-party with its own renderer: auto-yield (another TUI extension
  *   may own the visuals); force mode (/claude-tools on) takes over —
- *   except the result slot of exempt tools (subagent live workflow card,
- *   obs_recall paged view), which must not flatten into a 3-row preview.
+ *   except the result slot of exempt tools (subagent live workflow card),
+ *   which must not flatten into a 3-row preview.
  * - Third-party with NO renderer: taken over even in auto mode — there is
  *   nothing to yield to.
  */
@@ -62,10 +62,15 @@ export type TakeoverDecision = "orig" | "cc";
  * Tools whose own RESULT renderer is live, information-dense UI that force
  * mode must NOT flatten into a 3-row preview: pi-subagents' `subagent`
  * renders a live workflow card (per-agent progress, tokens, checklists)
- * inline, and obs_recall's result is a dense paged view. Call rows stay
- * ours in force mode; only the result block is exempt.
+ * inline. Call rows stay ours in force mode; only the result block is
+ * exempt.
+ *
+ * obs_recall was exempted for its dense paged view, then unified into the
+ * CC ⎿ slot on user direction (2026-10-06): the recall detail renders like
+ * every other result — gutter + collapse/expand — instead of the raw pager
+ * header.
  */
-export const FORCE_RESULT_EXEMPT = new Set(["subagent", "obs_recall"]);
+export const FORCE_RESULT_EXEMPT = new Set(["subagent"]);
 
 /**
  * The builtin seven whose rows we re-render CC-style. Pre-migration these

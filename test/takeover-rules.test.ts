@@ -145,11 +145,16 @@ test("DEC-05 shell: call=cc ⇒ self; call=orig ⇒ self for non-builtin (P1-1 y
 	assert.deepEqual(p(vacantRow), { call: "cc", result: "cc", shell: "self" }, "renderer-less third-party taken over");
 });
 
-test("plan exempt tools: forced result yields for subagent/obs_recall, call stays ours", () => {
+test("plan exempt tools: forced result yields for the subagent live card, call stays ours", () => {
 	for (const name of FORCE_RESULT_EXEMPT) {
 		const r: PlanRow = [true, true, true, false, false, true, true];
 		assert.deepEqual(p(r, name), { call: "cc", result: "orig", shell: "self" }, name);
 	}
+});
+
+test("obs_recall unified into the CC result slot (user direction): force mode takes call and result", () => {
+	const r: PlanRow = [true, true, true, false, false, true, true];
+	assert.deepEqual(p(r, "obs_recall"), { call: "cc", result: "cc", shell: "self" });
 });
 
 test("plan channel gates lose to nothing: rows on + channel active always yields a plan (definition guaranteed)", () => {
