@@ -45,6 +45,7 @@ import {
 	type CCTheme,
 	ccResult,
 	displayToolName,
+	obsRecallDisplayView,
 } from "./lib/cc-rows.ts";
 import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
@@ -316,9 +317,16 @@ export default function (pi: ExtensionAPI) {
 			// Result factory: direct CC renderer (spec 8.4 — the reference
 			// memo never hit: hosts rebuild the envelope on every
 			// updateDisplay and reuse the component tree on plain frames;
-			// ccResult's width cache absorbs resizes).
-			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) =>
-				ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), result, options, Boolean(rctx?.isError));
+			// ccResult's width cache absorbs resizes). obs_recall results
+			// are shaped first: the two protocol header lines become one
+			// human header (display layer only — the model's text is the
+			// result object, untouched).
+			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
+				const display = toolName === "obs_recall"
+					? { content: [{ type: "text", text: obsRecallDisplayView(result).text }] }
+					: result;
+				return ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), display, options, Boolean(rctx?.isError));
+			};
 			return {
 					renderShell: plan.shell === "self" ? ("self" as const) : orig?.renderShell,
 					renderCall: plan.call === "cc" ? callFactory : orig?.renderCall,

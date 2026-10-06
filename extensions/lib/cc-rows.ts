@@ -114,6 +114,59 @@ const DISPLAY_TOOL_NAMES: Record<string, string> = {
 
 export const displayToolName = (name: string): string => DISPLAY_TOOL_NAMES[name] ?? name;
 
+// ---- obs_recall display shaping (spec: display layer only) ----
+//
+// The pack's result text is a model protocol: a paging header the provider
+// needs and a human doesn't. The original pack renderer rebuilt the visible
+// rows from `details`; the CC row parses the two protocol lines from the
+// TEXT instead (always present when the pack shaped the page — no details
+// dependency) and replaces them with one human header in the original
+// format. Non-matching text passes through untouched (honest fallback).
+
+const OBS_HEADER_LINE = /^\[obs_recall id=(obs_[0-9a-f]+) offset=(-?\d+) next_offset=(-?\d+) eof=(true|false)\]$/;
+const OBS_CHUNK_LINE = /^\[chunk_bytes=(\d+) chunk_lines=(\d+); use next_offset to continue\]$/;
+
+function humanBytesDisplay(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes <= 0) return "0B";
+	const units = ["B", "KB", "MB", "GB"];
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1024 && unit < units.length - 1) {
+		value /= 1024;
+		unit++;
+	}
+	return `${unit === 0 ? Math.round(value) : value.toFixed(1)}${units[unit]}`;
+}
+
+function recallOffsetLabel(offset: number): string {
+	return offset > 0 ? `+${humanBytesDisplay(offset)}` : "start";
+}
+
+export interface ObsRecallDisplayView {
+	/** Human header line (original pack format), or null when the text is not a shaped recall page. */
+	header: string | null;
+	/** Display text: header + body when shaped, the original text otherwise. */
+	text: string;
+}
+
+/** Shape an obs_recall result for display: protocol header → one human line. */
+export const obsRecallDisplayView = (result: unknown): ObsRecallDisplayView => {
+	const raw = textOfResult(result);
+	const lines = raw.split("\n");
+	const headerMatch = OBS_HEADER_LINE.exec(lines[0] ?? "");
+	const chunkMatch = OBS_CHUNK_LINE.exec(lines[1] ?? "");
+	if (!headerMatch || !chunkMatch) return { header: null, text: raw };
+	const [, , offsetRaw, nextOffsetRaw, eofRaw] = headerMatch;
+	const [, bytesRaw, chunkLinesRaw] = chunkMatch;
+	const offset = Number(offsetRaw);
+	const nextOffset = Number(nextOffsetRaw);
+	const header = eofRaw === "true"
+		? `${humanBytesDisplay(Number(bytesRaw))} · ${chunkLinesRaw} lines · ${recallOffsetLabel(offset)}→${recallOffsetLabel(nextOffset)} · end ✓`
+		: `${humanBytesDisplay(Number(bytesRaw))} · ${chunkLinesRaw} lines · ${recallOffsetLabel(offset)}→+${humanBytesDisplay(nextOffset)} · more ▸`;
+	const body = lines.slice(2).join("\n").replace(/^\n/, "");
+	return { header, text: `${header}\n${body}` };
+};
+
 export const callArgsFor = (name: string, args: unknown): string => {
 	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
 	const table = builtinCallArgs;
