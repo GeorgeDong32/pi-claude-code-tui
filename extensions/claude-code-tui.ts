@@ -83,7 +83,7 @@ import {
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
-import { clearPackedSites, packedSitesView, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
+import { startObsSavingsConsumer, stopObsSavingsConsumer, type ObsSavingsSite } from "./lib/obs-savings.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -413,7 +413,7 @@ export default function (pi: ExtensionAPI) {
 				// Per-frame retry point for the DC5b subscription (idempotent:
 				// one null check once attached) — the read below is pure.
 				startCoreNotificationConsumer(displayCoreNotification);
-				startObsSavingsConsumer(flashObsSavings); // idempotent retry (OBS-09)
+				startObsSavingsConsumer(appendPackedEntry); // idempotent retry (OBS-09)
 				// NOTE: never touch ctx.* in render — after session
 				// replacement/reload the captured ctx is stale and any
 				// access throws uncaught inside render (kills pi). Model
@@ -663,16 +663,30 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	// OBS-09 consumer: flash per-site observation savings on the host status
-	// area (upstream SoL-Pi showSolPiSavings semantics — one 4s line per
-	// first-replacement request, owned by this extension's presentation).
-	const flashObsSavings = (key: string, text: string | undefined): void => {
-		try {
-			latestCtx?.ui.setStatus(key, text);
-		} catch {
-			// stale context — drop this one
-		}
+	// OBS-09-SITES consumer → display-only session entry (user-directed
+	// design): each first-replacement publish appends a CustomEntry that
+	// renders IN the conversation flow as a pseudo tool row (registerEntry-
+	// Renderer below). CustomEntry never enters the model context
+	// (buildSessionContext ignores it) and survives restarts in the session.
+	const appendPackedEntry = (sites: readonly ObsSavingsSite[]): void => {
+		pi.appendEntry("cc-tui/observation-packed", { sites });
 	};
+	// Renderer for the packed-event entries: same CC-style pseudo tool row
+	// (packedEventRows) rendered IN the conversation flow. Registered at
+	// load; renderers must never throw (the host shows a fallback box if
+	// they do — return [] defensively anyway).
+	pi.registerEntryRenderer<{ sites: ObsSavingsSite[] }>("cc-tui/observation-packed", (entry, _options, theme) => ({
+		invalidate() {},
+		render(width: number): string[] {
+			try {
+				const sites = entry.data?.sites;
+				if (!Array.isArray(sites) || sites.length === 0) return [];
+				return packedEventRows(theme as unknown as import("./lib/cc-rows.ts").CCTheme, sites, width);
+			} catch {
+				return []; // red line 1: render must never throw
+			}
+		},
+	}));
 
 	// --- Subagent presentation bridge (spec P3) ---
 	// Registers the CC fleet drawing with pi-subagents' presentation seam.
@@ -698,24 +712,7 @@ export default function (pi: ExtensionAPI) {
 		// status widget's per-frame render, so it attaches right after
 		// core's first publish.
 		activateCcTuiChannel(displayCoreNotification);
-		startObsSavingsConsumer(flashObsSavings);
-		if (ctx.mode !== "tui") return;
-		// OBS-09-SITES: packing events as a pseudo tool row in the
-		// conversation tail (user-directed: non-invasive — no old row is
-		// touched, nothing enters the transcript). Renders zero rows and
-		// collapses while idle; clears when the user sends a message.
-		ctx.ui.setWidget("cc-packed", (tui, theme) => ({
-			invalidate() {},
-			render(width: number): string[] {
-				try {
-					const sites = packedSitesView();
-					if (!sites || sites.length === 0) return [];
-					return packedEventRows(theme as unknown as import("./lib/cc-rows.ts").CCTheme, sites, width);
-				} catch {
-					return []; // render must never throw (red line 1)
-				}
-			},
-		}));
+		startObsSavingsConsumer(appendPackedEntry);
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
 		currentProviderName = ctx.model?.provider || "";
@@ -768,12 +765,7 @@ export default function (pi: ExtensionAPI) {
 		enabled = false;
 		channelActive = false; // resolver yields stock renderers from now on
 		subagentBridge.stop(); // withdraw the CC adapters; native roster returns
-		stopObsSavingsConsumer(); // clear any running savings flash
-		try {
-			ctx.ui.setWidget("cc-packed", undefined);
-		} catch {
-			/* older pi / stale ctx */
-		}
+		stopObsSavingsConsumer();
 		withdrawCcTuiCapability();
 		teardownStatusline();
 		runState.halt();
@@ -843,7 +835,7 @@ export default function (pi: ExtensionAPI) {
 		// Retry point for the DC5b subscription (core may have published its
 		// bus only now — enable-time often misses, cctui loads before core).
 		startCoreNotificationConsumer(displayCoreNotification);
-		startObsSavingsConsumer(flashObsSavings);
+		startObsSavingsConsumer(appendPackedEntry);
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 
@@ -855,12 +847,6 @@ export default function (pi: ExtensionAPI) {
 		observeUsage(ctx);
 		if (refresh) refreshStatusline();
 	};
-
-	// The packed-event pseudo row is transient: the user's next message
-	// supersedes it (it already told its story during the previous run).
-	pi.on("message_start", async (event) => {
-		if ((event as { message?: { role?: string } }).message?.role === "user") clearPackedSites();
-	});
 
 	pi.on("message_end", async (_event, ctx) => {
 		observeUsage(ctx);
