@@ -45,6 +45,7 @@ import {
 	type CCTheme,
 	ccResult,
 	displayToolName,
+	obsPackedDisplayView,
 	obsRecallDisplayView,
 } from "./lib/cc-rows.ts";
 import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
@@ -82,7 +83,7 @@ import {
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
-import { currentObsSavingsFlash, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
+import { currentObsSavingsFlash, obsAvoidedTokensById, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -323,10 +324,17 @@ export default function (pi: ExtensionAPI) {
 			// human header (display layer only — the model's text is the
 			// result object, untouched).
 			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
-				const display = toolName === "obs_recall"
-					? { content: [{ type: "text", text: obsRecallDisplayView(result).text }] }
-					: result;
-				return ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), display, options, Boolean(rctx?.isError));
+				// Display shaping (display layer only): obs_recall pages get a
+				// human header; observation-packed results (any tool) get the
+				// CC-style packed header with exact avoided tokens from the
+				// OBS-09-SITES registry (estimated fallback). Non-matching
+				// shapes pass through untouched.
+				const view =
+					toolName === "obs_recall"
+						? obsRecallDisplayView(result)
+						: obsPackedDisplayView(result, (id) => obsAvoidedTokensById(id));
+				const displayResult = view.header === null ? result : { content: [{ type: "text", text: view.text }] };
+				return ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), displayResult, options, Boolean(rctx?.isError));
 			};
 			return {
 					renderShell: plan.shell === "self" ? ("self" as const) : orig?.renderShell,

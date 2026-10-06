@@ -73,3 +73,57 @@ test("obs_recall view: call row and display name stay the pinned single format",
 	assert.equal(displayToolName("obs_recall"), "Recall Observation");
 	assert.equal(callArgsFor("obs_recall", { id: "obs_5caf95927c3a939296aa5f60", offset: 15872 }), "obs_5caf95927c3a · +15.5KB");
 });
+
+// ---- packed large-result shaping ----
+
+import { obsPackedDisplayView } from "../extensions/lib/cc-rows.ts";
+
+function placeholderText(opts: { id: string; tool: string; bytes: number; lines: number; tokens: number }): string {
+	return [
+		"[large tool result replaced after its first 2 provider requests]",
+		`id: ${opts.id}`,
+		`tool: ${opts.tool}`,
+		`original_bytes: ${opts.bytes}`,
+		`original_lines: ${opts.lines}`,
+		`estimated_tokens: ${opts.tokens}`,
+		`retrieve: call obs_recall with {"id":"${opts.id}","offset":0}; continue with returned next_offset`,
+		"[first complete lines, up to 128 bytes]",
+		"alpha line",
+		"beta line",
+		"[middle omitted; last complete lines, up to 128 bytes]",
+		"omega line",
+		"[52800 original bytes omitted]",
+	].join("\n");
+}
+
+test("packed view: protocol header becomes one CC-style line, excerpts kept", () => {
+	const text = placeholderText({ id: "obs_5caf95927c3a939296aa5f60", tool: "read", bytes: 52800, lines: 582, tokens: 12796 });
+	const view = obsPackedDisplayView({ content: [{ type: "text", text }] }, () => 12796);
+	assert.equal(view.header, "⚡ packed after 2 sends · 12.8k context tokens avoided · 51.6KB · 582 lines · recall: obs_recall");
+	assert.equal(view.text, [
+		"⚡ packed after 2 sends · 12.8k context tokens avoided · 51.6KB · 582 lines · recall: obs_recall",
+		"alpha line",
+		"beta line",
+		"⋯ omitted ⋯",
+		"omega line",
+	].join("\n"), view.text);
+});
+
+test("packed view: exact registry value replaces the estimate (no ~ marker)", () => {
+	const text = placeholderText({ id: "obs_aaaa", tool: "bash", bytes: 900, lines: 9, tokens: 200 });
+	const est = obsPackedDisplayView({ content: [{ type: "text", text }] });
+	assert.match(est.header!, /~200 context tokens/);
+	const exact = obsPackedDisplayView({ content: [{ type: "text", text }] }, () => 151);
+	assert.match(exact.header!, /(?<!~)151 context tokens/);
+	assert.ok(!exact.header!.includes("~151"));
+});
+
+test("packed view: non-placeholder results pass through unchanged", () => {
+	const foreign = "just a normal multi\nline tool result\nwith no pack protocol";
+	const view = obsPackedDisplayView({ content: [{ type: "text", text: foreign }] });
+	assert.equal(view.header, null);
+	assert.equal(view.text, foreign);
+	const short = "[large tool result replaced after its first 2 provider requests]";
+	const truncated = obsPackedDisplayView({ content: [{ type: "text", text: short }] });
+	assert.equal(truncated.header, null, "lone header line without the full protocol is not a page");
+});

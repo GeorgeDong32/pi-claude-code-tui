@@ -85,6 +85,16 @@ let unsubscribe: (() => void) | null = null;
 let lastKey: string | null = null;
 let clearHandle: { unref?(): void } | null = null;
 
+// Per-observation exact savings (OBS-09-SITES): every first-replacement
+// publishes its sites once; accumulate id → avoidedTokens so packed tool
+// rows (which only see the placeholder text) can join the exact number.
+const savingsById = new Map<string, number>();
+
+/** Exact avoided tokens for a packed observation id, when the bus carried it. */
+export function obsAvoidedTokensById(id: string): number | undefined {
+	return savingsById.get(id);
+}
+
 // Running flash state, read per frame by the cc-status widget: pi's
 // built-in footer renders setStatus texts, but CC footer mode replaces
 // that footer — our own widget is the visible surface there. The setStatus
@@ -136,6 +146,7 @@ function trySubscribe(globalStore: Record<string, unknown>): boolean {
 		const sites = readObsSites(globalStore);
 		if (sites.length === 0) return;
 		const key = sitesKey(sites);
+		for (const site of sites) savingsById.set(site.id, site.avoidedTokens);
 		if (key === lastKey) return; // persisted channel re-delivered
 		lastKey = key;
 		flash(sites);
