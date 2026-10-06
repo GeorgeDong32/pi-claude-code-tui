@@ -82,6 +82,7 @@ import {
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
+import { startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -403,6 +404,7 @@ export default function (pi: ExtensionAPI) {
 				// Per-frame retry point for the DC5b subscription (idempotent:
 				// one null check once attached) — the read below is pure.
 				startCoreNotificationConsumer(displayCoreNotification);
+				startObsSavingsConsumer(flashObsSavings); // idempotent retry (OBS-09)
 				// NOTE: never touch ctx.* in render — after session
 				// replacement/reload the captured ctx is stale and any
 				// access throws uncaught inside render (kills pi). Model
@@ -652,6 +654,17 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// OBS-09 consumer: flash per-site observation savings on the host status
+	// area (upstream SoL-Pi showSolPiSavings semantics — one 4s line per
+	// first-replacement request, owned by this extension's presentation).
+	const flashObsSavings = (key: string, text: string | undefined): void => {
+		try {
+			latestCtx?.ui.setStatus(key, text);
+		} catch {
+			// stale context — drop this one
+		}
+	};
+
 	// --- Subagent presentation bridge (spec P3) ---
 	// Registers the CC fleet drawing with pi-subagents' presentation seam.
 	// The bridge owns no theme and no timers: frames carry the current theme
@@ -676,6 +689,7 @@ export default function (pi: ExtensionAPI) {
 		// status widget's per-frame render, so it attaches right after
 		// core's first publish.
 		activateCcTuiChannel(displayCoreNotification);
+		startObsSavingsConsumer(flashObsSavings);
 		if (ctx.mode !== "tui") return;
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
@@ -729,6 +743,7 @@ export default function (pi: ExtensionAPI) {
 		enabled = false;
 		channelActive = false; // resolver yields stock renderers from now on
 		subagentBridge.stop(); // withdraw the CC adapters; native roster returns
+		stopObsSavingsConsumer(); // clear any running savings flash
 		withdrawCcTuiCapability();
 		teardownStatusline();
 		runState.halt();
@@ -798,6 +813,7 @@ export default function (pi: ExtensionAPI) {
 		// Retry point for the DC5b subscription (core may have published its
 		// bus only now — enable-time often misses, cctui loads before core).
 		startCoreNotificationConsumer(displayCoreNotification);
+		startObsSavingsConsumer(flashObsSavings);
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 
