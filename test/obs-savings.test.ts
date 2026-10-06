@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-	formatObsPackedAnnotation,
+	clearPackedSites,
 	formatObsSavingsStatus,
-	obsPackedAnnotationForCall,
+	packedSitesView,
 	readObsSites,
-	currentObsSavingsFlash,
 	startObsSavingsConsumer,
 	stopObsSavingsConsumer,
 	type ObsSavingsTimer,
@@ -77,11 +76,9 @@ test("flash: new sites set the status line and clear after 4s", () => {
 	listeners[0]!();
 	assert.equal(env.calls.length, 1);
 
-	assert.equal(currentObsSavingsFlash(Date.now() + 1_000), "⚡ Observation Pack · 12,345 context tokens avoided");
-	assert.equal(currentObsSavingsFlash(Date.now() + 5_000), null, "expired after 4s");
+	assert.equal(env.status["cc-obs-savings"], "⚡ Observation Pack · 12,345 context tokens avoided");
 	env.calls[0]!();
-	assert.equal(env.status["cc-obs-savings"], undefined);
-	assert.equal(currentObsSavingsFlash(Date.now() + 1_000), null, "cleared with the timer");
+	assert.equal(env.status["cc-obs-savings"], undefined, "cleared with the timer");
 	stopObsSavingsConsumer();
 });
 
@@ -155,22 +152,37 @@ test("format: matches upstream formatSavingsCount (en-US integer)", () => {
 	assert.equal(formatObsSavingsStatus([]), "⚡ Observation Pack · 0 context tokens avoided");
 });
 
-test("packed annotation: joined by toolCallId, formatted compactly", () => {
+test("packed view: latest sites exposed for the pseudo tool row, cleared on demand", () => {
 	const env = makeEnv();
 	const listeners: Array<() => void> = [];
 	const store = snapshotWith(undefined, listeners);
 	startObsSavingsConsumer(env.setStatus, store, env.timer);
 	const channel = store.__piClaudeCodeCore as { observation?: { sites?: unknown[] } };
-	channel.observation = { sites: [{ tool: "read", id: "obs_d2d080c18f1be74f1428df79", avoidedTokens: 12476, toolCallId: "call_abc" }] };
+	channel.observation = { sites: [{ tool: "read", id: "obs_d2d080c18f1be74f1428df79", avoidedTokens: 12476 }] };
 	listeners[0]!();
-	assert.deepEqual(obsPackedAnnotationForCall("call_abc"), { tokens: 12476, id: "obs_d2d080c18f1be74f1428df79" });
-	assert.equal(obsPackedAnnotationForCall("call_other"), undefined);
-	assert.equal(formatObsPackedAnnotation(obsPackedAnnotationForCall("call_abc")!), "⚡ packed · 12.5k context tokens avoided · obs_d2d080c18f1b…");
+	assert.deepEqual(packedSitesView(), [{ tool: "read", id: "obs_d2d080c18f1be74f1428df79", avoidedTokens: 12476 }]);
+	// re-delivered persisted array → still the latest, no re-flash
+	listeners[0]!();
+	assert.equal(env.calls.length, 1);
+	clearPackedSites();
+	assert.equal(packedSitesView(), null);
 	stopObsSavingsConsumer();
-	assert.equal(obsPackedAnnotationForCall("call_abc"), undefined, "registry cleared on stop");
 });
 
-test("packed annotation: sites without toolCallId (old core) stay join-less", () => {
+test("flash: no onChange (old core / not loaded) returns false, silent", () => {
+	const env = makeEnv();
+	assert.equal(startObsSavingsConsumer(env.setStatus, {}, env.timer), false);
+	assert.deepEqual(env.status, {});
+	stopObsSavingsConsumer();
+});
+
+test("format: matches upstream formatSavingsCount (en-US integer)", () => {
+	assert.equal(formatObsSavingsStatus([site("obs_a", 12345.6)]), "⚡ Observation Pack · 12,346 context tokens avoided");
+	assert.equal(formatObsSavingsStatus([]), "⚡ Observation Pack · 0 context tokens avoided");
+});
+
+
+test("packed view: sites without toolCallId (old core) still flash and expose the view", () => {
 	const env = makeEnv();
 	const listeners: Array<() => void> = [];
 	const store = snapshotWith(undefined, listeners);
@@ -178,7 +190,7 @@ test("packed annotation: sites without toolCallId (old core) stay join-less", ()
 	const channel = store.__piClaudeCodeCore as { observation?: { sites?: unknown[] } };
 	channel.observation = { sites: [{ tool: "read", id: "obs_a", avoidedTokens: 100 }] };
 	listeners[0]!();
-	assert.equal(obsPackedAnnotationForCall("call_abc"), undefined);
 	assert.equal(env.status["cc-obs-savings"], "⚡ Observation Pack · 100 context tokens avoided", "flash still works");
+	assert.deepEqual(packedSitesView(), [{ tool: "read", id: "obs_a", avoidedTokens: 100 }]);
 	stopObsSavingsConsumer();
 });

@@ -167,6 +167,36 @@ export const obsRecallDisplayView = (result: unknown): ObsRecallDisplayView => {
 	return { header, text: `${header}\n${body}` };
 };
 
+/**
+ * Pseudo tool row for a packing event (user-directed design 2026-10-06):
+ * when the OBS-09-SITES bus reports first-replacements, render the event
+ * as ONE CC-style tool call row in the conversation tail (an aboveEditor
+ * widget) — "⏺ Observation Packed(...)" + one detail line. Old tool rows
+ * stay untouched (their components predate the publish anyway), nothing is
+ * injected into the session transcript, and the row clears when the user
+ * sends their next message.
+ */
+export interface PackedEventSite {
+	readonly tool: string;
+	readonly id: string;
+	readonly avoidedTokens: number;
+}
+
+export const packedEventRows = (theme: CCTheme, sites: readonly PackedEventSite[], width: number): string[] => {
+	if (sites.length === 0) return [];
+	const tokens = sites.reduce((sum, site) => sum + Math.max(0, Math.round(site.avoidedTokens)), 0);
+	const compact = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
+	const args =
+		sites.length > 1
+			? `${sites.length} results · ${compact(tokens)} tokens avoided`
+			: `${sites[0]!.tool} · ${compact(tokens)} tokens avoided`;
+	const call = ccCall(theme, "Observation Packed", args, "success").render(width)[0] ?? "";
+	const latest = sites[sites.length - 1]!;
+	const idTag = latest.id.length > 16 ? `${latest.id.slice(0, 16)}…` : latest.id;
+	const detail = `${theme.fg("dim", "  ⎿  ")}${theme.fg("toolOutput", `${idTag} · recall via obs_recall`)}`;
+	return [truncateToWidth(call, width, "…"), truncateToWidth(detail, width, "…")];
+};
+
 export const callArgsFor = (name: string, args: unknown): string => {
 	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
 	const table = builtinCallArgs;

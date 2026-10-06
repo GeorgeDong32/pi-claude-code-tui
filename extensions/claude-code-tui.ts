@@ -46,7 +46,7 @@ import {
 	ccResult,
 	displayToolName,
 	obsRecallDisplayView,
-	textOfResult,
+	packedEventRows,
 } from "./lib/cc-rows.ts";
 import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
@@ -83,7 +83,7 @@ import {
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
-import { currentObsSavingsFlash, formatObsPackedAnnotation, obsPackedAnnotationForCall, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
+import { clearPackedSites, packedSitesView, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -334,13 +334,6 @@ export default function (pi: ExtensionAPI) {
 				if (toolName === "obs_recall") {
 					const view = obsRecallDisplayView(result);
 					if (view.header !== null) displayResult = { content: [{ type: "text", text: view.text }] };
-				} else {
-					const callId = (result as { toolCallId?: unknown }).toolCallId;
-					const packed = typeof callId === "string" ? obsPackedAnnotationForCall(callId) : undefined;
-					if (packed) {
-						const text = textOfResult(result);
-						if (text !== "") displayResult = { content: [{ type: "text", text: `${formatObsPackedAnnotation(packed)}\n${text}` }] };
-					}
 				}
 				return ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), displayResult, options, Boolean(rctx?.isError));
 			};
@@ -443,10 +436,6 @@ export default function (pi: ExtensionAPI) {
 				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
 				// narrow claudeShimmer band rides the 200ms tick across the word.
 				const rv = runState.view();
-				// OBS-09-SITES: transient savings flash (4s) — the CC footer
-				// replaces pi's built-in footer, so the widget is the visible
-				// surface here; setStatus covers native-footer mode.
-				const obsFlash = currentObsSavingsFlash();
 				const verbText = `${rv.verb}…`;
 				const seg = shimmerSegments(verbText, glimmerIndexAt(Date.now() - rv.runStart, visibleWidth(verbText)));
 				const verbPainted =
@@ -456,12 +445,10 @@ export default function (pi: ExtensionAPI) {
 				const left = rv.compacting
 					? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
 					: rv.running
-						? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - rv.runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}${obsFlash ? ` ${theme.fg("dim", obsFlash)}` : ""}`
+						? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - rv.runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
 						: rv.lastWorkedLine
-							? `${theme.fg("dim", rv.lastWorkedLine)}${obsFlash ? ` ${theme.fg("dim", obsFlash)}` : ""}`
-							: obsFlash
-								? theme.fg("dim", obsFlash)
-								: "";
+							? theme.fg("dim", rv.lastWorkedLine)
+							: "";
 				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
 				// on the script row + right-aligned badge instead — the right
 				// group collapses so the same info never shows twice.
@@ -713,6 +700,22 @@ export default function (pi: ExtensionAPI) {
 		activateCcTuiChannel(displayCoreNotification);
 		startObsSavingsConsumer(flashObsSavings);
 		if (ctx.mode !== "tui") return;
+		// OBS-09-SITES: packing events as a pseudo tool row in the
+		// conversation tail (user-directed: non-invasive — no old row is
+		// touched, nothing enters the transcript). Renders zero rows and
+		// collapses while idle; clears when the user sends a message.
+		ctx.ui.setWidget("cc-packed", (tui, theme) => ({
+			invalidate() {},
+			render(width: number): string[] {
+				try {
+					const sites = packedSitesView();
+					if (!sites || sites.length === 0) return [];
+					return packedEventRows(theme as unknown as import("./lib/cc-rows.ts").CCTheme, sites, width);
+				} catch {
+					return []; // render must never throw (red line 1)
+				}
+			},
+		}));
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
 		currentProviderName = ctx.model?.provider || "";
@@ -766,6 +769,11 @@ export default function (pi: ExtensionAPI) {
 		channelActive = false; // resolver yields stock renderers from now on
 		subagentBridge.stop(); // withdraw the CC adapters; native roster returns
 		stopObsSavingsConsumer(); // clear any running savings flash
+		try {
+			ctx.ui.setWidget("cc-packed", undefined);
+		} catch {
+			/* older pi / stale ctx */
+		}
 		withdrawCcTuiCapability();
 		teardownStatusline();
 		runState.halt();
@@ -847,6 +855,12 @@ export default function (pi: ExtensionAPI) {
 		observeUsage(ctx);
 		if (refresh) refreshStatusline();
 	};
+
+	// The packed-event pseudo row is transient: the user's next message
+	// supersedes it (it already told its story during the previous run).
+	pi.on("message_start", async (event) => {
+		if ((event as { message?: { role?: string } }).message?.role === "user") clearPackedSites();
+	});
 
 	pi.on("message_end", async (_event, ctx) => {
 		observeUsage(ctx);

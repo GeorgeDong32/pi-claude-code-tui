@@ -90,44 +90,18 @@ let clearHandle: { unref?(): void } | null = null;
 // Per-observation exact savings (OBS-09-SITES): every first-replacement
 // publishes its sites once; accumulate id → avoidedTokens so packed tool
 // rows (which only see the placeholder text) can join the exact number.
-const savingsById = new Map<string, number>();
-const packedCallIds = new Map<string, { tokens: number; id: string }>();
+// Latest packing event, read per frame by the cc-packed widget (the pseudo
+// tool row above the editor). Null → widget renders zero rows and collapses.
+let latestSites: ObsSavingsSite[] | null = null;
 
-/** Exact avoided tokens for a packed observation id, when the bus carried it. */
-export function obsAvoidedTokensById(id: string): number | undefined {
-	return savingsById.get(id);
+/** The sites of the latest first-replacement publish, or null when none. */
+export function packedSitesView(): ObsSavingsSite[] | null {
+	return latestSites;
 }
 
-/**
- * Packed annotation for a transcript toolResult, keyed by toolCallId — the
- * only stable join: pi's context projection rewrites the PROVIDER REQUEST,
- * never the transcript, so the row content stays original forever and the
- * ⚡ annotation must come from the bus, not from content shape.
- */
-export function obsPackedAnnotationForCall(toolCallId: string): { tokens: number; id: string } | undefined {
-	return packedCallIds.get(toolCallId);
-}
-
-function compactTokens(n: number): string {
-	return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
-}
-
-/** The persistent row annotation: "⚡ packed · 12.5k context tokens avoided · obs_xxxx". */
-export function formatObsPackedAnnotation(site: { tokens: number; id: string }): string {
-	const idTag = site.id.length > 16 ? `${site.id.slice(0, 16)}…` : site.id;
-	return `⚡ packed · ${compactTokens(site.tokens)} context tokens avoided · ${idTag}`;
-}
-
-// Running flash state, read per frame by the cc-status widget: pi's
-// built-in footer renders setStatus texts, but CC footer mode replaces
-// that footer — our own widget is the visible surface there. The setStatus
-// call still covers native-footer mode; both are driven by the same state.
-let runningFlash: { text: string; until: number } | null = null;
-
-/** The active savings flash text, or null once expired/cleared. */
-export function currentObsSavingsFlash(now: number = Date.now()): string | null {
-	if (!runningFlash) return null;
-	return now < runningFlash.until ? runningFlash.text : null;
+/** Clear the packed-event row (the entry calls this on the next user message). */
+export function clearPackedSites(): void {
+	latestSites = null;
 }
 
 function sitesKey(sites: readonly ObsSavingsSite[]): string {
@@ -141,15 +115,13 @@ function flash(sites: readonly ObsSavingsSite[]): void {
 		clearHandle = null;
 	}
 	const text = formatObsSavingsStatus(sites);
-	runningFlash = { text, until: Date.now() + STATUS_DURATION_MS };
 	try {
 		flashSetStatus(STATUS_KEY, text);
 	} catch {
-		// stale ui — the widget segment still shows the flash
+		// stale ui — the persistent row annotation still carries the info
 	}
 	clearHandle = flashTimer.set(() => {
 		clearHandle = null;
-		runningFlash = null;
 		try {
 			flashSetStatus?.(STATUS_KEY, undefined);
 		} catch {
@@ -169,12 +141,9 @@ function trySubscribe(globalStore: Record<string, unknown>): boolean {
 		const sites = readObsSites(globalStore);
 		if (sites.length === 0) return;
 		const key = sitesKey(sites);
-		for (const site of sites) {
-			savingsById.set(site.id, site.avoidedTokens);
-			if (site.toolCallId) packedCallIds.set(site.toolCallId, { tokens: site.avoidedTokens, id: site.id });
-		}
 		if (key === lastKey) return; // persisted channel re-delivered
 		lastKey = key;
+		latestSites = sites;
 		flash(sites);
 	});
 	return true;
@@ -199,8 +168,7 @@ export function stopObsSavingsConsumer(): void {
 	unsubscribe?.();
 	unsubscribe = null;
 	lastKey = null;
-	runningFlash = null;
-	packedCallIds.clear();
+	latestSites = null;
 	if (clearHandle) {
 		flashTimer.clear(clearHandle);
 		clearHandle = null;

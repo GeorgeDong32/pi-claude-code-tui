@@ -5,6 +5,8 @@ import {
 	callArgsFor,
 	displayToolName,
 	obsRecallDisplayView,
+	packedEventRows,
+	type CCTheme,
 } from "../extensions/lib/cc-rows.ts";
 
 /**
@@ -74,3 +76,23 @@ test("obs_recall view: call row and display name stay the pinned single format",
 	assert.equal(callArgsFor("obs_recall", { id: "obs_5caf95927c3a939296aa5f60", offset: 15872 }), "obs_5caf95927c3a · +15.5KB");
 });
 
+
+// ---- packed-event pseudo tool row ----
+
+const theme: CCTheme = {
+	fg: (_c, t) => t,
+	bold: (t) => t,
+};
+
+test("packedEventRows: single and multi sites render as one CC-style tool row", () => {
+	const single = packedEventRows(theme, [{ tool: "read", id: "obs_d2d080c18f1be74f1428df79", avoidedTokens: 12476 }], 80);
+	assert.equal(single.length, 2);
+	assert.match(single[0]!.replace(/\x1b\[[0-9;]*m/g, ""), /⏺ Observation Packed\(read · 12.5k tokens avoided\)/);
+	assert.match(single[1]!.replace(/\x1b\[[0-9;]*m/g, ""), /⎿  obs_d2d080c18f1b… · recall via obs_recall/);
+	const multi = packedEventRows(theme, [
+		{ tool: "read", id: "obs_aaaaaaaaaaaaaaaa", avoidedTokens: 12476 },
+		{ tool: "bash", id: "obs_bbbbbbbbbbbbbbbb", avoidedTokens: 4512 },
+	], 80);
+	assert.match(multi[0]!.replace(/\x1b\[[0-9;]*m/g, ""), /⏺ Observation Packed\(2 results · 17.0k tokens avoided\)/);
+	assert.deepEqual(packedEventRows(theme, [], 80), []);
+});
