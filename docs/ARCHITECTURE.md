@@ -39,7 +39,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/status-snapshot.ts` | `UsageTracker`：按 USAGE_OBSERVATION_POINTS 采样（agent_settled 保证最终值、session_tree/compact 失效——spec 8.2） | `UsageTracker`、`USAGE_OBSERVATION_POINTS` | `status-snapshot.test.ts` |
 | `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读）；核心通知队列消费（显式重试）；生命周期 activate/withdraw 配对 | `readPmStatus`、`activateCcTuiChannel`、`withdrawCcTuiCapability` | `pm-capability.test.ts` |
 | `lib/subagent-presentation.ts` | subagent 展示 seam 消费端镜像：v1 协议常量/事件名、frame/row/layout 类型、有界 register/probe 客户端、bridge 生命周期（probe→注册→晚宿主补注册→撤回） | `SubagentPresentationBridge`、`registerSubagentPresentation`、`probeSubagentPresentation` | `subagent-presentation.test.ts`（7 生命周期）+ `cc-subagent-rows.test.ts` 协议段 |
-| `lib/cc-subagent-rows.ts` | CC subagent 纯绘制：Fleet roster（glyph/树分支/选择箭头原位/紧凑 tok·time 右列/双向 overflow/identity 色散列）消费只读 frame，产出 lines+layout；无 IO、无 runtime | `drawCcFleetFrame`、`subagentIdentityColor` | `cc-subagent-rows.test.ts`（行型×选择×宽度×布局钉死） |
+| `lib/cc-subagent-rows.ts` | CC subagent 纯绘制：Fleet roster（glyph/树分支/选择箭头原位/紧凑 tok·time 右列/双向 overflow/identity 色散列）消费只读 frame，产出 lines+layout；无 IO、无 runtime | `drawCcFleetFrame`、`drawCcAsyncFrame`、`subagentIdentityColor` | `cc-subagent-rows.test.ts`（行型×选择×宽度×布局钉死） |
 | `lib/pi-proto-adapter.ts` | pi 自有组件原型补丁的集中生命周期：原方法保存、marker=refresh 函数（重装刷新 getter）、宿主形状检查、异常降级到原方法、restore 仅撤自己仍拥有的改写 | `PrototypeMethodAdapter` | `pi-proto-adapter.test.ts`（8 生命周期） |
 | `lib/prefs.ts` | `~/.pi/agent/claude-tui.json` 读改写：合并写 + tmp/rename 原子替换，坏文件回退 `{}` | `loadPrefs`、`savePrefs` | `prefs.test.ts` |
 | `lib/format.ts` | 纯值格式化：时长/token/cost、模型/effort 标签、完成行 | `formatDuration`、`formatTokens`、`formatCost`、`buildCompletionLine` | `format.test.ts` |

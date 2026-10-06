@@ -138,4 +138,5 @@ file; badge overlapping wide CJK output.
 - [ ] 40/60/80/120 列与极窄 20 列：无异常、无错位；窄宽度先保标记与身份，token/time 退让。
 - [ ] `/claude-tui off` → 底栏立即恢复原生形态（折叠摘要行 + 交互时上游样式）；`/claude-tui` 再开 → CC 底栏回来。
 - [ ] workflow 底栏：wrapper 行右侧 "usage on child rows"、phase 行（`● Tasks · …`）、完成 lane `✓ name · complete · 8s · ↓ N window · M spent`。
+- [ ] **async widget**（`subagent-async` 下方面板，多开后台任务时可见）：CC 视觉语言——`● subagents · background` 头、树连接符 `├─/└─`、detail 行 CC `⎿` gutter、折叠态单行 `● subagents (N/M running, …)`；`/claude-tui off` 后回到原生 `⠋ Async agents · background` 形态。极窄终端（<22 行）下是原生渐进卡片（v1 已知降级，见 spec/notes/async-surface-plan.md）。
 - [ ] 对应 async 树被 Fleet 完整覆盖时折叠（coverage），不完整时保持双显——中途 resize/展开不应闪烁丢行。

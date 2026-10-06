@@ -41,3 +41,8 @@ cachedLines = drawn.lines.map((line) => paddedWidgetLine(line, renderWidth));
 - adaptive tier 的 session 锁定行为跨帧语义：投影不碰 session（owner 侧不动），仅材料化当帧可见集。
 - 动画 glyph（⠋）：frame.now 已带；glyph 由 adapter 从 glyphState+now 计算（native 用现 runningGlyph 公式）。
 - 覆盖（inlineWorkflowCoverage）：继续 owner 侧（投影输入 covered 集合，材料化时剔除）。
+
+
+## 完成记录（2026-10-06）
+
+Step 1–4 全部落地：特征化 11/11（上游）、seam 分发（single-line/full 两 tier，progressive 留原生 v1）、CC 绘制 + 双 surface bridge、跨仓库 e2e（adapter 切换/撤回/布局验证零诊断）。已知边界：极窄终端的 progressive 卡片为原生降级；adapter 切换经 onAdapterChange 立即失效缓存。
