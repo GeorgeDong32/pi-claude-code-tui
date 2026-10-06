@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+	formatObsPackedAnnotation,
 	formatObsSavingsStatus,
+	obsPackedAnnotationForCall,
 	readObsSites,
 	currentObsSavingsFlash,
 	startObsSavingsConsumer,
@@ -151,4 +153,32 @@ test("flash: no onChange (old core / not loaded) returns false, silent", () => {
 test("format: matches upstream formatSavingsCount (en-US integer)", () => {
 	assert.equal(formatObsSavingsStatus([site("obs_a", 12345.6)]), "⚡ Observation Pack · 12,346 context tokens avoided");
 	assert.equal(formatObsSavingsStatus([]), "⚡ Observation Pack · 0 context tokens avoided");
+});
+
+test("packed annotation: joined by toolCallId, formatted compactly", () => {
+	const env = makeEnv();
+	const listeners: Array<() => void> = [];
+	const store = snapshotWith(undefined, listeners);
+	startObsSavingsConsumer(env.setStatus, store, env.timer);
+	const channel = store.__piClaudeCodeCore as { observation?: { sites?: unknown[] } };
+	channel.observation = { sites: [{ tool: "read", id: "obs_d2d080c18f1be74f1428df79", avoidedTokens: 12476, toolCallId: "call_abc" }] };
+	listeners[0]!();
+	assert.deepEqual(obsPackedAnnotationForCall("call_abc"), { tokens: 12476, id: "obs_d2d080c18f1be74f1428df79" });
+	assert.equal(obsPackedAnnotationForCall("call_other"), undefined);
+	assert.equal(formatObsPackedAnnotation(obsPackedAnnotationForCall("call_abc")!), "⚡ packed · 12.5k context tokens avoided · obs_d2d080c18f1b…");
+	stopObsSavingsConsumer();
+	assert.equal(obsPackedAnnotationForCall("call_abc"), undefined, "registry cleared on stop");
+});
+
+test("packed annotation: sites without toolCallId (old core) stay join-less", () => {
+	const env = makeEnv();
+	const listeners: Array<() => void> = [];
+	const store = snapshotWith(undefined, listeners);
+	startObsSavingsConsumer(env.setStatus, store, env.timer);
+	const channel = store.__piClaudeCodeCore as { observation?: { sites?: unknown[] } };
+	channel.observation = { sites: [{ tool: "read", id: "obs_a", avoidedTokens: 100 }] };
+	listeners[0]!();
+	assert.equal(obsPackedAnnotationForCall("call_abc"), undefined);
+	assert.equal(env.status["cc-obs-savings"], "⚡ Observation Pack · 100 context tokens avoided", "flash still works");
+	stopObsSavingsConsumer();
 });

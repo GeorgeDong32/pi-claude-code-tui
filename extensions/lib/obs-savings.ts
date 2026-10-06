@@ -27,6 +27,8 @@ export interface ObsSavingsSite {
 	readonly tool: string;
 	readonly id: string;
 	readonly avoidedTokens: number;
+	/** The transcript toolResult this site packed (OBS-09-SITES v2; absent on old cores). */
+	readonly toolCallId?: string;
 }
 
 /** Timer ports injectable for tests; real defaults unref like the original. */
@@ -63,9 +65,9 @@ export function readObsSites(globalStore: Record<string, unknown> = globalThis a
 	const parsed: ObsSavingsSite[] = [];
 	for (const site of sites) {
 		if (typeof site !== "object" || site === null) continue;
-		const { tool, id, avoidedTokens } = site as Record<string, unknown>;
+		const { tool, id, avoidedTokens, toolCallId } = site as Record<string, unknown>;
 		if (typeof tool !== "string" || typeof id !== "string" || typeof avoidedTokens !== "number") continue;
-		parsed.push({ tool, id, avoidedTokens });
+		parsed.push(typeof toolCallId === "string" ? { tool, id, avoidedTokens, toolCallId } : { tool, id, avoidedTokens });
 	}
 	return parsed;
 }
@@ -89,10 +91,31 @@ let clearHandle: { unref?(): void } | null = null;
 // publishes its sites once; accumulate id → avoidedTokens so packed tool
 // rows (which only see the placeholder text) can join the exact number.
 const savingsById = new Map<string, number>();
+const packedCallIds = new Map<string, { tokens: number; id: string }>();
 
 /** Exact avoided tokens for a packed observation id, when the bus carried it. */
 export function obsAvoidedTokensById(id: string): number | undefined {
 	return savingsById.get(id);
+}
+
+/**
+ * Packed annotation for a transcript toolResult, keyed by toolCallId — the
+ * only stable join: pi's context projection rewrites the PROVIDER REQUEST,
+ * never the transcript, so the row content stays original forever and the
+ * ⚡ annotation must come from the bus, not from content shape.
+ */
+export function obsPackedAnnotationForCall(toolCallId: string): { tokens: number; id: string } | undefined {
+	return packedCallIds.get(toolCallId);
+}
+
+function compactTokens(n: number): string {
+	return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
+}
+
+/** The persistent row annotation: "⚡ packed · 12.5k context tokens avoided · obs_xxxx". */
+export function formatObsPackedAnnotation(site: { tokens: number; id: string }): string {
+	const idTag = site.id.length > 16 ? `${site.id.slice(0, 16)}…` : site.id;
+	return `⚡ packed · ${compactTokens(site.tokens)} context tokens avoided · ${idTag}`;
 }
 
 // Running flash state, read per frame by the cc-status widget: pi's
@@ -146,7 +169,10 @@ function trySubscribe(globalStore: Record<string, unknown>): boolean {
 		const sites = readObsSites(globalStore);
 		if (sites.length === 0) return;
 		const key = sitesKey(sites);
-		for (const site of sites) savingsById.set(site.id, site.avoidedTokens);
+		for (const site of sites) {
+			savingsById.set(site.id, site.avoidedTokens);
+			if (site.toolCallId) packedCallIds.set(site.toolCallId, { tokens: site.avoidedTokens, id: site.id });
+		}
 		if (key === lastKey) return; // persisted channel re-delivered
 		lastKey = key;
 		flash(sites);
@@ -174,6 +200,7 @@ export function stopObsSavingsConsumer(): void {
 	unsubscribe = null;
 	lastKey = null;
 	runningFlash = null;
+	packedCallIds.clear();
 	if (clearHandle) {
 		flashTimer.clear(clearHandle);
 		clearHandle = null;
