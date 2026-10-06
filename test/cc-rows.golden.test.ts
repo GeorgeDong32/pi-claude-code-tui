@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import {
 	ccCall,
+	displayToolName,
 	blinkGlyph,
 	ccResult,
 	mcpArgsSummary,
@@ -307,4 +308,13 @@ test("CC call row for an MCP tool keeps the dot/bold shape and carries the dim (
 	const rec = recordingTheme();
 	ccCall(rec.theme, name, "query=hi", "success", undefined, "(MCP)").render(90);
 	assert.ok(rec.calls.some(([color, s]) => color === "dim" && s === "(MCP)"));
+});
+
+test("display tool names: obs_recall reads as Recall Observation (model side untouched)", () => {
+	assert.equal(displayToolName("obs_recall"), "Recall Observation");
+	assert.equal(displayToolName("bash"), "bash");
+	assert.equal(displayToolName("subagent"), "subagent");
+	const call = ccCall(identity, displayToolName("obs_recall"), callArgsFor("obs_recall", { id: "obs_0d380d7641f3b1e9d", offset: 0 }), "success");
+	const row = call.render(80)[0]!.replace(/\x1b\[[0-9;]*m/g, "");
+	assert.match(row, /⏺ Recall Observation\(obs_0d380d7641f3 · start\)/, row);
 });

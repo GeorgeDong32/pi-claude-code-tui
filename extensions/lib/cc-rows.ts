@@ -102,6 +102,18 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 	return builtins;
 })();
 
+/**
+ * Display-only tool names (model side never changes). obs_recall is the
+ * observation pack's recall tool — the pack's own renderer calls it
+ * "Recall Observation", so CC rows keep that name when they take over
+ * (force mode); a bare `obs_recall` says nothing to a human.
+ */
+const DISPLAY_TOOL_NAMES: Record<string, string> = {
+	obs_recall: "Recall Observation",
+};
+
+export const displayToolName = (name: string): string => DISPLAY_TOOL_NAMES[name] ?? name;
+
 export const callArgsFor = (name: string, args: unknown): string => {
 	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
 	const table = builtinCallArgs;
