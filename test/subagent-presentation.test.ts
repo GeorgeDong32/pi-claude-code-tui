@@ -16,11 +16,10 @@ import {
 	SUBAGENT_PRESENTATION_READY_EVENT,
 	SubagentPresentationBridge,
 	type SubagentPresentationDiagnosticPayload,
-	type SubagentPresentationDraw,
+	type SubagentPresentationFleetDraw,
+	type SubagentPresentationAsyncDraw,
 	type SubagentPresentationDrawResult,
 	type SubagentPresentationEventBus,
-	type SubagentPresentationFleetFrame,
-	type SubagentPresentationFrame,
 	type SubagentPresentationReadyPayload,
 	type SubagentPresentationRegistrationHandle,
 } from "../extensions/lib/subagent-presentation.ts";
@@ -136,12 +135,12 @@ class FakeHost {
 	}
 }
 
-const drawNoop: SubagentPresentationDraw = (frame: SubagentPresentationFrame): SubagentPresentationDrawResult => ({
+const drawNoop: SubagentPresentationFleetDraw = (frame): SubagentPresentationDrawResult => ({
 	lines: frame.rows.map(() => "cc"),
-	layout: frame.rows.map((row: { rowKey: string }, index: number) => ({ rowKey: row.rowKey, fromLine: index, toLine: index, truncated: false })),
+	layout: frame.rows.map((row, index) => ({ rowKey: row.rowKey, fromLine: index, toLine: index, truncated: false })),
 });
 
-void (undefined as unknown as SubagentPresentationFleetFrame);
+
 
 test("bridge: registers on start when the host is already ready (load order A)", async () => {
 	const bus = new FakeBus();
@@ -251,3 +250,41 @@ function settle(ms = 5): Promise<void> {
 		timer.unref?.();
 	});
 }
+
+test("bridge: registers both surfaces when the host offers fleet and async (§5.1 full capability)", async () => {
+	const bus = new FakeBus();
+	const host = new FakeHost({ bus, surfaces: ["fleet", "async"] });
+	host.activate();
+	host.publishReady();
+	const fleetDraw: SubagentPresentationFleetDraw = (frame) => ({
+		lines: frame.rows.map(() => "cc"),
+		layout: frame.rows.map((row, index) => ({ rowKey: row.rowKey, fromLine: index, toLine: index, truncated: false })),
+	});
+	const asyncDraw: SubagentPresentationAsyncDraw = (frame) => ({
+		lines: frame.jobs.map((section) => `cc:${section.rowKey}`),
+		layout: frame.jobs.map((section, index) => ({ rowKey: section.rowKey, fromLine: index, toLine: index, truncated: false })),
+	});
+	const bridge = new SubagentPresentationBridge({ events: bus, surfaces: { fleet: fleetDraw, async: asyncDraw }, handshakeTimeoutMs: 50 });
+	bridge.start("session-1");
+	await settle();
+	assert.equal(bridge.status(), "active");
+	assert.deepEqual(host.registeredAdapters.at(-1)?.surfaces.sort(), ["async", "fleet"], "both surfaces registered on the same handle");
+	bridge.dispose();
+});
+
+test("bridge: fleet-only host registers fleet alone (partial availability still displays)", async () => {
+	const bus = new FakeBus();
+	const host = new FakeHost({ bus, surfaces: ["fleet"] });
+	host.activate();
+	host.publishReady();
+	const fleetDraw: SubagentPresentationFleetDraw = (frame) => ({
+		lines: frame.rows.map(() => "cc"),
+		layout: frame.rows.map((row, index) => ({ rowKey: row.rowKey, fromLine: index, toLine: index, truncated: false })),
+	});
+	const bridge = new SubagentPresentationBridge({ events: bus, surfaces: { fleet: fleetDraw, async: undefined }, handshakeTimeoutMs: 50 });
+	bridge.start("session-1");
+	await settle();
+	assert.equal(bridge.status(), "active");
+	assert.deepEqual(host.registeredAdapters.at(-1)?.surfaces, ["fleet"]);
+	bridge.dispose();
+});

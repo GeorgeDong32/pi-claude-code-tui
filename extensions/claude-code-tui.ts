@@ -64,7 +64,7 @@ import {
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
 import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/format.ts";
-import { drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
+import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
 import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
 import {
 	defaultPrefsPath,
@@ -650,7 +650,7 @@ export default function (pi: ExtensionAPI) {
 	// upstream native roster in place — degraded, never blank.
 	const subagentBridge = new SubagentPresentationBridge({
 		events: pi.events,
-		surfaces: { fleet: drawCcFleetFrame },
+		surfaces: { fleet: drawCcFleetFrame, async: drawCcAsyncFrame },
 		onDiagnostic: (diagnostic) => {
 			// Upstream dedupes per session+reason; this tail is per occurrence.
 			console.warn(`[claude-tui] subagent ${diagnostic.surface} drawing fell back to native: ${diagnostic.reason}`);

@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import {
 	compactTokenCount,
+	drawCcAsyncFrame,
 	drawCcFleetFrame,
 	formatFleetElapsed,
 	subagentIdentityColor,
@@ -46,6 +47,13 @@ function frame(rows: SubagentPresentationFleetRow[], overrides: Partial<Subagent
 		rows,
 		selection: { active: false, selectedKey: null },
 		budget: { visibleRows: rows.length, hiddenAbove: 0, hiddenBelow: 0, maxRows: 6 },
+		summary: {
+			activeLeafAgents: rows.filter((row) => row.rowKind === "agent").length,
+			anyExternal: false,
+			nativeUsage: { tokens: 0, count: 0 },
+			hasWorkflowWrapper: false,
+			panes: { total: 0, attention: 0 },
+		},
 		...overrides,
 	};
 }
@@ -261,3 +269,102 @@ test("protocol mirror: probe resolves the ready payload and rejects foreign vers
 function visibleLen(line: string): number {
 	return line.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
+
+// ---- CC async surface drawing ----
+
+test("async: collapsed counts line uses CC glyphs and the compact format", () => {
+	const rendered = drawCcAsyncFrame({
+		protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION,
+		surface: "async",
+		revision: "r",
+		session: "s",
+		runtimeGeneration: 0,
+		width: 80,
+		theme: identity,
+		now: NOW,
+		tier: "single-line",
+		counts: { running: 1, queued: 1, failed: 1, stopped: 0, paused: 0, partial: 0, rejected: 0, complete: 0, total: 3 },
+		jobs: [],
+		multiHeader: { active: true, anyRunning: true },
+	});
+	assert.match(rendered.lines[0]!, /subagents \(1\/3 running, 1 queued, 1 failed\)/);
+	assert.equal(rendered.lines[0]!.startsWith("●"), true, "active counts use the accent dot");
+});
+
+test("async: full tier draws CC connectors, gutters, and layout keys matching the seam contract", () => {
+	const rendered = drawCcAsyncFrame({
+		protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION,
+		surface: "async",
+		revision: "r",
+		session: "s",
+		runtimeGeneration: 0,
+		width: 80,
+		theme: identity,
+		now: NOW,
+		tier: "full",
+		counts: { running: 1, queued: 0, failed: 0, stopped: 0, paused: 0, partial: 0, rejected: 0, complete: 0, total: 1 },
+		multiHeader: { active: true, anyRunning: true },
+		jobs: [
+			{
+				rowKey: "async:a",
+				header: {
+					name: "reviewer", title: "", state: "running", glyphState: "running",
+					compactWorkflow: false, singleChildJob: false, activity: "thinking…",
+					itemHeadLine: "● reviewer · running",
+				},
+				rows: [
+					{ rowKind: "detail", rowKey: "detail:0", text: "  ⎿  thinking…", gutter: true, tone: "plain" },
+					{ rowKind: "detail", rowKey: "detail:1", text: "  lane row", gutter: false, tone: "plain" },
+				],
+				children: [],
+			},
+		],
+		hidden: { running: 1, finished: 2, queued: 1 },
+	});
+	assert.match(rendered.lines[0]!, /subagents · background/);
+	assert.match(rendered.lines[1]!, /├─ ● reviewer · running/);
+	assert.match(rendered.lines[2]!, /│ {4}⎿  thinking…/, rendered.lines[2]!);
+	assert.match(rendered.lines[4]!, /↓ 4 more/);
+	// Seam contract: layout keys exactly match the owner's frameRowsOf accounting.
+	assert.deepEqual(rendered.layout.map((entry) => entry.rowKey), [
+		"async:header",
+		"async:a",
+		"async:a:detail:0",
+		"async:a:detail:1",
+		"async:hidden",
+	]);
+});
+
+test("async: single-job layout renders the CC glyph header without connectors", () => {
+	const rendered = drawCcAsyncFrame({
+		protocol: SUBAGENT_PRESENTATION_PROTOCOL_VERSION,
+		surface: "async",
+		revision: "r",
+		session: "s",
+		runtimeGeneration: 0,
+		width: 80,
+		theme: identity,
+		now: NOW,
+		tier: "full",
+		counts: { running: 1, queued: 0, failed: 0, stopped: 0, paused: 0, partial: 0, rejected: 0, complete: 0, total: 1 },
+		jobs: [
+			{
+				rowKey: "async:solo",
+				header: {
+					name: "single", title: "async subagent single", state: "running", glyphState: "running",
+					compactWorkflow: false, singleChildJob: true, activity: "thinking…",
+					titleLine: "async subagent single · background",
+					summaryLine: "● single · running",
+				},
+				rows: [
+					{ rowKind: "detail", rowKey: "detail:0", text: "  ⎿  thinking…", gutter: true, tone: "plain" },
+				],
+				children: [],
+			},
+		],
+	});
+	assert.equal(rendered.lines[0]!, "● single");
+	assert.equal(rendered.lines[1]!, "● thinking…");
+	assert.match(rendered.lines[2]!, /⎿  thinking…/);
+	assert.ok(!rendered.lines.some((line) => line.includes("├─") || line.includes("└─")), "single-job layout has no tree connectors");
+});

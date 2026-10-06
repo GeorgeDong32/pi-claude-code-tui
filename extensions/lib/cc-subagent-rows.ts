@@ -13,6 +13,8 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type {
 	SubagentPresentationAgentRow,
+	SubagentPresentationAsyncCounts,
+	SubagentPresentationAsyncFrame,
 	SubagentPresentationDrawResult,
 	SubagentPresentationFleetFrame,
 	SubagentPresentationNestedRow,
@@ -286,4 +288,88 @@ export function drawCcFleetFrame(frame: SubagentPresentationFleetFrame): Subagen
 		}
 	}
 	return { lines, layout };
+}
+
+// ---- CC async surface drawing (spec §4.4) ----
+
+function ccAsyncGlyph(state: string, theme: SubagentPresentationTheme): string {
+	if (state === "running") return theme.fg("accent", "●");
+	if (state === "queued" || state === "pending") return theme.fg("muted", "◦");
+	if (state === "complete" || state === "completed") return theme.fg("success", "✓");
+	if (state === "failed" || state === "rejected") return theme.fg("error", "✗");
+	return theme.fg("warning", "■");
+}
+
+function ccAsyncCountsLine(counts: SubagentPresentationAsyncCounts, theme: SubagentPresentationTheme): string {
+	const hasActive = counts.running > 0 || counts.queued > 0;
+	const parts: string[] = [];
+	if (counts.running > 0) parts.push(`${counts.running}/${counts.total} running`);
+	if (counts.queued > 0) parts.push(`${counts.queued} queued`);
+	if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+	if (counts.stopped > 0) parts.push(`${counts.stopped} stopped`);
+	if (counts.paused > 0) parts.push(`${counts.paused} paused`);
+	if (counts.partial > 0) parts.push(`${counts.partial} partial`);
+	if (counts.rejected > 0) parts.push(`${counts.rejected} rejected`);
+	if (!hasActive && counts.complete > 0) parts.push(`${counts.complete}/${counts.total} done`);
+	const glyph = hasActive ? theme.fg("accent", "●") : theme.fg("muted", "○");
+	return `${glyph} ${theme.fg("muted", "subagents")} ${theme.fg("dim", `(${parts.join(", ") || `${counts.total} total`})`)}`;
+}
+
+/**
+ * The CC async surface drawing: the same visual language as the fleet roster —
+ * status glyphs, dim detail rows, tree connectors, and the compact counts
+ * line when collapsed. Detail rows arrive as pre-composed text material
+ * (§5.2) from the owner's projection; layout facts follow the seam contract
+ * (one entry per frame row, matching the owner's frameRowsOf accounting).
+ */
+export function drawCcAsyncFrame(frame: SubagentPresentationAsyncFrame): SubagentPresentationDrawResult {
+	const theme = frame.theme;
+	const lines: string[] = [];
+	const layout: SubagentPresentationDrawResult["layout"] = [];
+	const push = (rowKey: string, line: string): void => {
+		layout.push({ rowKey, fromLine: lines.length, toLine: lines.length, truncated: false });
+		lines.push(truncateToWidth(line, frame.width));
+	};
+	if (frame.tier === "single-line" || (frame.tier === "progressive" && !frame.jobs.length)) {
+		push("async:summary", ccAsyncCountsLine(frame.counts, theme));
+		return { lines, layout };
+	}
+	if (frame.multiHeader) {
+		const glyph = frame.multiHeader.anyRunning ? theme.fg("accent", "●") : theme.fg("muted", "○");
+		push("async:header", `${glyph} ${theme.fg("muted", "subagents · background")}`);
+	}
+	for (const [index, section] of frame.jobs.entries()) {
+		const head = section.header;
+		const last = index === frame.jobs.length - 1 && !frame.hidden;
+		const branch = last ? "└─" : "├─";
+		const continuation = last ? "   " : "│  ";
+		if (head.titleLine !== undefined) {
+			// Single-job layout: CC glyph + name header, then the detail rows
+			// under the CC ⎿ gutter (no tree connectors).
+			push(section.rowKey, `${ccAsyncGlyph(head.state, theme)} ${head.name}${head.stats ? ` ${theme.fg("dim", `· ${stripAnsiTail(head.stats)}`)}` : ""}`);
+			if (head.summaryLine !== undefined) push(`${section.rowKey}:summary`, `${ccAsyncGlyph(head.state, theme)} ${theme.fg("muted", head.activity ?? head.state)}`);
+		} else {
+			// Multi-item layout: CC tree connectors over the owner-composed
+			// head material (structure CC, material fidelity).
+			push(section.rowKey, `${theme.fg("dim", branch)} ${head.itemHeadLine ?? ""}`);
+		}
+		for (const row of section.rows) {
+			if (row.rowKind !== "detail") continue;
+			const gutter = row.gutter && head.titleLine !== undefined ? "⎿  " : "";
+			push(`${section.rowKey}:${row.rowKey}`, `${theme.fg("dim", continuation)}${gutter ? `  ${theme.fg("dim", gutter)}` : ""}${row.text}`);
+		}
+		for (const [childIndex, childLine] of (section.childrenLines ?? []).entries()) {
+			push(`${section.rowKey}:child:${childIndex}`, `${theme.fg("dim", continuation)}${childLine}`);
+		}
+		if (section.childrenHidden) push(`${section.rowKey}:children-hidden`, `${theme.fg("dim", continuation)}  +${section.childrenHidden} more workflow children`);
+	}
+	if (frame.hidden) {
+		const total = frame.hidden.running + frame.hidden.finished + (frame.hidden.queued ?? 0);
+		if (total > 0) push("async:hidden", theme.fg("dim", `↓ ${total} more`));
+	}
+	return { lines, layout };
+}
+
+function stripAnsiTail(text: string): string {
+	return text.replace(/\x1b\[[0-9;]*m/g, "");
 }

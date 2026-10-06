@@ -153,9 +153,77 @@ export interface SubagentPresentationFleetFrame extends SubagentPresentationFram
 	rows: SubagentPresentationFleetRow[];
 	selection: { active: boolean; selectedKey: string | null };
 	budget: { visibleRows: number; hiddenAbove: number; hiddenBelow: number; maxRows: number };
+	summary: SubagentPresentationFleetSummary;
 }
 
-export type SubagentPresentationFrame = SubagentPresentationFleetFrame;
+/** Collapsed-summary material for the native fleet roster (CC ignores). */
+export interface SubagentPresentationFleetSummary {
+	activeLeafAgents: number;
+	anyExternal: boolean;
+	capacity?: { used: number; limit: number };
+	nativeUsage: { tokens: number; window?: number; count: number };
+	hasWorkflowWrapper: boolean;
+	panes: { total: number; attention: number };
+}
+
+// ---- Async surface mirror (spec §4.4) ----
+
+export interface SubagentPresentationAsyncCounts {
+	running: number;
+	queued: number;
+	failed: number;
+	stopped: number;
+	paused: number;
+	partial: number;
+	rejected: number;
+	complete: number;
+	total: number;
+}
+
+export interface SubagentPresentationAsyncDetailRow {
+	rowKind: "detail";
+	rowKey: string;
+	text: string;
+	gutter: boolean;
+	tone: "dim" | "accent" | "plain";
+}
+
+export interface SubagentPresentationAsyncJobSection {
+	rowKey: string;
+	header: {
+		name: string;
+		title: string;
+		state: string;
+		context?: string;
+		stats?: string;
+		activity?: string;
+		glyphState: "running" | "queued" | "complete" | "failed" | "partial" | "paused" | "stopped" | "rejected";
+		compactWorkflow: boolean;
+		singleChildJob: boolean;
+		glyph?: string;
+		contextBadge?: string;
+		identity?: string;
+		summaryLine?: string;
+		titleLine?: string;
+		itemHeadLine?: string;
+	};
+	rows: Array<SubagentPresentationAsyncDetailRow | SubagentPresentationWorkflowLaneRow | SubagentPresentationWorkflowPhaseRow | SubagentPresentationNestedRow>;
+	children: SubagentPresentationAsyncJobSection[];
+	childrenLines?: string[];
+	childrenHidden?: number;
+}
+
+export interface SubagentPresentationAsyncFrame extends SubagentPresentationFrameBase {
+	surface: "async";
+	tier: "single-line" | "full" | "progressive";
+	counts: SubagentPresentationAsyncCounts;
+	multiHeader?: { active: boolean; anyRunning: boolean; glyph?: string; label?: string };
+	jobs: SubagentPresentationAsyncJobSection[];
+	hidden?: { running: number; finished: number; queued?: number };
+	hiddenLine?: string;
+}
+
+export type SubagentPresentationFrame = SubagentPresentationFleetFrame | SubagentPresentationAsyncFrame;
 
 export interface SubagentPresentationLayoutRow {
 	rowKey: string;
@@ -169,7 +237,13 @@ export interface SubagentPresentationDrawResult {
 	layout: SubagentPresentationLayoutRow[];
 }
 
-export type SubagentPresentationDraw = (frame: SubagentPresentationFrame) => SubagentPresentationDrawResult;
+export type SubagentPresentationFleetDraw = (frame: SubagentPresentationFleetFrame) => SubagentPresentationDrawResult;
+export type SubagentPresentationAsyncDraw = (frame: SubagentPresentationAsyncFrame) => SubagentPresentationDrawResult;
+/** Per-surface draw signatures, keyed by surface. */
+export type SubagentPresentationSurfaces = Partial<{
+	fleet: SubagentPresentationFleetDraw;
+	async: SubagentPresentationAsyncDraw;
+}>;
 
 export interface SubagentPresentationRegistrationHandle {
 	token: string;
@@ -217,7 +291,7 @@ const REPLY_CHANNEL_PREFIX = "pi-subagents:presentation:v1:reply:";
 export async function registerSubagentPresentation(options: {
 	events: SubagentPresentationEventBus;
 	identity: string;
-	surfaces: Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>;
+	surfaces: SubagentPresentationSurfaces;
 	session?: string | null;
 	runtimeGeneration?: number;
 	timeoutMs?: number;
@@ -293,7 +367,7 @@ export type SubagentPresentationBridgeStatus =
 export interface SubagentPresentationBridgeOptions {
 	events: SubagentPresentationEventBus;
 	/** Drawing per surface this bridge registers. */
-	surfaces: Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>;
+	surfaces: SubagentPresentationSurfaces;
 	identity?: string;
 	/** Diagnostics surfacing (upstream already dedupes per session+reason). */
 	onDiagnostic?: (payload: SubagentPresentationDiagnosticPayload) => void;
@@ -388,7 +462,7 @@ export class SubagentPresentationBridge {
 		const result = await registerSubagentPresentation({
 			events: this.options.events,
 			identity: this.options.identity ?? "cc-tui",
-			surfaces: surfaces as Partial<Record<SubagentPresentationSurface, SubagentPresentationDraw>>,
+			surfaces: surfaces as SubagentPresentationSurfaces,
 			session: ready.session ?? this.session,
 			runtimeGeneration: ready.runtimeGeneration,
 			timeoutMs: this.options.handshakeTimeoutMs ?? 250,
