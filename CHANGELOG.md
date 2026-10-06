@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.0 (2026-10-06)
+
+### Added (subagent presentation decoupling, spec 2026-10-05-cc-tui-subagent-presentation)
+- CC subagent presentation drawing (`lib/cc-subagent-rows.ts`) + seam protocol mirror (`lib/subagent-presentation.ts`): the fleet and async rosters draw in CC style over pi-subagents' versioned presentation seam (P2), wired by `SubagentPresentationBridge` (P3 — probe → register → late-host re-register → withdraw, native fallback on any failure). Async single-line/full tiers follow the seam (P4/step 4); progressive stays native v1 (known degradation).
+- Tool rows gain display-only tool names (`displayToolName()`): `obs_recall` reads as **Recall Observation** (the observation pack's own naming) — model-side name/schema unchanged.
+- obs_recall result previews lead with a human header (`15.5KB · 241 lines · start→+15.5KB · more ▸` / `… · end ✓`) parsed from the two protocol lines in the result text (no details dependency; non-matching text passes through).
+- Observation-pack savings in the conversation flow (user-directed design): on each first-replacement publish (OBS-09-SITES), a display-only CustomEntry renders as a pseudo tool row in the transcript — `⏺ Observation Packed(read · 12.5k tokens avoided)` + `⎿ obs_xxxx… · recall via obs_recall` — never entering the model context, durable across restarts (`appendEntry` + `registerEntryRenderer`).
+
+### Fixed
+- User-message bar patch is wrapper-style: the adapter body runs the saved original before clearing padding (the replacement-style regression blanked user messages).
+- obs_recall's recall detail renders in the CC result slot (unified ⎿ slot).
+- Editor blink timer lifecycle (spec 8.1); usage snapshot samples post-append agent_settled/session_tree/session_compact (spec 8.2); centralized pi prototype adapter with marker-based refresh (spec 8.3).
+- Fork visual cleanup (P5) reverted the native roster to upstream 8983754b form; subagent running/completed summary rows keep their CC ⎿ gutter (pi-subagents side `afc6075`).
+
+### Changed
+- Result renderer memo removed — hosts rebuild envelopes every updateDisplay, the reference memo never hit (spec 8.4 conclusion).
+- Upstream sync drilled 8983754b→6826b054 with zero adapter changes (P6); manual verification checklist expanded (docs/manual-verification.md §10 incl. async).
+
 ## 1.8.0 (2026-10-03)
 
 ### Changed (tool rows migrate to the official renderer channel, spec 2026-10-03-pi-1.0-tool-renderer-migration)

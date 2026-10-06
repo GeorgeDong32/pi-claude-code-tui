@@ -1,57 +1,57 @@
 {
-  "name": "@georgedong32/pi-claude-code-tui",
-  "version": "1.8.0",
-  "description": "Claude Code-style TUI for pi (GeorgeDong32 fork): Pi-look startup header, CC tool rows, spinner verbs, status line with permission-modes integration",
-  "type": "module",
-  "keywords": [
-    "pi-package",
-    "pi",
-    "tui",
-    "theme",
-    "claude",
-    "claude-code"
-  ],
-  "license": "MIT",
-  "author": "GeorgeDong32",
-  "publishConfig": {
-    "access": "public"
-  },
-  "homepage": "https://github.com/GeorgeDong32/pi-claude-code-tui#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/GeorgeDong32/pi-claude-code-tui.git"
-  },
-  "bugs": {
-    "url": "https://github.com/GeorgeDong32/pi-claude-code-tui/issues"
-  },
-  "pi": {
-    "extensions": [
-      "./extensions"
-    ],
-    "themes": [
-      "./themes"
-    ]
-  },
-  "files": [
-    "scripts",
-    "extensions",
-    "themes",
-    "CHANGELOG.md",
-    "LICENSE",
-    "README.md"
-  ],
-  "devDependencies": {
-    "@earendil-works/pi-ai": "1.0.1",
-    "@earendil-works/pi-coding-agent": "1.0.1",
-    "@earendil-works/pi-tui": "1.0.1",
-    "@types/node": "^22.20.2",
-    "typescript": "^7.0.2"
-  },
-  "scripts": {
-    "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=1.0.1"
-  }
+	"name": "@georgedong32/pi-claude-code-tui",
+	"version": "1.9.0",
+	"description": "Claude Code-style TUI for pi (GeorgeDong32 fork): Pi-look startup header, CC tool rows, spinner verbs, status line with permission-modes integration",
+	"type": "module",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"tui",
+		"theme",
+		"claude",
+		"claude-code"
+	],
+	"license": "MIT",
+	"author": "GeorgeDong32",
+	"publishConfig": {
+		"access": "public"
+	},
+	"homepage": "https://github.com/GeorgeDong32/pi-claude-code-tui#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/GeorgeDong32/pi-claude-code-tui.git"
+	},
+	"bugs": {
+		"url": "https://github.com/GeorgeDong32/pi-claude-code-tui/issues"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions"
+		],
+		"themes": [
+			"./themes"
+		]
+	},
+	"files": [
+		"scripts",
+		"extensions",
+		"themes",
+		"CHANGELOG.md",
+		"LICENSE",
+		"README.md"
+	],
+	"devDependencies": {
+		"@earendil-works/pi-ai": "1.0.1",
+		"@earendil-works/pi-coding-agent": "1.0.1",
+		"@earendil-works/pi-tui": "1.0.1",
+		"@types/node": "^22.20.2",
+		"typescript": "^7.0.2"
+	},
+	"scripts": {
+		"test": "node --test test/*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": ">=1.0.1"
+	}
 }
