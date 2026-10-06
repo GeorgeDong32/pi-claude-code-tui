@@ -213,3 +213,29 @@ test("adapter: off → on cycle reinstalls cleanly after restore", () => {
 		assert.equal(host.ran, "original");
 	}
 });
+
+test("adapter: wrapper-style bodies run the saved original first (user-message bar shape)", () => {
+	const cls = makeClass();
+	const calls: string[] = [];
+	(cls.prototype as unknown as Record<string, unknown>).updateDisplay = function (this: TestHost) {
+		calls.push("original");
+		this.ran = "original";
+	};
+	const adapter = new PrototypeMethodAdapter({
+		proto: cls.prototype,
+		method: "updateDisplay",
+		marker: "__ccTest",
+		hostMatches: () => true,
+		body: (host, _fg, original) => {
+			// Wrapper style: delegate, then post-process.
+			original?.call(host);
+			calls.push("cc-wrap");
+		},
+	});
+	adapter.apply(() => plain);
+	const host = new cls();
+	host.updateDisplay();
+	assert.deepEqual(calls, ["original", "cc-wrap"], "the saved original must run before the wrapper body");
+	assert.equal(host.ran, "original");
+	adapter.restore();
+});

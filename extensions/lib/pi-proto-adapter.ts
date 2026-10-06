@@ -31,8 +31,10 @@ export interface PrototypeMethodAdapterOptions {
 	marker: string;
 	/** False when the host lacks the fields the CC body needs (pi changed). */
 	hostMatches: (host: unknown) => boolean;
-	/** The CC rendering body; receives the host (duck-typed) and current fg. */
-	body: (host: Record<string, unknown>, fg: ThemeFg) => void;
+	/** The CC rendering body. Replacement-style bodies reimplement fully;
+	 * wrapper-style bodies call `original` first (user-message bar). The
+	 * saved original is undefined when the host had no such method. */
+	body: (host: Record<string, unknown>, fg: ThemeFg, original: (() => void) | undefined) => void;
 }
 
 export class PrototypeMethodAdapter {
@@ -68,7 +70,7 @@ export class PrototypeMethodAdapter {
 			};
 				try {
 					if (!adapter.options.hostMatches(this)) throw new Error("host shape mismatch");
-					adapter.options.body(this as Record<string, unknown>, fg);
+					adapter.options.body(this as Record<string, unknown>, fg, adapter.original);
 				} catch {
 					// Degrade, never throw inside a render path.
 					adapter.original?.call(this);

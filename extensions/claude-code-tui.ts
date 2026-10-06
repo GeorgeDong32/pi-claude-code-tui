@@ -957,7 +957,11 @@ export default function (pi: ExtensionAPI) {
 		method: "rebuild",
 		marker: "__ccCompact",
 		hostMatches: (host): boolean => Array.isArray((host as { children?: unknown })?.children),
-		body: (host) => {
+		// Wrapper-style patch (spec 8.3): run the native rebuild FIRST, then
+		// zero the Box padding — a replacement-style body here would leave the
+		// component empty and user messages would vanish from the transcript.
+		body: (host, _fg, original) => {
+			original?.call(host);
 			for (const child of (host as { children?: Array<{ paddingY?: number }> }).children ?? []) {
 				if (child && typeof child.paddingY === "number" && child.paddingY > 0) child.paddingY = 0;
 			}
