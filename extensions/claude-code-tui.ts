@@ -82,7 +82,7 @@ import {
 	readPmStatus,
 	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
-import { startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
+import { currentObsSavingsFlash, startObsSavingsConsumer, stopObsSavingsConsumer } from "./lib/obs-savings.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -427,6 +427,10 @@ export default function (pi: ExtensionAPI) {
 				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
 				// narrow claudeShimmer band rides the 200ms tick across the word.
 				const rv = runState.view();
+				// OBS-09-SITES: transient savings flash (4s) — the CC footer
+				// replaces pi's built-in footer, so the widget is the visible
+				// surface here; setStatus covers native-footer mode.
+				const obsFlash = currentObsSavingsFlash();
 				const verbText = `${rv.verb}…`;
 				const seg = shimmerSegments(verbText, glimmerIndexAt(Date.now() - rv.runStart, visibleWidth(verbText)));
 				const verbPainted =
@@ -436,10 +440,12 @@ export default function (pi: ExtensionAPI) {
 				const left = rv.compacting
 					? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${spinnerPaint("Compacting context…")} ${theme.fg("dim", "(esc to cancel)")}`
 					: rv.running
-						? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - rv.runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}`
+						? `${spinnerPaint(SPINNER_FRAMES[rv.spinnerIdx % SPINNER_FRAMES.length])} ${verbPainted} ${theme.fg("dim", `(${formatDuration(Date.now() - rv.runStart)} · esc to interrupt)`)}${pmStats ? ` ${theme.fg("dim", pmStats)}` : ""}${obsFlash ? ` ${theme.fg("dim", obsFlash)}` : ""}`
 						: rv.lastWorkedLine
-							? theme.fg("dim", rv.lastWorkedLine)
-							: "";
+							? `${theme.fg("dim", rv.lastWorkedLine)}${obsFlash ? ` ${theme.fg("dim", obsFlash)}` : ""}`
+							: obsFlash
+								? theme.fg("dim", obsFlash)
+								: "";
 				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
 				// on the script row + right-aligned badge instead — the right
 				// group collapses so the same info never shows twice.

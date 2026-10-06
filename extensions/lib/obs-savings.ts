@@ -85,6 +85,18 @@ let unsubscribe: (() => void) | null = null;
 let lastKey: string | null = null;
 let clearHandle: { unref?(): void } | null = null;
 
+// Running flash state, read per frame by the cc-status widget: pi's
+// built-in footer renders setStatus texts, but CC footer mode replaces
+// that footer — our own widget is the visible surface there. The setStatus
+// call still covers native-footer mode; both are driven by the same state.
+let runningFlash: { text: string; until: number } | null = null;
+
+/** The active savings flash text, or null once expired/cleared. */
+export function currentObsSavingsFlash(now: number = Date.now()): string | null {
+	if (!runningFlash) return null;
+	return now < runningFlash.until ? runningFlash.text : null;
+}
+
 function sitesKey(sites: readonly ObsSavingsSite[]): string {
 	return sites.map((site) => `${site.id}:${site.avoidedTokens}`).join("|");
 }
@@ -95,13 +107,16 @@ function flash(sites: readonly ObsSavingsSite[]): void {
 		flashTimer.clear(clearHandle);
 		clearHandle = null;
 	}
+	const text = formatObsSavingsStatus(sites);
+	runningFlash = { text, until: Date.now() + STATUS_DURATION_MS };
 	try {
-		flashSetStatus(STATUS_KEY, formatObsSavingsStatus(sites));
+		flashSetStatus(STATUS_KEY, text);
 	} catch {
-		return; // stale ui — drop this flash, keep the subscription
+		// stale ui — the widget segment still shows the flash
 	}
 	clearHandle = flashTimer.set(() => {
 		clearHandle = null;
+		runningFlash = null;
 		try {
 			flashSetStatus?.(STATUS_KEY, undefined);
 		} catch {
@@ -147,6 +162,7 @@ export function stopObsSavingsConsumer(): void {
 	unsubscribe?.();
 	unsubscribe = null;
 	lastKey = null;
+	runningFlash = null;
 	if (clearHandle) {
 		flashTimer.clear(clearHandle);
 		clearHandle = null;

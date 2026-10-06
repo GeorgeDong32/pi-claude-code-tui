@@ -4,6 +4,7 @@ import test from "node:test";
 import {
 	formatObsSavingsStatus,
 	readObsSites,
+	currentObsSavingsFlash,
 	startObsSavingsConsumer,
 	stopObsSavingsConsumer,
 	type ObsSavingsTimer,
@@ -74,8 +75,11 @@ test("flash: new sites set the status line and clear after 4s", () => {
 	listeners[0]!();
 	assert.equal(env.calls.length, 1);
 
+	assert.equal(currentObsSavingsFlash(Date.now() + 1_000), "⚡ Observation Pack · 12,345 context tokens avoided");
+	assert.equal(currentObsSavingsFlash(Date.now() + 5_000), null, "expired after 4s");
 	env.calls[0]!();
 	assert.equal(env.status["cc-obs-savings"], undefined);
+	assert.equal(currentObsSavingsFlash(Date.now() + 1_000), null, "cleared with the timer");
 	stopObsSavingsConsumer();
 });
 
