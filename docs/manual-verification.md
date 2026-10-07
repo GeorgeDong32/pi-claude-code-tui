@@ -158,3 +158,20 @@ These are the host-timing/visual counterparts of the automated
 - [ ] **Shutdown cleanliness**: quit pi after a run — no lingering
       statusline child processes (`ps` while a slow custom script would have
       been in flight) beyond the TERM→KILL window.
+
+## 12. Core tool display (spec 2026-10-07 P1-1) — OPEN, not yet executed
+
+- [ ] **Force mode goal rows**: with `toolRows: true` (or `/claude-tools on`),
+      trigger `goal_question`, `apply_goal_tweak` and `abort_goal` — each
+      renders a one-line CC row (`⏺ Apply Goal Tweak(tightened step 2)`), not
+      a JSON dump or a whole revised objective.
+- [ ] **Generic schema rows**: any newly registered core tool with a
+      recognizable top-level string param summarizes without a per-name
+      branch; tools with no schema window render the bounded JSON fallback.
+- [ ] **obs_recall**: a multi-page recall shows the human header derived from
+      structured details (`15.5KB · 241 lines · start→+15.5KB · more ▸`);
+      error recalls ("Unknown observation id") keep their raw text.
+- [ ] **Proxy / direct MCP rows**: a proxy-shaped `mcp` call with
+      `tool: "mcp_exa_search"` renders `exa - search (MCP)`; a direct-named
+      `exa_search` (with the env allowlist set) renders `exa - search (MCP)`;
+      bare `mcp` without a resolvable target renders unbadged.

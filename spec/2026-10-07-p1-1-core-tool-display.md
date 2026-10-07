@@ -108,3 +108,14 @@ R-T2 另覆盖坏数字/局部 details、文本与 details 冲突、非文本 co
 
 - 本仓库：`extensions/lib/cc-rows.ts:51-139, 350-374`、`extensions/lib/takeover-rules.ts`、`extensions/claude-code-tui.ts:284-345`
 - core：`extensions/goal/goal.ts:1905-1935, 2006-2040`、`extensions/goal/goal-questionnaire.ts:500-530`、`extensions/observation-pack/index.ts:119-130`、`lib/mcp-shape.ts`
+
+---
+
+## 8. 实施记录（2026-10-07）
+
+状态：三步全部实施，自动化绿（237 tests / tsc 0 错）；真机项 open（docs/manual-verification.md §12）。
+
+- 第一步（R1）：三个 goal 工具由通用规则覆盖（见下），`builtinCallArgs` 不再按名分支——按 R2 决策并入第二步落地，效果与 §4.1 一致（`abort_goal`→reason、`apply_goal_tweak`→changeSummary、`goal_question`→question，均 60 字 clamp）。
+- 第二步（R2）：`lib/tool-summary.ts` 落地（preferred 13 字段 + required string 顺序，空参空摘要，union/$ref 不展开）；入口在 enable / session_start 刷新 schema 缓存；**偏差**：pi 1.0.1 无 `tool_search` 事件，改用宿主既有 `mcp_servers_change` 作为工具集变化刷新点（规格允许的"既有事件点"适配）。表条目按 §4.2 只留 obs_recall / memory_consolidate / session_recall，删除 9 个（含 `pi_review_report`/`step_complete` 的过时字段——旧表锚的字段已不在 core schema 中，通用规则给出 runId/evidence 更准确）。golden 对照以 core 真实 Type.Object 形状的 fixture 完成。
+- 第三步（R4/R5）：`mcpDisplayName(toolName, args?)` 五形状镜像（bare 无分隔不认领为显示名）；resolver 无 args 时裸 `mcp` 不判 MCP、走原 auto/force 矩阵；callFactory 用 args 解析 proxy 徽标；resultFactory 无 args 回退工具名，不用模块级 args 串扰。**两仓对拍**：`test/cc-rows.golden.test.ts` 直接 import 真实 `../../pi-claude-code-core/lib/mcp-shape.ts`（零依赖纯模块）跑共享样例（native1/2、bare、proxy、direct、混合下划线、未知 server、坏 args），core 无 checkout 时 t.skip；bare 无 server/tool 对的分歧在断言中显式声明。
+- obs_recall（R3）：`obsRecallDisplayView` 先校验 details（id 非空串 + 四个 finite 非负数 + boolean eof），完整则生成 human header（与文本路径同一 `humanRecallHeader` 单一家）；正文只删 regex 命中的协议行；入口重建 display 对象时保留非 text content block，原对象不改。R-T2 覆盖坏数字/局部/错误 details、冲突、deepFreeze。

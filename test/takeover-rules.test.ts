@@ -165,3 +165,58 @@ test("plan channel gates lose to nothing: rows on + channel active always yields
 		assert.notEqual(p(r), undefined, JSON.stringify(r));
 	}
 });
+
+// ---------------------------------------------------------------------------
+// P1-1 R4/R5 (spec R-T5): MCP shapes in the takeover planner. The resolver
+// has NO args, so the proxy shape ("mcp" + args.tool) cannot be claimed
+// there — it stays a normal third-party row in auto mode; direct-named
+// tools (PI_CORE_MCP_DIRECT_SERVERS) ARE recognized name-only.
+
+import { mcpDisplayName } from "../extensions/lib/cc-rows.ts";
+
+test("R-T5: direct-named (env-listed) is MCP for takeover; proxy stays third-party without args", () => {
+	const prev = process.env.PI_CORE_MCP_DIRECT_SERVERS;
+	try {
+		process.env.PI_CORE_MCP_DIRECT_SERVERS = "exa";
+		const direct = planResolverTakeover({
+			channelActive: true, toolRowsEnabled: true, forced: false,
+			isMcp: mcpDisplayName("exa_search") !== null,
+			isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "exa_search",
+		});
+		assert.deepEqual(direct, { call: "cc", result: "cc", shell: "self" }, "direct-named MCP is taken over even in auto");
+	} finally {
+		if (prev === undefined) delete process.env.PI_CORE_MCP_DIRECT_SERVERS;
+		else process.env.PI_CORE_MCP_DIRECT_SERVERS = prev;
+	}
+	// Proxy without args: NOT MCP for the resolver — auto yields to an
+	// existing renderer (never grab a proxied tool that may own its UI).
+	const proxyAuto = planResolverTakeover({
+		channelActive: true, toolRowsEnabled: true, forced: false,
+		isMcp: mcpDisplayName("mcp") !== null,
+		isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "mcp",
+	});
+	assert.deepEqual(
+		{ call: proxyAuto!.call, result: proxyAuto!.result },
+		{ call: "orig", result: "orig" },
+		"bare mcp without args yields its renderers in auto",
+	);
+	// ... but with no renderer of its own it still renders CC (no-victim rule).
+	const proxyNoRenderer = planResolverTakeover({
+		channelActive: true, toolRowsEnabled: true, forced: false,
+		isMcp: mcpDisplayName("mcp") !== null,
+		isBuiltin: false, hasOrigCall: false, hasOrigResult: false, toolName: "mcp",
+	});
+	assert.deepEqual(proxyNoRenderer, { call: "cc", result: "cc", shell: "self" });
+	// Force mode takes the proxy over like any third-party tool (the badge
+	// formats from args inside renderCall).
+	const proxyForced = planResolverTakeover({
+		channelActive: true, toolRowsEnabled: true, forced: true,
+		isMcp: mcpDisplayName("mcp") !== null,
+		isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "mcp",
+	});
+	assert.deepEqual(proxyForced, { call: "cc", result: "cc", shell: "self" });
+});
+
+test("R-T5: renderCall resolves the proxy target once args are visible", () => {
+	assert.equal(mcpDisplayName("mcp", { tool: "mcp_exa_search" }), "exa - search");
+});

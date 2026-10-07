@@ -9,6 +9,7 @@
  */
 
 import { keyText, renderDiff } from "@earendil-works/pi-coding-agent";
+import { summarizeArgs } from "./tool-summary.ts";
 
 /** Expand keybinding with a hard fallback (plan B4): keyText yields "" for
  *  unregistered bindings (e.g. outside a host session), which rendered a
@@ -49,8 +50,16 @@ export const clampCallSummary = (text: string): string =>
 	text.length > CLAMP_CALL_ARGS_CHARS ? `${text.slice(0, CLAMP_CALL_ARGS_CHARS - 1)}…` : text;
 
 export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => string> = (() => {
-	// ── pi-claude-code-core tools: CC-style one-line summaries instead of the
-	// JSON fallback (which put whole goal drafts / recall queries on the row).
+	// ── pi-claude-code-core tools: one-line summaries instead of the JSON
+	// fallback (which put whole goal drafts / recall queries on the row).
+	// The GENERIC schema-driven summary (lib/tool-summary.ts, spec P1-1 R2)
+	// covers every tool that exposes a recognizable top-level string param —
+	// only rules the generic cannot express stay in this table:
+	//   obs_recall        — id+offset needs two fields formatted together
+	//   memory_consolidate — counts an ARRAY param (ops), not a string
+	//   session_recall    — query + optional "since …" suffix composed
+	// Everything else core registers (goal family, review, questionnaire…)
+	// is summarized from its parameter schema at render time.
 	const shortText = (v: unknown, max = 60): string => {
 		const t = strArg(v).replace(/\s+/g, " ").trim();
 		return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -71,14 +80,7 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 	ls: (a) => strArg(a.path) || ".",
 	write: (a) => strArg(a.path),
 	edit: (a) => strArg(a.path),
-	// ── core: goal family — objective/summary headline, never the draft body.
-	create_goal: (a) => shortText(a.objective ?? a.goal ?? a.title),
-	propose_goal_draft: (a) => shortText(a.objective ?? a.goal ?? a.title),
-	update_goal: (a) => shortText(a.objective ?? a.note ?? a.status),
-	get_goal: () => "",
-	pause_goal: (a) => shortText(a.reason, 40),
-	goal_questionnaire: (a) => shortText(a.topic ?? a.question),
-	// ── core: memory / recall — query headline, ids only.
+	// ── core: memory / recall — composed shapes the generic cannot build.
 	session_recall: (a) => [shortText(a.query, 40), a.since ? `since ${strArg(a.since)}` : ""].filter(Boolean).join(" · "),
 	memory_consolidate: (a) => {
 		const ops = a.operations as unknown[] | undefined;
@@ -94,10 +96,6 @@ export const builtinCallArgs: Record<string, (a: Record<string, unknown>) => str
 		const off = typeof a.offset === "number" && a.offset > 0 ? `+${(a.offset / 1024).toFixed(1)}KB` : "start";
 		return `${id} · ${off}`;
 	},
-	// ── core: review / plan — short nouns.
-	pi_review_report: (a) => shortText(a.mode ?? a.scope ?? a.base, 40),
-	plan_ready: (a) => shortText(a.plan ?? a.summary, 40),
-	step_complete: (a) => shortText(a.step ?? a.result, 40),
 	};
 	return builtins;
 })();
@@ -118,10 +116,14 @@ export const displayToolName = (name: string): string => DISPLAY_TOOL_NAMES[name
 //
 // The pack's result text is a model protocol: a paging header the provider
 // needs and a human doesn't. The original pack renderer rebuilt the visible
-// rows from `details`; the CC row parses the two protocol lines from the
-// TEXT instead (always present when the pack shaped the page — no details
-// dependency) and replaces them with one human header in the original
-// format. Non-matching text passes through untouched (honest fallback).
+// rows from `details`; the CC row renders one human header in the original
+// format. Source priority (spec P1-1 R3): the STRUCTURED `details` fields
+// when they are complete (id non-empty string; offset/bytes/lines/
+// nextOffset finite non-negative; eof boolean), else the two protocol lines
+// parsed from the TEXT. Protocol lines are removed only when they actually
+// match the known patterns — a details-bearing result whose text lacks them
+// keeps its body verbatim; a partial-details/error result never gets a
+// fabricated paging header.
 
 const OBS_HEADER_LINE = /^\[obs_recall id=(obs_[0-9a-f]+) offset=(-?\d+) next_offset=(-?\d+) eof=(true|false)\]$/;
 const OBS_CHUNK_LINE = /^\[chunk_bytes=(\d+) chunk_lines=(\d+); use next_offset to continue\]$/;
@@ -142,6 +144,29 @@ function recallOffsetLabel(offset: number): string {
 	return offset > 0 ? `+${humanBytesDisplay(offset)}` : "start";
 }
 
+/** One human header line in the original pack format (single home). */
+function humanRecallHeader(v: { bytes: number; lines: number; offset: number; nextOffset: number; eof: boolean }): string {
+	return v.eof
+		? `${humanBytesDisplay(v.bytes)} · ${v.lines} lines · ${recallOffsetLabel(v.offset)}→${recallOffsetLabel(v.nextOffset)} · end ✓`
+		: `${humanBytesDisplay(v.bytes)} · ${v.lines} lines · ${recallOffsetLabel(v.offset)}→+${humanBytesDisplay(v.nextOffset)} · more ▸`;
+}
+
+/** Validated structural view of core's obs_recall `details` (or null). */
+function parseObsDetails(details: unknown): { bytes: number; lines: number; offset: number; nextOffset: number; eof: boolean } | null {
+	if (details == null || typeof details !== "object") return null;
+	const d = details as Record<string, unknown>;
+	if (typeof d.id !== "string" || d.id.length === 0) return null;
+	const finiteNonNegative = (v: unknown): number | null =>
+		typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+	const bytes = finiteNonNegative(d.bytes);
+	const lines = finiteNonNegative(d.lines);
+	const offset = finiteNonNegative(d.offset);
+	const nextOffset = finiteNonNegative(d.nextOffset);
+	if (bytes === null || lines === null || offset === null || nextOffset === null) return null;
+	if (typeof d.eof !== "boolean") return null;
+	return { bytes, lines, offset, nextOffset, eof: d.eof };
+}
+
 export interface ObsRecallDisplayView {
 	/** Human header line (original pack format), or null when the text is not a shaped recall page. */
 	header: string | null;
@@ -152,17 +177,32 @@ export interface ObsRecallDisplayView {
 /** Shape an obs_recall result for display: protocol header → one human line. */
 export const obsRecallDisplayView = (result: unknown): ObsRecallDisplayView => {
 	const raw = textOfResult(result);
+	// R3: details first — structured fields win when complete. The text body
+	// keeps everything except lines that verifiably match the protocol
+	// patterns (never a blind "drop the first two lines").
+	const structured = parseObsDetails((result as { details?: unknown } | null | undefined)?.details);
+	if (structured !== null) {
+		const header = humanRecallHeader(structured);
+		const body = raw
+			.split("\n")
+			.filter((line, idx) => !(idx < 2 && (OBS_HEADER_LINE.test(line) || OBS_CHUNK_LINE.test(line))))
+			.join("\n")
+			.replace(/^\n/, "");
+		return { header, text: `${header}\n${body}` };
+	}
 	const lines = raw.split("\n");
 	const headerMatch = OBS_HEADER_LINE.exec(lines[0] ?? "");
 	const chunkMatch = OBS_CHUNK_LINE.exec(lines[1] ?? "");
 	if (!headerMatch || !chunkMatch) return { header: null, text: raw };
 	const [, , offsetRaw, nextOffsetRaw, eofRaw] = headerMatch;
 	const [, bytesRaw, chunkLinesRaw] = chunkMatch;
-	const offset = Number(offsetRaw);
-	const nextOffset = Number(nextOffsetRaw);
-	const header = eofRaw === "true"
-		? `${humanBytesDisplay(Number(bytesRaw))} · ${chunkLinesRaw} lines · ${recallOffsetLabel(offset)}→${recallOffsetLabel(nextOffset)} · end ✓`
-		: `${humanBytesDisplay(Number(bytesRaw))} · ${chunkLinesRaw} lines · ${recallOffsetLabel(offset)}→+${humanBytesDisplay(nextOffset)} · more ▸`;
+	const header = humanRecallHeader({
+		bytes: Number(bytesRaw),
+		lines: Number(chunkLinesRaw),
+		offset: Number(offsetRaw),
+		nextOffset: Number(nextOffsetRaw),
+		eof: eofRaw === "true",
+	});
 	const body = lines.slice(2).join("\n").replace(/^\n/, "");
 	return { header, text: `${header}\n${body}` };
 };
@@ -197,11 +237,20 @@ export const packedEventRows = (theme: CCTheme, sites: readonly PackedEventSite[
 	return [truncateToWidth(call, width, "…"), truncateToWidth(detail, width, "…")];
 };
 
-export const callArgsFor = (name: string, args: unknown): string => {
+export const callArgsFor = (
+	name: string,
+	args: unknown,
+	schemaFor?: (name: string) => import("./tool-summary.ts").ToolParamSchema | undefined,
+): string => {
 	if (name === "subagent") return subagentCallSummary((args ?? {}) as Record<string, unknown>);
-	const table = builtinCallArgs;
-	const summarize = table[name] ?? ((a) => clampCallSummary(JSON.stringify(a ?? {})));
-	return summarize((args ?? {}) as Record<string, unknown>);
+	const summarize = builtinCallArgs[name];
+	if (summarize) return summarize((args ?? {}) as Record<string, unknown>);
+	// Generic schema-driven summary (spec P1-1 R2): a recognizable top-level
+	// string param summarizes the row without a per-name branch. Empty args
+	// and nothing-usable fall through to the bounded JSON dump.
+	const generic = summarizeArgs(args, schemaFor?.(name));
+	if (generic !== "") return clampCallSummary(generic);
+	return clampCallSummary(JSON.stringify(args ?? {}));
 };
 
 // CC-style summary for pi-subagents' `subagent` tool (the JSON.stringify
@@ -348,20 +397,60 @@ export const ccThenRunCall = (theme: CCTheme, call: ReturnType<typeof ccCall>, c
 export const MAX_RESULT_ROWS = 3;
 
 /**
- * MCP tool display name (SPEC 0.99-adapt MCP-01): `mcp__server__tool` (and
- * the single-underscore variant) renders as `server - tool` — the core of
- * CC's MCP userFacingName (`services/mcp/client.ts`:
- * `${serverName} - ${displayName} (MCP)`); the dim `(MCP)` badge is added
- * by the call row (ccCall badge), mirroring CC's AssistantToolUseMessage
- * which renders the userFacingName verbatim. Non-MCP names → null.
- * Same canonicalization shape as core mcp-gov's family.ts.
+ * MCP tool display name (SPEC 0.99-adapt MCP-01 → 2026-10-07 P1-1 R4):
+ * the FIVE-shape display mirror of core's `lib/mcp-shape.ts`
+ * `canonicalizeMcpShape` (replicated, not imported — the authority stays in
+ * core; keep the two in sync via the shared-sample test against the real
+ * core module):
+ *   native1  `mcp__server__tool` / `mcp_server__tool`
+ *   native2  `mcp__server_tool`  / `mcp_server_tool`
+ *   proxy    tool name "mcp" with the real tool in `args.tool`
+ *   direct   bare `server_tool` when the server id is on core's
+ *            PI_CORE_MCP_DIRECT_SERVERS allowlist (same env var, same
+ *            comma-split + trim + lowercase rules)
+ *   bare     `mcp_*` with no separator left to split has no server/tool
+ *            pair to display → null (core canonicalizes it; display does
+ *            not claim it)
+ * Renders as `server - tool` — the core of CC's MCP userFacingName; the
+ * dim `(MCP)` badge is added by the call row (ccCall badge). Non-MCP →
+ * null. R5: without `args` a bare proxy name "mcp" is NOT claimed — the
+ * takeover matrix treats it as a normal third-party tool (auto-yield keeps
+ * its own renderer); renderCall formats the badge only once the real
+ * target is visible in args.
  */
 const MCP_NAME = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)__(.+)$/;
 const MCP_NAME_FALLBACK = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)_(.+)$/;
+const DIRECT_NAME = /^([a-z][a-z0-9]*)_[a-z][a-z0-9_]*$/i;
 
-export const mcpDisplayName = (name: string): string | null => {
-	const m = MCP_NAME.exec(name) ?? MCP_NAME_FALLBACK.exec(name);
-	return m ? `${m[1]} - ${m[2]}` : null;
+/** Core's PI_CORE_MCP_DIRECT_SERVERS allowlist as a lowercase set. */
+const directKnownServers = (): ReadonlySet<string> => {
+	const raw = process.env.PI_CORE_MCP_DIRECT_SERVERS;
+	if (!raw) return new Set();
+	return new Set(
+		raw
+			.split(",")
+			.map((s) => s.trim().toLowerCase())
+			.filter(Boolean),
+	);
+};
+
+export const mcpDisplayName = (name: string, args?: unknown): string | null => {
+	// proxy: the tool name IS "mcp" and the real tool sits in args.tool.
+	const proxyTarget =
+		name === "mcp" && args != null && typeof args === "object" && !Array.isArray(args)
+			? (args as Record<string, unknown>).tool
+			: "";
+	const raw = name === "mcp" && typeof proxyTarget === "string" && proxyTarget !== "" ? proxyTarget : name;
+	const m = MCP_NAME.exec(raw) ?? MCP_NAME_FALLBACK.exec(raw);
+	if (m) return `${m[1]} - ${m[2]}`;
+	// direct naming (exa_search): only when the leading server id is on the
+	// configured known-servers list — otherwise any foo_bar extension tool
+	// would be misclaimed.
+	const direct = DIRECT_NAME.exec(raw);
+	if (direct && directKnownServers().has(direct[1]!.toLowerCase())) {
+		return `${direct[1]} - ${raw.slice(direct[1]!.length + 1)}`;
+	}
+	return null;
 };
 
 /** Generic `key=value` argument summary for MCP tools (values JSON-shortened). */

@@ -96,3 +96,76 @@ test("packedEventRows: single and multi sites render as one CC-style tool row", 
 	assert.match(multi[0]!.replace(/\x1b\[[0-9;]*m/g, ""), /⏺ Observation Packed\(2 results · 17.0k tokens avoided\)/);
 	assert.deepEqual(packedEventRows(theme, [], 80), []);
 });
+
+// ---------------------------------------------------------------------------
+// P1-1 R3 (spec R-T2): structured `details` win over the text protocol.
+
+const FULL_DETAILS = { id: "obs_5caf95927c3a939296aa5f60", offset: 0, bytes: 15872, lines: 241, nextOffset: 15872, eof: false };
+
+test("R-T2: only details (text without protocol lines) → human header from details, body kept verbatim", () => {
+	const view = obsRecallDisplayView({
+		content: [{ type: "text", text: "line one\nline two" }],
+		details: FULL_DETAILS,
+	});
+	assert.equal(view.header, "15.5KB · 241 lines · start→+15.5KB · more ▸");
+	assert.equal(view.text, "15.5KB · 241 lines · start→+15.5KB · more ▸\nline one\nline two");
+});
+
+test("R-T2: details + protocol text → details win; only verifiably-protocol lines are removed", () => {
+	const view = obsRecallDisplayView({
+		content: [{ type: "text", text: PROTOCOL_PAGE }],
+		details: { ...FULL_DETAILS, eof: true, nextOffset: 15872 },
+	});
+	assert.equal(view.header, "15.5KB · 241 lines · start→+15.5KB · end ✓");
+	assert.ok(!view.text.includes("[obs_recall id="));
+	assert.ok(!view.text.includes("[chunk_bytes="));
+	assert.ok(view.text.includes("line one of the actual content"));
+});
+
+test("R-T2: details conflict with text → details are authoritative for the header", () => {
+	const view = obsRecallDisplayView({
+		content: [{ type: "text", text: PROTOCOL_PAGE }],
+		details: { ...FULL_DETAILS, bytes: 999, lines: 7 },
+	});
+	assert.equal(view.header, "999B · 7 lines · start→+15.5KB · more ▸");
+});
+
+test("R-T2: partial/invalid details (bad numbers, missing eof, error pages) never fabricate a paging header", () => {
+	const bad = [
+		{ id: "obs_x", offset: 0, bytes: Number.NaN, lines: 1, nextOffset: 1, eof: false }, // NaN bytes
+		{ id: "obs_x", offset: -1, bytes: 1, lines: 1, nextOffset: 1, eof: false }, // negative offset
+		{ id: "obs_x", offset: 0, bytes: 1, lines: 1, nextOffset: 1, eof: "false" }, // eof not boolean
+		{ id: "obs_x", offset: 0, bytes: 1 }, // partial
+		{ id: "", offset: 0, bytes: 1, lines: 1, nextOffset: 1, eof: false }, // empty id
+		{ id: "obs_x" }, // the error-result shape: details { id } only
+	];
+	for (const details of bad) {
+		const view = obsRecallDisplayView({
+			content: [{ type: "text", text: "Unknown observation id: obs_x (no ledger)" }],
+			details,
+		});
+		assert.equal(view.header, null, `no header for details ${JSON.stringify(details)}`);
+		assert.equal(view.text, "Unknown observation id: obs_x (no ledger)");
+	}
+});
+
+test("R-T2: no details → text protocol regex path still works (unchanged behavior)", () => {
+	const view = obsRecallDisplayView({ content: [{ type: "text", text: PROTOCOL_PAGE }] });
+	assert.equal(view.header, "15.5KB · 241 lines · start→+15.5KB · more ▸");
+});
+
+test("R-T2: deep-frozen input renders (never mutated in place)", () => {
+	const frozen = Object.freeze({
+		content: Object.freeze([
+			Object.freeze({ type: "text", text: PROTOCOL_PAGE }),
+			Object.freeze({ type: "image", source: Object.freeze({ kind: "base64" }) }),
+		]),
+		details: Object.freeze(FULL_DETAILS),
+	});
+	const view = obsRecallDisplayView(frozen);
+	assert.equal(view.header, "15.5KB · 241 lines · start→+15.5KB · more ▸");
+	// Non-text content blocks are preserved by the entry's display rebuild
+	// (this test pins the view itself; the rebuild is exercised in the
+	// golden suite via callArgsFor wiring notes).
+	assert.ok(Object.isFrozen(frozen));
+});

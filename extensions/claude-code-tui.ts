@@ -279,6 +279,26 @@ export default function (pi: ExtensionAPI) {
 	// Merging keeps every slot we don't own at its next() value, so yielding
 	// never strips anyone's renderers; execute is never touched (pure
 	// display layer). Spec: 2026-10-03-pi-1.0-tool-renderer-migration.
+	// P1-1 R2: name → parameter schema, refreshed from pi.getAllTools() at
+	// enable / session_start / mcp_servers_change — renderers only READ this
+	// cache (no per-render tool scans, no headless reads).
+	let toolSchemas = new Map<string, import("./lib/tool-summary.ts").ToolParamSchema>();
+	const refreshToolSchemas = (): void => {
+		try {
+			const next = new Map<string, import("./lib/tool-summary.ts").ToolParamSchema>();
+			for (const tool of pi.getAllTools()) {
+				if (tool?.name && tool.parameters) next.set(tool.name, tool.parameters as import("./lib/tool-summary.ts").ToolParamSchema);
+			}
+			toolSchemas = next;
+		} catch {
+			// getAllTools unavailable (early load window) — keep the last cache
+		}
+	};
+	const schemaFor = (name: string): import("./lib/tool-summary.ts").ToolParamSchema | undefined => toolSchemas.get(name);
+	pi.on("mcp_servers_change", async () => {
+		if (!enabled) return;
+		refreshToolSchemas();
+	});
 	if (typeof pi.registerToolRenderer !== "function") {
 		// Loud guard, no silent optional-chain no-op (spec DEC-02): on pi 0.x
 		// the extension still loads (git installs don't enforce peers), so say
@@ -301,13 +321,15 @@ export default function (pi: ExtensionAPI) {
 			// Call factory — MCP badge / builtin seven / third-party + then_run
 			// (TR D2/D3). For non-MCP names without then_run this is
 			// byte-identical to the pre-migration ccRenderers builtin branch
-			// (spec §3.4 provenance note).
+			// (spec §3.4 provenance note). R4/R5: the proxy shape resolves
+			// only once args are visible here (the resolver itself never
+			// sees args, so a bare "mcp" stays unclaimed for takeover).
 			const callFactory = (args: unknown, theme: unknown, rctx?: { isError?: boolean; isPartial?: boolean }) => {
-				const mcpName = mcpDisplayName(toolName);
+				const mcpName = mcpDisplayName(toolName, args);
 				const call = ccCall(
 					theme as CCTheme,
 					mcpName ?? displayToolName(toolName),
-					mcpName ? mcpArgsSummary(args) : callArgsFor(toolName, args),
+					mcpName ? mcpArgsSummary(args) : callArgsFor(toolName, args, schemaFor),
 					dotStatus(rctx),
 					undefined,
 					// CC's userFacingName suffix (`server - tool (MCP)`) — the dim
@@ -324,9 +346,11 @@ export default function (pi: ExtensionAPI) {
 			// memo never hit: hosts rebuild the envelope on every
 			// updateDisplay and reuse the component tree on plain frames;
 			// ccResult's width cache absorbs resizes). obs_recall results
-			// are shaped first: the two protocol header lines become one
-			// human header (display layer only — the model's text is the
-			// result object, untouched).
+			// are shaped first: the protocol header becomes one human
+			// header (display layer only — the model's text is the result
+			// object, untouched). renderResult has NO args parameter, so the
+			// result title falls back to the bare tool name for proxy MCP
+			// (R5) — never a module-level "last args" guess.
 			const resultFactory = (result: unknown, options: { expanded?: boolean }, theme: unknown, rctx: { isError?: boolean }) => {
 				// Display shaping (display layer only): obs_recall pages get a
 				// human header. Packed results keep their ORIGINAL content (pi
@@ -337,7 +361,15 @@ export default function (pi: ExtensionAPI) {
 				let displayResult: unknown = result;
 				if (toolName === "obs_recall") {
 					const view = obsRecallDisplayView(result);
-					if (view.header !== null) displayResult = { content: [{ type: "text", text: view.text }] };
+					if (view.header !== null) {
+						// Rebuild with the display text; non-text content blocks
+						// are kept, the original object is never mutated.
+						const content = (result as { content?: unknown[] } | null | undefined)?.content;
+						const kept = Array.isArray(content)
+							? content.filter((block) => !(block != null && typeof block === "object" && (block as { type?: string }).type === "text"))
+							: [];
+						displayResult = { ...(result as object), content: [{ type: "text", text: view.text }, ...kept] };
+					}
 				}
 				return ccResult(theme as CCTheme, mcpDisplayName(toolName) ?? displayToolName(toolName), displayResult, options, Boolean(rctx?.isError));
 			};
@@ -778,6 +810,9 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		channelActive = true; // TUI session active (enable returned early otherwise)
+		// P1-1 R2: every extension has registered by now — snapshot the
+		// parameter schemas the generic call-row summary reads per render.
+		refreshToolSchemas();
 		// Presentation seam: probe → register (or re-register on late hosts).
 		// Bounded handshake; no host means native roster stays — never blank.
 		try {
@@ -925,6 +960,7 @@ export default function (pi: ExtensionAPI) {
 		// bus only now — enable-time often misses; BOTH load orders occur).
 		startCoreNotificationConsumer(displayCoreNotification);
 		startObsSavingsConsumer(appendPackedEntry);
+		refreshToolSchemas(); // P1-1 R2: late-loaded core tools become summarizable
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});
 

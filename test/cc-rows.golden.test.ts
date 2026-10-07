@@ -243,15 +243,68 @@ test("subagentCallSummary covers single agent, actions, paths, and fallback", ()
 	assert.equal(subagentCallSummary({ async: true }), '{"async":true}');
 });
 
-test("builtinCallArgs covers the built-ins plus the core tool family", () => {
+test("builtinCallArgs keeps only the rules the generic summary cannot express", () => {
 	const keys = Object.keys(builtinCallArgs).sort();
 	for (const must of ["bash", "edit", "find", "grep", "ls", "read", "write"]) assert.ok(keys.includes(must), must);
-	for (const core of ["create_goal", "propose_goal_draft", "session_recall", "memory_consolidate", "obs_recall", "pi_review_report"]) {
+	// Composed shapes (multi-field formats / array counts) stay in the table.
+	for (const core of ["session_recall", "memory_consolidate", "obs_recall"]) {
 		assert.ok(keys.includes(core), core);
 	}
-	// Core family summaries stay one-line headlines, never raw JSON.
-	assert.ok(!callArgsFor("create_goal", { objective: "ship it" }).startsWith("{"));
-	assert.ok(!callArgsFor("session_recall", { query: "goal state" }).startsWith("{"));
+	// Everything else core registers went schema-driven (spec P1-1 R2): the
+	// per-name entries were deleted — create_goal & co. must NOT be here.
+	for (const gone of ["create_goal", "propose_goal_draft", "update_goal", "get_goal", "pause_goal", "goal_questionnaire", "goal_question", "abort_goal", "apply_goal_tweak", "pi_review_report", "plan_ready", "step_complete"]) {
+		assert.ok(!keys.includes(gone), `${gone} should be schema-driven, not a table entry`);
+	}
+});
+
+// ── Schema-driven generic summaries vs the REAL core schemas (P1-1 R2) ──
+// Fixture shapes mirror pi-claude-code-core's Type.Object registrations.
+
+import type { ToolParamSchema } from "../extensions/lib/tool-summary.ts";
+
+const schemaOf = (schemas: Record<string, ToolParamSchema>) => (name: string) => schemas[name];
+
+const CORE_SCHEMAS: Record<string, ToolParamSchema> = {
+	create_goal: { type: "object", properties: { objective: { type: "string" }, sisyphus: { type: "boolean" } }, required: ["objective"] },
+	propose_goal_draft: { type: "object", properties: { objective: { type: "string" }, draftId: { type: "string" } }, required: ["objective"] },
+	update_goal: { type: "object", properties: { status: { type: "string", enum: ["complete"] }, completionSummary: { type: "string" } }, required: ["status"] },
+	pause_goal: { type: "object", properties: { reason: { type: "string" }, suggestedAction: { type: "string" } }, required: ["reason"] },
+	abort_goal: { type: "object", properties: { reason: { type: "string" } }, required: ["reason"] },
+	apply_goal_tweak: { type: "object", properties: { newObjective: { type: "string" }, changeSummary: { type: "string" } }, required: ["newObjective", "changeSummary"] },
+	goal_question: { type: "object", properties: { question: { type: "string" }, context: { type: "string" }, options: { type: "array", items: { type: "string" } } }, required: ["question"] },
+	goal_questionnaire: { type: "object", properties: { topic: { type: "string" }, questions: { type: "array" } }, required: ["questions"] },
+	get_goal: { type: "object", properties: {} },
+	pi_review_report: { type: "object", properties: { runId: { type: "string" }, workflowReturn: {} }, required: ["runId", "workflowReturn"] },
+	step_complete: { type: "object", properties: { stepIndex: { type: "integer" }, evidence: { type: "string" } }, required: ["stepIndex", "evidence"] },
+};
+
+test("R-T1/R2: core goal family summarizes via schema — one-line headlines, never JSON", () => {
+	const for_ = schemaOf(CORE_SCHEMAS);
+	// The three tools that were missing entirely before P1-1 (R1).
+	assert.equal(callArgsFor("abort_goal", { reason: "user cancelled" }, for_), "user cancelled");
+	assert.equal(callArgsFor("apply_goal_tweak", { newObjective: "=== Goal ===\nbig draft", changeSummary: "tightened step 2" }, for_), "tightened step 2");
+	assert.equal(callArgsFor("goal_question", { question: "which DB?" }, for_), "which DB?");
+	// The deleted table entries keep their headline quality via schema.
+	assert.equal(callArgsFor("create_goal", { objective: "ship it" }, for_), "ship it");
+	assert.equal(callArgsFor("propose_goal_draft", { objective: "ship it" }, for_), "ship it");
+	assert.equal(callArgsFor("update_goal", { status: "complete" }, for_), "complete");
+	assert.equal(callArgsFor("pause_goal", { reason: "missing credentials" }, for_), "missing credentials");
+	assert.equal(callArgsFor("get_goal", {}, for_), "{}"); // empty params → bounded JSON, not a fake summary
+	assert.equal(callArgsFor("pi_review_report", { runId: "xyz123-abc", workflowReturn: null }, for_), "xyz123-abc");
+	// Long / multiline values collapse to one line with the shared clamp.
+	assert.equal(
+		callArgsFor("create_goal", { objective: `line one\nline ${"x".repeat(100)}` }, for_),
+		`line one line ${"x".repeat(45)}…`, // 60-char clamp: slice(0,59)+"…"
+	);
+	// goal_questionnaire's array param must not degrade to a raw JSON row
+	// when a usable string param exists (spec §4.2).
+	assert.equal(callArgsFor("goal_questionnaire", { topic: "DB choice", questions: ["a?", "b?"] }, for_), "DB choice");
+});
+
+test("R2: no schema → bounded JSON fallback, same as pre-schema unknown tools", () => {
+	assert.equal(callArgsFor("create_goal", { objective: "ship it" }), '{"objective":"ship it"}');
+	assert.equal(callArgsFor("zz_third", { a: "x".repeat(300) }), `{"a":"${"x".repeat(153)}…`);
+	assert.equal(callArgsFor("zz_third", undefined), "{}");
 });
 
 test("thinkingToggleHint falls back to ctrl+t outside a host session", () => {
@@ -317,4 +370,98 @@ test("display tool names: obs_recall reads as Recall Observation (model side unt
 	const call = ccCall(identity, displayToolName("obs_recall"), callArgsFor("obs_recall", { id: "obs_0d380d7641f3b1e9d", offset: 0 }), "success");
 	const row = call.render(80)[0]!.replace(/\x1b\[[0-9;]*m/g, "");
 	assert.match(row, /⏺ Recall Observation\(obs_0d380d7641f3 · start\)/, row);
+});
+
+// ---------------------------------------------------------------------------
+// P1-1 R4/R5 (spec R-T4): MCP display mirror — five shapes, aligned with
+// core's canonicalizeMcpShape via a shared-sample cross-check against the
+// REAL core module (read-only sibling import; skipped when the sibling
+// checkout is absent so plain `npm test` still passes anywhere).
+
+test("R-T4: proxy shape resolves via args.tool; bare mcp without a target is NOT claimed", () => {
+	assert.equal(mcpDisplayName("mcp", { tool: "mcp_exa_search", input: { q: "pi" } }), "exa - search");
+	assert.equal(mcpDisplayName("mcp", {}), null);
+	assert.equal(mcpDisplayName("mcp", undefined), null);
+	assert.equal(mcpDisplayName("mcp", { tool: 42 }), null);
+	assert.equal(mcpDisplayName("mcp", ["mcp_exa_search"]), null);
+	// The proxy target follows the same native/direct parsing rules.
+	assert.equal(mcpDisplayName("mcp", { tool: "mcp__exa__search" }), "exa - search");
+	assert.equal(mcpDisplayName("mcp", { tool: "read" }), null);
+});
+
+test("R-T4: direct-named tools only with PI_CORE_MCP_DIRECT_SERVERS listing the server", () => {
+	const prev = process.env.PI_CORE_MCP_DIRECT_SERVERS;
+	try {
+		process.env.PI_CORE_MCP_DIRECT_SERVERS = "Exa, github ,";
+		assert.equal(mcpDisplayName("exa_search", { q: "pi" }), "exa - search");
+		assert.equal(mcpDisplayName("github_create_issue", { title: "x" }), "github - create_issue");
+		assert.notEqual(mcpDisplayName("otherapi_search", {}), "otherapi - search");
+		assert.equal(mcpDisplayName("otherapi_search", {}), null);
+		// Mixed-underscore native shapes still parse first (core order).
+		assert.equal(mcpDisplayName("mcp_exa__deep_search", {}), "exa - deep_search");
+		// Bare single-word mcp_* has no server/tool pair to display.
+		assert.equal(mcpDisplayName("mcp_passthrough", {}), null);
+	} finally {
+		if (prev === undefined) delete process.env.PI_CORE_MCP_DIRECT_SERVERS;
+		else process.env.PI_CORE_MCP_DIRECT_SERVERS = prev;
+	}
+});
+
+test("R-T4: native double/single underscore shapes unchanged (regression)", () => {
+	assert.equal(mcpDisplayName("mcp__exa__search"), "exa - search");
+	assert.equal(mcpDisplayName("mcp_exa__search"), "exa - search");
+	assert.equal(mcpDisplayName("mcp__exa_search"), "exa - search");
+	assert.equal(mcpDisplayName("read"), null);
+});
+
+test("R-T4 cross-check: display mirror agrees with the REAL core mcp-shape on shared samples", async (t) => {
+	let core: typeof import("../../pi-claude-code-core/lib/mcp-shape.ts");
+	try {
+		core = (await import("../../pi-claude-code-core/lib/mcp-shape.ts")) as typeof core;
+	} catch {
+		// Sibling checkout absent (isolated CI): the mirror's own table tests
+		// above still pin the five shapes.
+		t.skip("sibling pi-claude-code-core checkout not present");
+		return;
+	}
+	const prev = process.env.PI_CORE_MCP_DIRECT_SERVERS;
+	process.env.PI_CORE_MCP_DIRECT_SERVERS = "exa,github";
+	try {
+		const known = core.knownServersSetFromEnv();
+		const samples: Array<[string, Record<string, unknown> | undefined]> = [
+			["mcp__exa__search", {}],
+			["mcp_exa__search", {}],
+			["mcp__exa_search", {}],
+			["mcp_exa_search", {}],
+			["mcp_passthrough", {}],
+			["mcp", { tool: "mcp_exa_search" }],
+			["mcp", { tool: "exa_search" }],
+			["mcp", {}],
+			["mcp", undefined],
+			["exa_search", {}],
+			["github_create_issue", {}],
+			["otherapi_search", {}],
+			["read", { path: "/x" }],
+		];
+		for (const [name, args] of samples) {
+			const canonical = core.canonicalizeMcpShape(name, args ?? {}, known);
+			const display = mcpDisplayName(name, args);
+			if (canonical === null) {
+				assert.equal(display, null, `${name} ${JSON.stringify(args)}: core says non-MCP, display must agree`);
+			} else if (canonical === name && !name.slice(4).includes("_")) {
+				// Agreed divergence: core canonicalizes a BARE `mcp_word`
+				// (no server/tool separator left); the display mirror has no
+				// `server - tool` pair to render and declines (spec §4.3).
+				assert.equal(display, null, `${name}: bare shape — display declines despite canonical ${canonical}`);
+			} else {
+				assert.notEqual(display, null, `${name} ${JSON.stringify(args)}: core canonical ${canonical}, display must claim it`);
+				// Round-trip: the display's parts rebuild the canonical form.
+				const [server, tool] = display!.split(" - ");
+				assert.equal(`mcp_${server}_${tool}`, canonical);
+			}
+		}
+	} finally {
+		if (prev === undefined) delete process.env.PI_CORE_MCP_DIRECT_SERVERS;
+		else process.env.PI_CORE_MCP_DIRECT_SERVERS = prev;
+	}
 });

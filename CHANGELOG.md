@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed (core tool display, spec 2026-10-07 P1-1)
+- Goal-family call rows: `abort_goal` / `apply_goal_tweak` / `goal_question` (previously missing → raw JSON rows in force mode) and the rest of core's registered tools are now summarized by a generic schema-driven rule (`lib/tool-summary.ts`): preferred headline field (objective/query/question/reason/…) or first required string param, from the tool's own parameter schema cached at enable / session_start / mcp_servers_change. Only rules the generic cannot express stay name-based (`obs_recall` id+offset, `memory_consolidate` ops count, `session_recall` since suffix); renderers read the cache only. Visible deltas from the old table: `pi_review_report` shows its `runId` (the old `mode/scope/base` fields no longer exist in core's schema), `step_complete` shows its `evidence` line.
+- `obs_recall` result shaping reads the structured `details` first (validated: id non-empty string, finite non-negative numbers, boolean eof) and only strips text lines that verifiably match the protocol patterns; partial/error details never fabricate a paging header; non-text content blocks are preserved in the rebuilt display object (the original result is never mutated).
+- MCP display names mirror core's five-shape authority (`lib/mcp-shape.ts`): proxy (`mcp` + `args.tool`) and direct-named (`PI_CORE_MCP_DIRECT_SERVERS`) tools now render `server - tool (MCP)` rows. The resolver itself never claims a bare proxy `mcp` without args — auto mode keeps yielding to its own renderer (R5); a shared-sample test cross-checks the mirror against the real core module.
+
 ### Changed (usage single display, spec 2026-10-07 P1-2 step 1)
 - The running status row no longer shows cost / ctx% twice: the core-published `workingStats` segment keeps its ↑/↓/R/tok-s parts but drops the `$…` and `…% ctx` segments whenever a replacement holder is on screen (the right group, or the statusline script row when it has output). While the statusline is enabled but has not produced output yet (first run pending / empty / persistent error), the right group now renders as the fallback holder so the numbers never vanish; unknown text segments in the core string are never touched (full-segment numeric match only). True zeros still count as numbers.
 
