@@ -212,20 +212,15 @@ daily settings. Record host version, both repo revisions, launch args, result.
       statusline rows and the hints line, in both footer modes.
 
 
-## 14. 2026-10-08 follow-up evidence ledger — OPEN
+## 14. 2026-10-08 follow-up evidence ledger — OPEN (terminal items)
 
-Current implementation baseline: TUI `1bf9b7f`, core `2ebd226`, pi dependency
-1.0.1. Both implementation batches and the usage consumer exist; the terminal
-checks in §11–13 remain open. The 272 passing automated tests (zero skipped)
-and successful typecheck on 2026-10-08 are not terminal evidence.
-
-Follow [the follow-up spec](../spec/2026-10-08-followup-validation.md) for U-F1
-(the fallback context denominator), J-USAGE (real modes events through TUI
-rendering/JSON), and H-T1–H-T5 (host/terminal evidence). In particular, the
-existing C7-usage test publishes a hand-authored payload through the real bus;
-it does not drive the modes producer. XPKG-09-HOST ordering evidence is still
-open. Record host version, both revisions, isolated configuration, commands,
-actual output, and cleanup per item before changing its status.
+Current implementation baseline: TUI `1bf9b7f` + the 2026-10-08 follow-up
+commits (U-F1 basis fix, J-USAGE joint suite), core `2ebd226`, pi dependency
+1.0.1. Automated status: 278 passing / 0 skipped tests + clean typecheck;
+`test/modes-producer.joint.test.ts` now drives the REAL core modes producer
+through the real bus into this package's real entry wiring (status row +
+statusline JSON through the actual script protocol) — factory-fixture-level
+evidence, still NOT terminal evidence. The checks in §11–13 remain open.
 
 The pre-existing cross-module reload ownership observation for
 pi-proto-adapter is a separate investigation, not a completed fix or a reason

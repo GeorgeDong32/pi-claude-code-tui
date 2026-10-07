@@ -27,7 +27,9 @@ import { pathToFileURL } from "node:url";
 import { createCoreBusClient, createFooterChannel } from "../extensions/lib/core-bus.ts";
 import { createNotificationAdapter } from "../extensions/lib/pm-capability.ts";
 
-const CORE_ROOT = path.resolve("node_modules/..", "..", "pi-claude-code-core", "extensions");
+const CORE_ROOT = process.env.CC_TUI_JOINT_CORE_ROOT
+	? path.join(process.env.CC_TUI_JOINT_CORE_ROOT, "extensions")
+	: path.resolve("node_modules/..", "..", "pi-claude-code-core", "extensions");
 const CORE_AVAILABLE = existsSync(path.join(CORE_ROOT, "ui", "notify.ts"));
 const skip = CORE_AVAILABLE ? false : "sibling pi-claude-code-core checkout not present";
 

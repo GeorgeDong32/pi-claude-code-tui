@@ -113,3 +113,18 @@ core 用户决策为 D3=A / D4=B / D6=B。TUI 当前不依赖 readCoreStatus；�
 - 验证：npm test 275 passed / 0 skipped（基线 272 + U-F1a/b/c），typecheck 退出 0。
 - 独立只读审查：ACCEPT（审查者用 git show HEAD 旧版实证先红后绿；MINOR=U-F1b 补 cumulative-only→complete-ctx 同 session 切换断言，已补入）。
 - 文档：CHANGELOG（含 710c9c7/1bf9b7f 漏记的 step 2 条目）、双语 ARCHITECTURE 模块表已同步。
+
+### J-USAGE 已落地（自动化验收）
+
+- 新增 `test/modes-producer.joint.test.ts`（J1/J2/J3）：jiti 加载真实 core `extensions/modes/index.ts` 生产者，经可控宿主 adapter 驱动真实 `session_start / turn_start / message_update / before_provider_request / message_end` 事件，production `refreshWorkingMessage → sanitizeUsageNumbers → publishCapability → 真实 bus publish`；TUI 侧为**本仓真实 entry factory**（core-bus client adapters → ReplicaSession.onBusSnapshot → refreshStatusline），非手工 `bus.publish({usage})`。
+- 覆盖：core-first（J1，状态行右侧组 + 经 `cat` 真实脚本协议回传的 statusline JSON）、tui-first + 晚 publish（J2，tracker 基数 → core 基数切换，含 statusline off 后右组回持有）、生产清空/真实零/缺失 ctx（J3，session_start 与 session_tree 的 usage:null 清空〔清空后换 tracker 基数以判别〕、0%/0 tokens、null-ctx 经 before_provider_request 强制重读后的整组回退含 U-F1 断言）。旧 core legacy 字符串通道的降级由既有 `cc-status-line.test.ts`/`replica-session.test.ts`（structured=null 路径）与 `pm-capability.test.ts` 覆盖，不在本 fixture 重复。
+- 脚本协议走真实子进程（prefs command=`cat`，250ms debounce + spawn），断言解析回传 JSON；行断言遵守已钉住的显示规则（脚本行有输出时右组塌缩、used=0 无括号）。
+- 隔离：PI_CODING_AGENT_DIR/claude-tui.json/prefs、core `setConfigPath`/`setModelsPath`/`setAgentDirForTests` 全部指向临时目录，结束恢复原值；globals 清理。
+- 验证：npm test 278 passed / 0 skipped（含本 suite 3 例实际执行），typecheck 退出 0；joint 文件连续 3 次复跑全绿。编写时 sibling 生产代码为 `2ebd226`；suite 不在内部硬钉 revision（core 合法前进会破坏硬钉），改由 `CC_TUI_JOINT_CORE_ROOT` 环境变量支持指向固定 revision 的干净 worktree 运行——D4 后回归即以此方式对 `ff81050` 执行（见 §9）。sibling 缺席机器保持 skip 语义（`CORE_AVAILABLE`），与本机实际执行不冲突。本批 TUI revision：U-F1 批 `f609b9b`。
+
+## 9. D4（core C2 runtime reader 删除）后回归 — PASS
+
+- core 于 `ff81050` 落地 D4=B（`feat(types)!`：撤除 `./types` runtime reader，subpath 仅 type-only）。本仓以 `git archive ff81050 | tar -x` 完整快照（对 core 工作树/.git 零写入，其时 core 工作树另有 C3 进行中改动，不可直接引用）+ `CC_TUI_JOINT_CORE_ROOT` 指向快照重跑全部门禁：**npm test 278 passed / 0 skipped、typecheck 退出 0**（两份联合 suite 均在快照上实际执行）。
+- 生产导入核查：本仓 `extensions/`、`scripts/` 无 `readCoreStatus` / `pi-claude-code-core/types` / core-status 引用（grep 空）；TUI 直接读 bus 快照，无需替代 reader，未新增。
+- **快照路径坑（已验证并记录）**：快照若放在 `/tmp`（macOS 上为 `/private/tmp` 的 symlink），jiti 对相对导入做 realpath 归一后同一 `bus.ts` 会注册成两个模块实例——`resetCoreBusForTests` 只重置其一，C1/C3/C4 出现假红（双 singleton 双显示）。快照须放在非 symlink 路径（本轮用 `Pi-Extension/.tmp/core-d4-ff81050`，跑完已删；node_modules 可 symlink）。复现：`git -C pi-claude-code-core archive ff81050 | tar -x -C <real-path>` 后 `CC_TUI_JOINT_CORE_ROOT=<real-path> npm test`。
+- sibling 当前 HEAD 的脏工作树（C3 进行中）同轮亦绿；正式证据以固定 revision 快照为准。
