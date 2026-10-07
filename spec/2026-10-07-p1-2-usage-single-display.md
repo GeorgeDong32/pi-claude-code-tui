@@ -93,3 +93,7 @@
 - **第一步已实施**（U1/B 决策）：`stripDuplicateStats` 落在 `lib/cc-status-line.ts`（按 ` · ` 分段、完整数字段匹配，`$0`/`0% ctx` 视为在场数字）；入口 cc-status render 按 §4.1 持有者矩阵选择去重——statusline 有效输出 → script 行持有；等待首结果/空输出/持续错误 → 右侧兜底组持有（新增的兜底渲染，属授权可见变化）；无任何持有者时保留 core 数字。U-T1 表测 + 入口真实 factory 接线测试（U-T2/U-T5 部分）已落地。
 - **第二步待 core P2-4**（结构化用量通道）：本仓 `readCoreUsage`、逐字段回退、statusline JSON 同源选择未实施——core 仓库 09c2dcb 尚无 `modes.usage` 通道（`grep` 核实）。待上游就绪后实施并用固定 core revision 联测。
 - 可选项 U3（effort pin 标记）未实施（可选，置后）。
+
+### 第二步复审修复（同日）
+
+定向复审给出 REJECT：通道在场但 ctx 字段缺失时 `usedPercent` 为 null，statusline JSON 的历史推导路径把它变成 0%（直接违反 core P2-4 §4.1「不能因 usage 对象存在就把缺失的 ctxPercent 当作 0」与本规格 §4.2 逐字段回退）。已修复：ctx 显示改为**同基准**选择（core percent → core tokens（窗口取通道，缺失取宿主）→ tracker 双字段），pct 与 tokens 永不混源；同批补 onAttach 触发（bus 重挂后刷新）、onBusSnapshot 在 statusline 关闭时 requestRender。复审的其余 P3（readCoreUsage 对非法可选字段整体回退——保守安全侧；真实生产方覆盖在 core 仓自身测试）记录在案不改。

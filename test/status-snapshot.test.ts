@@ -159,3 +159,23 @@ test("U2: missing/invalid channel → tracker wholesale; window falls back to ho
 	assert.equal(noTokens.usedPercent, 40);
 	assert.equal(noTokens.usedTokens, null);
 });
+
+test("U2/re-review: channel present but BOTH ctx fields absent → tracker pct basis, never 0-from-missing", () => {
+	// core P2-4 §4.1: a present usage object with absent ctxPercent must not
+	// read as 0% — the tracker fills the field.
+	const d = selectDisplayUsage({
+		tracker: tracker({ used: 50_000 }),
+		core: coreUsage(), // cumulative only, no ctx fields (host usage absent)
+		hostContextWindow: 200_000,
+	});
+	assert.equal(d.usedPercent, 25, "tracker pct fills the missing field");
+	assert.equal(d.usedTokens, 50_000, "tracker tokens fill too");
+	assert.equal(d.cost, 1.5, "cost still core-preferred");
+	// ctxTokens present + channel window absent → host window is the basis.
+	const hostBasis = selectDisplayUsage({
+		tracker: tracker(),
+		core: coreUsage({ ctxTokens: 100_000 }),
+		hostContextWindow: 400_000,
+	});
+	assert.equal(hostBasis.usedPercent, 25);
+});

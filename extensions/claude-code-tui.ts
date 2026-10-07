@@ -161,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 			// P1-2 step 2: core publishes a new usage object AFTER this
 			// session's own message_end refresh point in cctui-first order —
 			// the bus snapshot hook re-refreshes the statusline input.
-			{ onSnapshot: () => session.onBusSnapshot() },
+			{ onAttach: () => session.onBusSnapshot(), onSnapshot: () => session.onBusSnapshot() },
 		],
 	});
 	const session = new ReplicaSession({

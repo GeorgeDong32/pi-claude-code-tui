@@ -927,7 +927,10 @@ export class ReplicaSession {
 		const usage = this.deps.readCoreUsage();
 		if (usage === this.lastSeenCoreUsage) return;
 		this.lastSeenCoreUsage = usage;
-		if (this.enabled) this.refreshStatusline();
+		if (this.enabled) {
+			this.refreshStatusline();
+			this.requestRender(); // right-group freshness when the statusline is off
+		}
 	}
 
 	private observeUsage(ui: UiSlots): void {

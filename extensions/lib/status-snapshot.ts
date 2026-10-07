@@ -150,18 +150,31 @@ export const selectDisplayUsage = (input: DisplayUsageInput): DisplayUsage => {
 			structured: null,
 		};
 	}
-	// Structured channel present: per-field selection.
-	const pctSource =
-		typeof core.ctxPercent === "number"
-			? core.ctxPercent
-			: typeof core.ctxTokens === "number" && typeof core.contextWindow === "number" && core.contextWindow > 0
-				? (core.ctxTokens / core.contextWindow) * 100
-				: null;
+	// Structured channel present. Cost is an independent unit (core-preferred
+	// per field). The ctx DISPLAY picks ONE basis so pct and tokens never mix
+	// sources: core percent → core tokens (window = channel window, else
+	// host) → tracker (both fields, consistent). A channel that omits BOTH
+	// ctx fields therefore reads the tracker's percentage — core P2-4 §4.1:
+	// absent ctxPercent must NOT become 0%.
+	const coreWindow = typeof core.contextWindow === "number" && core.contextWindow > 0 ? core.contextWindow : 0;
+	let usedPercent: number | null;
+	let usedTokens: number | null;
+	if (typeof core.ctxPercent === "number") {
+		usedPercent = clampPercent(core.ctxPercent);
+		usedTokens = typeof core.ctxTokens === "number" ? core.ctxTokens : null; // pct-only basis: no mixed paren
+	} else if (typeof core.ctxTokens === "number") {
+		const win = coreWindow > 0 ? coreWindow : hostContextWindow;
+		usedPercent = win > 0 ? clampPercent((core.ctxTokens / win) * 100) : null;
+		usedTokens = core.ctxTokens;
+	} else {
+		usedPercent = hostContextWindow > 0 && tracker.used > 0 ? clampPercent((tracker.used / hostContextWindow) * 100) : null;
+		usedTokens = tracker.used > 0 ? tracker.used : null;
+	}
 	return {
 		cost: core.cost,
-		usedPercent: pctSource !== null ? clampPercent(pctSource) : null,
-		usedTokens: typeof core.ctxTokens === "number" ? core.ctxTokens : null,
-		contextWindow: typeof core.contextWindow === "number" && core.contextWindow > 0 ? core.contextWindow : hostContextWindow,
+		usedPercent,
+		usedTokens,
+		contextWindow: coreWindow > 0 ? coreWindow : hostContextWindow,
 		totalInput: core.input,
 		totalOutput: core.output,
 		structured: { input: core.input, output: core.output, cacheRead: core.cacheRead, tps: core.tps ?? 0 },
