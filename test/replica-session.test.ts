@@ -417,3 +417,58 @@ test("review-fix: toggle in a non-TUI session reports disabled", () => {
 		h.dispose();
 	}
 });
+
+// ---------------------------------------------------------------------------
+// P1-2 step 2: structured usage consumption through the session.
+
+test("U-T2/core: right group and statusline JSON use core numbers; publish-after-refresh re-refreshes", () => {
+	const h = setupSession();
+	try {
+		const branch = [
+			{
+				type: "message",
+				message: { role: "assistant", usage: { input: 40_000, output: 900, cost: { total: 0.25 } } },
+			},
+		];
+		(h.slots as { branch: () => unknown[] }).branch = () => branch;
+		h.session.enable(h.slots);
+		h.session.setStatusline("on", h.slots);
+		const coreUsage = { input: 1_200_000, output: 30_000, cacheRead: 500_000, cacheWrite: 0, cost: 1.5, tps: 45, ctxTokens: 150_000, ctxPercent: 12.6, contextWindow: 1_000_000 };
+		let current: unknown = coreUsage;
+		(h.session as unknown as { deps: { readCoreUsage: () => unknown } }).deps.readCoreUsage = () => current as never;
+		// A message_end refresh happens BEFORE core publishes (cctui-first
+		// order): the bus-snapshot hook must re-refresh with the new numbers.
+		h.session.onUsagePoint("message_end", h.slots);
+		h.session.onBusSnapshot();
+		const last = h.deps.statusline.requests.at(-1);
+		assert.ok(last, "refresh requested");
+		const json = JSON.parse(last[0]);
+		assert.equal(json.pi.cost_usd, 1.5, "JSON cost from core");
+		assert.equal(json.context_window.used_percentage, 13, "JSON pct — same clamped value as the right group");
+		assert.equal(json.context_window.remaining_percentage, 87);
+		assert.equal(json.context_window.context_window_size, 1_000_000);
+		assert.equal(json.context_window.total_input_tokens, 1_200_000, "totals follow the selected source");
+		assert.equal(json.context_window.current_usage.input_tokens, 40_000, "current_usage stays per-request (tracker)");
+		// Right group + structured left: the left segment only paints while a
+		// run is live.
+		h.session.onRunStart(h.slots);
+		const rows = h.session.renderStatusRow(160, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, { requestRender: () => {} });
+		const line = rows.join("\n");
+		assert.ok(line.includes("Ctx 13%"), "right group pct from core");
+		assert.ok(line.includes("$1.50"), "right group cost from core");
+		// Structured left side: ↑/↓/R/⚡ present, NO $/%ctx in it.
+		assert.ok(line.includes("↑1.2M"), "structured input");
+		assert.ok(line.includes("↓30k"), "structured output");
+		assert.ok(line.includes("R500k"), "structured cache");
+		assert.ok(line.includes("⚡45 tok/s"), "structured tps");
+		assert.ok(!line.includes("% ctx"), "no duplicated ctx% in the left segment");
+		// Channel cleared (session switch): tracker fallback, no stale core numbers.
+		current = null;
+		h.session.onUsagePoint("message_end", h.slots);
+		h.session.onBusSnapshot();
+		const cleared = JSON.parse(h.deps.statusline.requests.at(-1)![0]);
+		assert.equal(cleared.pi.cost_usd, 0.25, "cleared channel → tracker cost");
+	} finally {
+		h.dispose();
+	}
+});

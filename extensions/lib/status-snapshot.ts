@@ -96,3 +96,74 @@ export const USAGE_OBSERVATION_POINTS = [
 ] as const;
 
 export type UsageObservationPoint = (typeof USAGE_OBSERVATION_POINTS)[number];
+
+// ── P1-2 step 2 (spec U2): the ONE display-usage selection ─────────────────
+//
+// core's structured channel (modes.usage) wins per-field; the tracker fills
+// every field core does not provide. A TRUE ZERO in a core field is valid
+// data (never treated as missing); a missing/invalid CHANNEL falls back to
+// the tracker wholesale. Both percentage fields of the statusline JSON and
+// the right group derive from the SAME clamped, once-rounded value.
+
+import type { CoreUsageLike } from "./core-bus.ts";
+
+export interface DisplayUsage {
+	/** Selected cost (core-preferred; true 0 kept). */
+	cost: number;
+	/** Clamped [0,100] used percentage, rounded ONCE — the only pct source. null = no basis. */
+	usedPercent: number | null;
+	/** Context tokens for the (used/win) label; null when the source lacks them. */
+	usedTokens: number | null;
+	/** Effective context window for display. */
+	contextWindow: number;
+	/** Cumulative totals from the selected source (statusline total_*). */
+	totalInput: number;
+	totalOutput: number;
+	/**
+	 * Structured left-segment numbers (core channel present). null → the
+	 * caller keeps the old-core string path (stripDuplicateStats).
+	 */
+	structured: { input: number; output: number; cacheRead: number; tps: number } | null;
+}
+
+export interface DisplayUsageInput {
+	tracker: UsageSnapshot;
+	core: CoreUsageLike | null;
+	/** Host-provided context window (model_select); the fallback basis. */
+	hostContextWindow: number;
+}
+
+const clampPercent = (v: number): number => Math.min(100, Math.max(0, Math.round(v)));
+
+export const selectDisplayUsage = (input: DisplayUsageInput): DisplayUsage => {
+	const { tracker, core, hostContextWindow } = input;
+	if (core === null) {
+		// No structured channel (old core / cleared / invalid): tracker only.
+		const basis = hostContextWindow > 0 && tracker.used > 0 ? tracker.used / hostContextWindow * 100 : null;
+		return {
+			cost: tracker.cost,
+			usedPercent: basis !== null ? clampPercent(basis) : null,
+			usedTokens: tracker.used > 0 ? tracker.used : null,
+			contextWindow: hostContextWindow,
+			totalInput: tracker.totalInput,
+			totalOutput: tracker.totalOutput,
+			structured: null,
+		};
+	}
+	// Structured channel present: per-field selection.
+	const pctSource =
+		typeof core.ctxPercent === "number"
+			? core.ctxPercent
+			: typeof core.ctxTokens === "number" && typeof core.contextWindow === "number" && core.contextWindow > 0
+				? (core.ctxTokens / core.contextWindow) * 100
+				: null;
+	return {
+		cost: core.cost,
+		usedPercent: pctSource !== null ? clampPercent(pctSource) : null,
+		usedTokens: typeof core.ctxTokens === "number" ? core.ctxTokens : null,
+		contextWindow: typeof core.contextWindow === "number" && core.contextWindow > 0 ? core.contextWindow : hostContextWindow,
+		totalInput: core.input,
+		totalOutput: core.output,
+		structured: { input: core.input, output: core.output, cacheRead: core.cacheRead, tps: core.tps ?? 0 },
+	};
+};

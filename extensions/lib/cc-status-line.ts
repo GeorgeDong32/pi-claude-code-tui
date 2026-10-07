@@ -20,6 +20,13 @@ export interface StatusRightInput {
 	used: number;
 	contextWindow: number;
 	cost: number;
+	/**
+	 * P1-2 step 2: preselected percentage (already clamped/rounded by
+	 * selectDisplayUsage) — used verbatim when present; otherwise the
+	 * historical used/contextWindow math runs. `used: 0` with a pct shows
+	 * the percentage without the (used/win) paren (the source lacks tokens).
+	 */
+	pct?: number | null;
 	muted: (s: string) => string;
 	dim: (s: string) => string;
 	sep: string;
@@ -29,11 +36,14 @@ export interface StatusRightInput {
 export const buildStatusRightGroup = (i: StatusRightInput): string => {
 	const modelLabel = i.effort ? `${i.model}·${i.effort}` : i.model;
 	const rightParts = [i.muted(modelLabel)];
-	if (i.contextWindow > 0 && i.used > 0) {
-		const pct = Math.min(100, Math.round((i.used / i.contextWindow) * 100));
+	const pct = typeof i.pct === "number" ? i.pct : i.contextWindow > 0 && i.used > 0 ? Math.min(100, Math.round((i.used / i.contextWindow) * 100)) : null;
+	if (pct !== null && (i.contextWindow > 0 && i.used > 0)) {
 		rightParts.push(
 			`${i.dim("Ctx ")}${i.muted(`${pct}%`)}${i.dim(`(${formatTokens(i.used)}/${formatTokens(i.contextWindow)})`)}`,
 		);
+	} else if (pct !== null) {
+		// Percentage without a token basis from the selected source.
+		rightParts.push(`${i.dim("Ctx ")}${i.muted(`${pct}%`)}`);
 	}
 	if (i.cost > 0) {
 		rightParts.push(i.muted(formatCost(i.cost)));

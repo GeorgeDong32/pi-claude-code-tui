@@ -52,6 +52,8 @@ export interface CoreSnapshotLike {
 	notifications?: readonly unknown[];
 	observation?: { sites?: unknown };
 	display?: { footer?: readonly unknown[] };
+	/** P2-4 (XPKG-08): structured usage channel on the modes projection. */
+	modes?: { usage?: unknown };
 }
 
 export interface ObsSiteLike {
@@ -110,6 +112,51 @@ export const obsSitesOf = (snapshot: CoreSnapshotLike | undefined): ObsSiteLike[
 	}
 	return parsed;
 };
+
+// ---- structured usage channel (core P2-4, XPKG-08; spec P1-2 step 2) -----
+
+/** Duck-typed mirror of CoreSnapshot.modes.usage (cumulative numbers). */
+export interface CoreUsageLike {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+	tps?: number;
+	ctxTokens?: number;
+	ctxPercent?: number;
+	contextWindow?: number;
+}
+
+const finiteNonNeg = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/**
+ * Read + validate the structured usage channel. Returns the SNAPSHOT'S OWN
+ * object (reference-stable per publish — lets the session detect changes by
+ * identity) or null when the channel is absent/invalid. A TRUE ZERO in any
+ * field is valid data, not "missing" — only non-finite/negative values or a
+ * missing channel fall back. tps is valid only when > 0 (core publishes it
+ * only for a live rate).
+ */
+export function readCoreUsage(store: Record<string, unknown> = globalThis as never): CoreUsageLike | null {
+	const usage = (store[CORE_SNAPSHOT_KEY] as CoreSnapshotLike | undefined)?.modes as
+		| (Record<string, unknown> & { usage?: unknown })
+		| undefined;
+	const raw = usage?.usage;
+	if (raw == null || typeof raw !== "object") return null;
+	const u = raw as Record<string, unknown>;
+	for (const field of ["input", "output", "cacheRead", "cacheWrite", "cost"] as const) {
+		if (!finiteNonNeg(u[field])) return null;
+	}
+	const result = raw as CoreUsageLike;
+	if (u.tps !== undefined && !(typeof u.tps === "number" && Number.isFinite(u.tps) && u.tps > 0)) return null;
+	if (u.ctxTokens !== undefined && !finiteNonNeg(u.ctxTokens)) return null;
+	if (u.ctxPercent !== undefined && !finiteNonNeg(u.ctxPercent)) return null;
+	if (u.contextWindow !== undefined && !(typeof u.contextWindow === "number" && Number.isFinite(u.contextWindow) && u.contextWindow > 0)) {
+		return null;
+	}
+	return result;
+}
 
 // ---- adapter seam ----------------------------------------------------------
 

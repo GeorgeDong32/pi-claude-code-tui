@@ -24,6 +24,8 @@ export interface StatuslineModelInfo {
 export interface StatuslineExtras {
 	cwd?: string;
 	effort?: string;
+	/** P1-2 step 2: preselected (clamped, rounded) used percentage — the same value the right group shows. */
+	usedPercent?: number;
 }
 
 /**
@@ -41,7 +43,9 @@ export function buildStatuslineJson(
 	extras: StatuslineExtras = {},
 ): string {
 	const cwd = extras.cwd ?? process.cwd();
-	const usedPct = contextWindow > 0 ? Math.min(100, Math.round((snapshot.used / contextWindow) * 100)) : 0;
+	// P1-2 step 2: a preselected percentage wins (single source with the
+	// right group); the historical derivation remains for tracker-only input.
+	const usedPct = extras.usedPercent ?? (contextWindow > 0 ? Math.min(100, Math.round((snapshot.used / contextWindow) * 100)) : 0);
 	return JSON.stringify({
 		model: {
 			display_name: model.displayName,

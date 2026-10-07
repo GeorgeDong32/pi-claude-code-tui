@@ -103,3 +103,59 @@ test("8.2: observation points pin the verified host contract", () => {
 		"session_compact",
 	]);
 });
+
+// ---------------------------------------------------------------------------
+// P1-2 step 2 (U2): the ONE display-usage selection — core-preferred per
+// field, tracker fallback, true zeros kept, single clamped pct source.
+
+import { selectDisplayUsage, type UsageSnapshot } from "../extensions/lib/status-snapshot.ts";
+import type { CoreUsageLike } from "../extensions/lib/core-bus.ts";
+
+const tracker = (over: Partial<UsageSnapshot> = {}): UsageSnapshot => ({
+	used: 50_000, cost: 0.25, lastInput: 40_000, lastOutput: 900, totalInput: 60_000, totalOutput: 1_200, ...over,
+});
+
+const coreUsage = (over: Partial<CoreUsageLike> = {}): CoreUsageLike => ({
+	input: 1_200_000, output: 30_000, cacheRead: 500_000, cacheWrite: 0, cost: 1.5, ...over,
+});
+
+test("U2: core channel wins per-field; pct clamped+rounded once; totals follow the selected source", () => {
+	const d = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxTokens: 150_000, ctxPercent: 12.6, contextWindow: 1_000_000, tps: 45.4 }), hostContextWindow: 200_000 });
+	assert.equal(d.cost, 1.5);
+	assert.equal(d.usedPercent, 13);
+	assert.equal(d.usedTokens, 150_000);
+	assert.equal(d.contextWindow, 1_000_000);
+	assert.deepEqual(d.totalInput, 1_200_000);
+	assert.equal(d.totalOutput, 30_000);
+	assert.deepEqual(d.structured, { input: 1_200_000, output: 30_000, cacheRead: 500_000, tps: 45.4 });
+});
+
+test("U2: true zeros are data, not missing — cost 0 and ctxPercent 0 stay selected", () => {
+	const d = selectDisplayUsage({ tracker: tracker({ cost: 9 }), core: coreUsage({ cost: 0, ctxPercent: 0, ctxTokens: 0, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(d.cost, 0, "core cost 0 beats tracker 9");
+	assert.equal(d.usedPercent, 0, "0% is valid");
+	assert.equal(d.usedTokens, 0);
+	assert.equal(d.structured!.input, 1_200_000);
+});
+
+test("U2: pct derives from ctxTokens/contextWindow when ctxPercent is absent", () => {
+	const d = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxTokens: 250_000, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(d.usedPercent, 25);
+	// Over-100 inputs clamp.
+	const clamped = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxPercent: 250 }), hostContextWindow: 200_000 });
+	assert.equal(clamped.usedPercent, 100);
+});
+
+test("U2: missing/invalid channel → tracker wholesale; window falls back to host", () => {
+	const missing = selectDisplayUsage({ tracker: tracker(), core: null, hostContextWindow: 200_000 });
+	assert.equal(missing.cost, 0.25);
+	assert.equal(missing.usedPercent, 25);
+	assert.equal(missing.usedTokens, 50_000);
+	assert.equal(missing.contextWindow, 200_000);
+	assert.equal(missing.totalInput, 60_000);
+	assert.equal(missing.structured, null, "no structured left side → old string path");
+	// ctxPercent present but no tokens → pct without a paren basis.
+	const noTokens = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxPercent: 40, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(noTokens.usedPercent, 40);
+	assert.equal(noTokens.usedTokens, null);
+});

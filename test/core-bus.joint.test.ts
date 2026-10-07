@@ -307,3 +307,37 @@ test("C4b: with the new core (snapshot.instance present) the identity IS the ins
 		wipeCoreGlobals();
 	}
 });
+
+test("C7-usage: real core modes.usage publish validates through readCoreUsage (P2-4 / XPKG-08)", { skip }, async () => {
+	wipeCoreGlobals();
+	const core = await coreModules();
+	try {
+		const { readCoreUsage } = await import("../extensions/lib/core-bus.ts");
+		assert.equal(readCoreUsage(), null, "fresh bus: channel absent");
+		const bus = core.bus.initCoreBus() as unknown as {
+			publish(patch: unknown): unknown;
+			snapshot(): { modes?: { usage?: unknown } };
+		};
+		bus.publish({
+			modes: {
+				mode: "auto",
+				workingStats: "↑1.2M · ↓30k · $1.500 · 13% ctx",
+				usage: { input: 1_200_000, output: 30_000, cacheRead: 500_000, cacheWrite: 0, cost: 1.5, tps: 45, ctxTokens: 150_000, ctxPercent: 12.6, contextWindow: 1_000_000 },
+			} as never,
+		});
+		const usage = readCoreUsage();
+		assert.ok(usage, "validated through");
+		assert.equal(usage!.cost, 1.5);
+		assert.equal(usage!.ctxPercent, 12.6);
+		// Reference-stable across unrelated publishes (identity change = refresh trigger).
+		const first = bus.snapshot().modes?.usage;
+		bus.publish({ display: { footer: ["x"] } });
+		assert.equal(bus.snapshot().modes?.usage, first, "mode-only patches keep the usage object");
+		// An EXPLICIT null clears (session switch) → readCoreUsage falls back.
+		bus.publish({ modes: { mode: "auto", workingStats: null, usage: null } as never });
+		assert.equal(readCoreUsage(), null, "cleared channel → null (tracker fallback)");
+	} finally {
+		core.bus.resetCoreBusForTests();
+		wipeCoreGlobals();
+	}
+});

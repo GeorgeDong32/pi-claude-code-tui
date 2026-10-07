@@ -60,7 +60,7 @@ import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
 import { defaultPrefsPath } from "./lib/prefs.ts";
 import { createNotificationAdapter, readPmStatus } from "./lib/pm-capability.ts";
 import { createObsAdapter, type ObsSavingsSite } from "./lib/obs-savings.ts";
-import { createCoreBusClient, createFooterChannel } from "./lib/core-bus.ts";
+import { createCoreBusClient, createFooterChannel, readCoreUsage } from "./lib/core-bus.ts";
 import { PrototypeMethodAdapter } from "./lib/pi-proto-adapter.ts";
 import { ReplicaSession, type UiSlots } from "./lib/replica-session.ts";
 import { existsSync, readFileSync } from "node:fs";
@@ -154,7 +154,15 @@ export default function (pi: ExtensionAPI) {
 		};
 	};
 	const coreBusClient = createCoreBusClient({
-		adapters: [createNotificationAdapter((m, l) => notifySink(m, l)), obsAdapter.adapter, coreFooterChannel.adapter],
+		adapters: [
+			createNotificationAdapter((m, l) => notifySink(m, l)),
+			obsAdapter.adapter,
+			coreFooterChannel.adapter,
+			// P1-2 step 2: core publishes a new usage object AFTER this
+			// session's own message_end refresh point in cctui-first order —
+			// the bus snapshot hook re-refreshes the statusline input.
+			{ onSnapshot: () => session.onBusSnapshot() },
+		],
 	});
 	const session = new ReplicaSession({
 		pi: pi as never,
@@ -176,6 +184,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		prefsPath,
 		readPmStatus,
+		readCoreUsage,
 		thinkingPrefExplicit,
 		pickRunVerb: weightedVerbSample,
 	});

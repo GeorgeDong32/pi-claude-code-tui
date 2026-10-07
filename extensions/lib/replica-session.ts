@@ -41,10 +41,10 @@ import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./c
 import { silenceNativeCompactionIndicator, type ThemeFg } from "./cc-compaction-row.ts";
 import { buildStatuslineJson, composeFooterLines, StatuslineRunner } from "./statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./statusline-default-script.ts";
-import { buildCompletionLine, effortBadgeSymbol, formatDuration, formatModelLabel } from "./format.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatDuration, formatModelLabel, formatTokens } from "./format.ts";
 import { PiStartupHeader, type HeaderDataGetters } from "./pi-startup-header.ts";
-import { UsageTracker, type UsageObservationPoint } from "./status-snapshot.ts";
-import type { CoreBusClient } from "./core-bus.ts";
+import { UsageTracker, selectDisplayUsage, type DisplayUsage, type UsageObservationPoint } from "./status-snapshot.ts";
+import type { CoreBusClient, CoreUsageLike } from "./core-bus.ts";
 import { loadPrefs, resolveStatusLinePrefs, savePrefs, type StatusLinePrefs } from "./prefs.ts";
 import { SPINNER_TICK_MS, glimmerIndexAt, shimmerSegments } from "./spinner-shimmer.ts";
 
@@ -106,6 +106,8 @@ export interface ReplicaSessionDeps {
 	statuslineFactory?: (command: string) => StatuslineRunner;
 	/** Pure read of the pm status chain (injectable; default = readPmStatus). */
 	readPmStatus?: () => PmStatus;
+	/** P1-2 step 2: validated read of the structured usage channel (core P2-4). */
+	readCoreUsage?: () => CoreUsageLike | null;
 	/** True when the user already picked a thinking-collapse preference (tip gate). */
 	thinkingPrefExplicit?: () => boolean;
 	/** Presence probe → silence pi's native compaction indicator (D6: skipped in native footer mode). */
@@ -182,10 +184,16 @@ export class ReplicaSession {
 
 	private readonly runState: RunStateMachine;
 	private readonly usageTracker = new UsageTracker();
-	private readonly deps: Required<Pick<ReplicaSessionDeps, "readPmStatus" | "silenceIndicator">> & ReplicaSessionDeps;
+	private readonly deps: Required<Pick<ReplicaSessionDeps, "readPmStatus" | "silenceIndicator" | "readCoreUsage">> & ReplicaSessionDeps;
+	private lastSeenCoreUsage: CoreUsageLike | null = null;
 
 	constructor(deps: ReplicaSessionDeps) {
-		this.deps = { readPmStatus: () => ({ workingStats: "", mode: "" }), silenceIndicator: silenceNativeCompactionIndicator, ...deps };
+		this.deps = {
+			readPmStatus: () => ({ workingStats: "", mode: "" }),
+			silenceIndicator: silenceNativeCompactionIndicator,
+			readCoreUsage: () => null,
+			...deps,
+		};
 		const initial = loadPrefs(deps.prefsPath);
 		this.toolRowsPref = initial.toolRows === true || initial.toolRows === false ? initial.toolRows : undefined;
 		this.statusLinePrefs = resolveStatusLinePrefs(initial.statusLine);
@@ -675,23 +683,31 @@ export class ReplicaSession {
 		const modelName = this.currentModelName || "no model";
 		const sep = theme.fg("dim", "│");
 
-		const { used, cost } = this.usageTracker.get();
-		const win = this.currentContextWindow || 0;
-
 		const muted = (s: string) => theme.fg("muted", s);
 
-		// P1-2 step 1 (U1): cost / ctx% shows exactly once. Holder matrix:
-		// statusline ON with valid script output → the script row owns the
-		// numbers; otherwise (off / waiting / empty / persistent error) the
-		// right group is the fallback holder. The core pmStats string drops
-		// its duplicated numeric segments ONLY when a holder exists.
+		// P1-2: cost / ctx% shows exactly once. With the STRUCTURED channel
+		// (core P2-4+) the left side formats its own ↑/↓/R/⚡ from raw
+		// numbers — no $/%ctx ever enters it, so no stripping is needed.
+		// The old-core string path keeps the holder matrix: script row with
+		// valid output owns the numbers; otherwise (off / waiting / empty /
+		// persistent error) the right group is the fallback holder, and the
+		// core string drops its duplicated numeric segments ONLY then.
+		const display = this.displayUsage();
 		const runnerLines = this.statuslineRunner ? this.statuslineRunner.getRenderLines() : [];
 		const scriptHasOutput =
 			this.statusLinePrefs.enabled && !(this.statuslineRunner?.hasPersistentError() ?? false) && runnerLines.length > 0;
 		const rightOwnsNumbers = !scriptHasOutput;
-		const rightShowsNumbers = cost > 0 || (win > 0 && used > 0);
-		const pmStatsRaw = this.deps.readPmStatus().workingStats;
-		const pmStats = scriptHasOutput || rightShowsNumbers ? stripDuplicateStats(pmStatsRaw) : pmStatsRaw;
+		const rightShowsNumbers = display.cost > 0 || display.usedPercent !== null;
+		let pmStats: string;
+		if (display.structured) {
+			const parts = [`↑${formatTokens(display.structured.input)}`, `↓${formatTokens(display.structured.output)}`];
+			if (display.structured.cacheRead > 0) parts.push(`R${formatTokens(display.structured.cacheRead)}`);
+			if (display.structured.tps > 0) parts.push(`⚡${Math.round(display.structured.tps)} tok/s`);
+			pmStats = parts.join(" · ");
+		} else {
+			const pmStatsRaw = this.deps.readPmStatus().workingStats;
+			pmStats = scriptHasOutput || rightShowsNumbers ? stripDuplicateStats(pmStatsRaw) : pmStatsRaw;
+		}
 		// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a narrow
 		// claudeShimmer band rides the 200ms tick across the word.
 		const now = this.deps.now?.() ?? Date.now();
@@ -719,9 +735,10 @@ export class ReplicaSession {
 			: buildStatusRightGroup({
 					model: modelName,
 					effort: readEffortLevel(this.deps.pi as never),
-					used,
-					contextWindow: win,
-					cost,
+					used: display.usedTokens ?? 0,
+					contextWindow: display.contextWindow,
+					cost: display.cost,
+					pct: display.usedPercent,
 					muted,
 					dim: (t) => theme.fg("dim", t),
 					sep,
@@ -864,19 +881,54 @@ export class ReplicaSession {
 
 	private buildStatuslineInput(): string {
 		const effort = readEffortLevel(this.deps.pi as never);
+		// P1-2 step 2: the JSON reads the SAME display-usage selection as the
+		// right group — cost / used% / window / totals come from the selected
+		// source; current_usage stays per-request (tracker lastInput/Output —
+		// cumulative numbers must not impersonate a single request).
+		const display = this.displayUsage();
+		const tracker = this.usageTracker.get();
 		return buildStatuslineJson(
-			this.usageTracker.get(),
+			{
+				...tracker,
+				cost: display.cost,
+				used: display.usedTokens ?? 0,
+				totalInput: display.totalInput,
+				totalOutput: display.totalOutput,
+			},
 			{
 				displayName: this.currentModelName || "no model",
 				id: this.currentProviderName ? `${this.currentProviderName}/${this.currentModelName || "model"}` : this.currentModelName,
 				provider: this.currentProviderName,
 			},
-			this.currentContextWindow,
-			{ cwd: process.cwd(), effort },
+			display.contextWindow,
+			{ cwd: process.cwd(), effort, usedPercent: display.usedPercent ?? undefined },
 		);
 	}
 
 	// ── helpers ────────────────────────────────────────────────────────────
+
+	/** The ONE display-usage selection (P1-2 step 2 / U2) — right group and
+	 * statusline JSON read the same numbers. */
+	private displayUsage(): DisplayUsage {
+		return selectDisplayUsage({
+			tracker: this.usageTracker.get(),
+			core: this.deps.readCoreUsage(),
+			hostContextWindow: this.currentContextWindow,
+		});
+	}
+
+	/**
+	 * Bus-snapshot hook (core-bus adapter target): when core publishes a new
+	 * usage object (identity change), refresh the statusline input — this
+	 * covers the cctui-first load order, where core's message_end publish
+	 * lands AFTER this session's own refresh point.
+	 */
+	onBusSnapshot(): void {
+		const usage = this.deps.readCoreUsage();
+		if (usage === this.lastSeenCoreUsage) return;
+		this.lastSeenCoreUsage = usage;
+		if (this.enabled) this.refreshStatusline();
+	}
 
 	private observeUsage(ui: UiSlots): void {
 		try {
