@@ -58,7 +58,6 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 ```
 load（jiti）
   ├─ 注册命令：claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline
-  ├─ UserMessageComponent.prototype.rebuild 补丁（压缩条上下空行，幂等标记 __ccCompact）
   └─ registerMarkdownTransformer（assistant 纯文本强制白色；user 消息 CC 式全宽灰条）
 
 session_start → enable(ctx)
@@ -68,6 +67,7 @@ session_start → enable(ctx)
   ├─ ctx.ui.setWidget("cc-status")    ← spinner / 完成行状态组件
   ├─ ctx.ui.setWidget("cc-footer")    ← statusline + mode/hints 行
   ├─ patchCompactionRow(getFg)        ← 压缩行 CC 化
+  ├─ patchSkillRow / applyUserBarPatch（UserMessageComponent.rebuild 补丁在 enable 打，非加载期）
   ├─ publishCcTuiCapability()         ← 告知 pm 本包存在（互相抑制）
   └─ startCoreNotificationConsumer()  ← 消费核心通知尾队列（失败自动重试）
 

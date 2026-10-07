@@ -1,3 +1,7 @@
+# pi 1.0.x 升级适配方案（已归档）
+
+> **归档横幅（2026-10-07）**：本方案已过时并归档——其中的决策（peer `>=0.85.0`、发版 1.7.1）已被 `package.json` 的 `>=1.0.1` 与 1.8.0+ 发版取代。现行权威：`spec/`（实施规格）、[docs/ARCHITECTURE.md](../ARCHITECTURE.md)、[CHANGELOG.md](../../CHANGELOG.md)。此处仅保留历史决策可追溯性（P3-1 D4）。
+
 # pi 1.0.x 升级适配方案
 
 > **状态更新（2026-10-03）**：本方案的路线已调整为「先迁移 registerToolRenderer 通道」——spec 与四轮对抗评审已完成且实现已验收 ACCEPT（见 `~/Coding/Pi-Extension/specs/design/2026-10-03-pi-1.0-tool-renderer-migration-spec.md` 与同目录四份 REVIEW）。Phase 1（依赖升级+自动验证）与 Phase 3（文档同步）已随迁移完成；Phase 4 发版号改为 1.8.0（feat）。剩余：Phase 0（用户升全局 pi 到 1.0.1）→ Phase 2 视觉回归（追加 spec §8.6 迁移专项清单）→ Phase 4 提交/发版。

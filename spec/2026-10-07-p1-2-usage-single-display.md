@@ -85,3 +85,11 @@
 
 - 本仓库：`extensions/claude-code-tui.ts:389-466, 516-524`、`extensions/lib/status-snapshot.ts:42-71`、`extensions/lib/format.ts:19-28`、`extensions/lib/host-status.ts`
 - core：`extensions/modes/index.ts:804-851`、`extensions/effort/index.ts:109, 193`
+
+---
+
+## 8. 实施记录（2026-10-07）
+
+- **第一步已实施**（U1/B 决策）：`stripDuplicateStats` 落在 `lib/cc-status-line.ts`（按 ` · ` 分段、完整数字段匹配，`$0`/`0% ctx` 视为在场数字）；入口 cc-status render 按 §4.1 持有者矩阵选择去重——statusline 有效输出 → script 行持有；等待首结果/空输出/持续错误 → 右侧兜底组持有（新增的兜底渲染，属授权可见变化）；无任何持有者时保留 core 数字。U-T1 表测 + 入口真实 factory 接线测试（U-T2/U-T5 部分）已落地。
+- **第二步待 core P2-4**（结构化用量通道）：本仓 `readCoreUsage`、逐字段回退、statusline JSON 同源选择未实施——core 仓库 09c2dcb 尚无 `modes.usage` 通道（`grep` 核实）。待上游就绪后实施并用固定 core revision 联测。
+- 可选项 U3（effort pin 标记）未实施（可选，置后）。

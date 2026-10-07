@@ -36,3 +36,16 @@
 - D4 移动归档后修所有指向旧 plan.md 的链接，归档 header 说明以现行 spec/架构文档为准。
 - D5：两种加载顺序 + 后一个 session_start 跨 macrotask await + turn 后 widget 更新均记录真实宿主行为，不把当前 workaround 写成硬保证。排序承诺要等正式宿主 interface 或独立实现方案。
 - D1/D2/D3/D4 为文档，D6/D7 为代码行为；`npm test` 与 `npm run typecheck` 双绿。
+
+---
+
+## 4. 实施记录（2026-10-07）
+
+- D1 已实施：AGENTS.md / AGENTS.en.md 目录结构补入 `cc-subagent-rows.ts`、`subagent-presentation.ts`、`pi-proto-adapter.ts`。
+- D2 已实施：ARCHITECTURE.md / .en.md §3 的 user-bar 补丁从"load（jiti）"段移到 `session_start → enable` 段。
+- D3 由 P0-2 批次处理（core-bus client 落地时一并改写三处注释）。
+- D4 已实施：`plan.md` → `docs/archive/plan.md`，头部加归档横幅；仓库内无其他指向旧路径的链接（已 grep）。
+- D5 注释已随 P0-1 落地（macrotask 尽力排序 + generation/native 检查说明）；真实宿主顺序取证（两种加载顺序 + 跨 macrotask await + turn 后 widget 更新）仍 open，XPKG-09-HOST 证据未取得。
+- D6 已实施：`showNativeFooter` 时跳过 hush 调度（`session_before_compact`）。其专项断言按本表约定落在 P2-1 的 `replica-session.test.ts`（footer mode 为方法参数后可直接表测）；P2-1 未落地期间由 entry 生命周期测试间接覆盖该路径不抛错。
+- D7 已随 P0-1 实施（statusline stdin 写 `activeInput`）。
+- D8（ANSI 小工具合并）按决策 P2 保持"顺手才做"，本批未做，仍可选。

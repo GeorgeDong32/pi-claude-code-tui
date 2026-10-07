@@ -50,7 +50,7 @@ import {
 } from "./lib/cc-rows.ts";
 import { BUILTIN_SEVEN, isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
-import { buildStatusRightGroup, permissionModeLabel, statusRowLayout } from "./lib/cc-status-line.ts";
+import { buildStatusRightGroup, permissionModeLabel, statusRowLayout, stripDuplicateStats } from "./lib/cc-status-line.ts";
 import { readEffortLevel } from "./lib/host-status.ts";
 import { RunStateMachine } from "./lib/run-state.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./lib/claude-tui-editor.ts";
@@ -431,12 +431,26 @@ export default function (pi: ExtensionAPI) {
 
 				const muted = (s: string) => theme.fg("muted", s);
 
+				// P1-2 step 1 (U1): cost / ctx% shows exactly once. Holder
+				// matrix: statusline ON with valid script output → the script
+				// row owns the numbers (right group collapses, current
+				// behavior); otherwise (statusline off, waiting for the first
+				// result, empty output, persistent error) the right group is
+				// the fallback holder. The core pmStats string drops its
+				// duplicated numeric segments ONLY when a holder exists —
+				// never delete a number that has no replacement on screen.
+				const runnerLines = statuslineRunner ? statuslineRunner.getRenderLines() : [];
+				const scriptHasOutput =
+					statusLinePrefs.enabled && !(statuslineRunner?.hasPersistentError() ?? false) && runnerLines.length > 0;
+				const rightOwnsNumbers = !scriptHasOutput;
 				// Left: running → spinner frame + verb + esc hint (+ pm token stats
 				// when that extension sees this card is active); compacting →
 				// "Compacting context…"; idle → the last turn's completion line
 				// (✻ Verb for Xs), if any. Right: model (with thinking effort) │
 				// context │ cost, right-aligned.
-				const pmStats = readPmStatus().workingStats;
+				const rightShowsNumbers = cost > 0 || (win > 0 && used > 0);
+				const pmStatsRaw = readPmStatus().workingStats;
+				const pmStats = scriptHasOutput || rightShowsNumbers ? stripDuplicateStats(pmStatsRaw) : pmStatsRaw;
 				// Shimmer sweep (CC Spinner.tsx): the per-run verb is static; a
 				// narrow claudeShimmer band rides the 200ms tick across the word.
 				const rv = runState.view();
@@ -453,21 +467,24 @@ export default function (pi: ExtensionAPI) {
 						: rv.lastWorkedLine
 							? theme.fg("dim", rv.lastWorkedLine)
 							: "";
-				// Plan SL4/D4: with the statusline on, model/effort/ctx/cost live
-				// on the script row + right-aligned badge instead — the right
-				// group collapses so the same info never shows twice.
-				const right = statusLinePrefs.enabled
+				// Plan SL4/D4: with the statusline's script row live, model/
+				// effort/ctx/cost live on the script row + right-aligned badge
+				// instead — the right group collapses so the same info never
+				// shows twice. P1-2: while the script has NO valid output
+				// (first run pending / empty / persistent error) the right
+				// group is the fallback holder, so the numbers never vanish.
+				const right = !rightOwnsNumbers
 					? ""
 					: buildStatusRightGroup({
-						model: modelName,
-						effort: readEffortLevel(pi),
-						used,
-						contextWindow: win,
-						cost,
-						muted,
-						dim: (t) => theme.fg("dim", t),
-						sep,
-					});
+							model: modelName,
+							effort: readEffortLevel(pi),
+							used,
+							contextWindow: win,
+							cost,
+							muted,
+							dim: (t) => theme.fg("dim", t),
+							sep,
+						});
 				// Left/right join lives in lib/cc-status-line.ts (table-tested).
 				return statusRowLayout(left, right, width);
 			},
@@ -877,14 +894,16 @@ export default function (pi: ExtensionAPI) {
 		runState.startCompaction();
 		// pi shows its native indicator row before this event fires; mute it
 		// so compaction lives only on the cc-status spinner line. Retry a
-		// couple of times in case show lands a tick later.
+		// couple of times in case show lands a tick later. P3-1 D6: in
+		// native footer mode cc-status (and its dockTui reference) is
+		// unmounted — the retries can only spin, so skip the hush entirely.
 		const hush = (retries: number) => {
 			if (silenceNativeCompactionIndicator(dockTui)) return;
 			if (retries <= 0) return;
 			const t = setTimeout(() => hush(retries - 1), 100);
 			t.unref?.();
 		};
-		hush(4);
+		if (!showNativeFooter) hush(4);
 	});
 	pi.on("session_compact", async (_event, ctx) => {
 		if (!enabled) return;

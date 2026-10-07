@@ -22,7 +22,7 @@ import {
 } from "../extensions/lib/subagent-presentation.ts";
 
 interface RecordedUi {
-	calls: Array<{ method: string; key?: string }>;
+	calls: Array<{ method: string; key?: string; content?: unknown }>;
 	notified: Array<{ msg: string; level: string }>;
 }
 
@@ -32,7 +32,7 @@ const makeUi = (): { ui: Record<string, unknown>; rec: RecordedUi } => {
 		notify: (msg: string, level: string) => rec.notified.push({ msg, level }),
 		setHeader: (f: unknown) => rec.calls.push({ method: "setHeader", key: String(f) }),
 		setTitle: () => rec.calls.push({ method: "setTitle" }),
-		setWidget: (key: string, _content: unknown) => rec.calls.push({ method: "setWidget", key }),
+		setWidget: (key: string, content: unknown) => rec.calls.push({ method: "setWidget", key, content }),
 		setFooter: (f: unknown) => rec.calls.push({ method: "setFooter", key: String(f) }),
 		setEditorComponent: (f: unknown) => rec.calls.push({ method: "setEditorComponent", key: String(f) }),
 		setHiddenThinkingLabel: () => rec.calls.push({ method: "setHiddenThinkingLabel" }),
@@ -43,7 +43,7 @@ const makeUi = (): { ui: Record<string, unknown>; rec: RecordedUi } => {
 	return { ui, rec };
 };
 
-const makeCtx = (mode: "tui" | "rpc" = "tui") => {
+const makeCtx = (mode: "tui" | "rpc" = "tui", branch: unknown[] = []) => {
 	const { ui, rec } = makeUi();
 	return {
 		ctx: {
@@ -52,7 +52,7 @@ const makeCtx = (mode: "tui" | "rpc" = "tui") => {
 			ui,
 			model: { name: "GLM 5.3", id: "glm-5.3", provider: "zai", contextWindow: 200_000 },
 			cwd: "/tmp/proj",
-			sessionManager: { getSessionId: () => "s-1", getBranch: () => [] },
+			sessionManager: { getSessionId: () => "s-1", getBranch: () => branch },
 		} as never,
 		rec,
 	};
@@ -144,6 +144,10 @@ const useFakeBus = () => {
 			refresh();
 			for (const l of listeners) l();
 		},
+		setWorkingStats: (stats: string) => {
+			snapshot.modes = { mode: "auto", workingStats: stats };
+			refresh();
+		},
 		cleanup: () => {
 			listeners.clear();
 			delete g.__piClaudeCodeCore;
@@ -175,14 +179,14 @@ interface Harness {
 	dispose: () => void;
 }
 
-const setup = (mode: "tui" | "rpc" = "tui"): Harness => {
+const setup = (mode: "tui" | "rpc" = "tui", branch: unknown[] = []): Harness => {
 	const agentDir = mkdtempSync(join(tmpdir(), "cc-tui-lifecycle-"));
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	delete process.env.CC_TUI_TOOL_ROWS;
 	const pi = makePi();
 	const bus = useFakeBus();
 	factory(pi.pi as never);
-	const { ctx, rec } = makeCtx(mode);
+	const { ctx, rec } = makeCtx(mode, branch);
 	return {
 		pi,
 		bus,
@@ -368,6 +372,60 @@ test("E6c: a throwing teardown step does not block the remaining releases", asyn
 		assert.equal(g.__piCcTui, undefined, "earlier step (presence) completed");
 		assert.deepEqual(patchedMarkers(), [], "later steps (patches) completed despite the throw");
 		assert.equal(h.bus.listeners.size, 0, "consumers unsubscribed despite the throw");
+	} finally {
+		h.dispose();
+	}
+});
+
+// ---------------------------------------------------------------------------
+// P1-2 step 1 (U1): cost / ctx% appear exactly once on the cc-status row.
+
+const USAGE_BRANCH = [
+	{
+		type: "message",
+		message: {
+			role: "assistant",
+			usage: { input: 26_000, output: 400, cacheRead: 3_000, cacheWrite: 0, cost: { total: 0.5 } },
+		},
+	},
+] as never[];
+
+const renderCcStatus = (h: Harness, width = 160): string => {
+	const call = [...h.rec.calls].reverse().find((c) => c.method === "setWidget" && c.key === "cc-status" && typeof c.content === "function");
+	assert.ok(call, "cc-status widget registered");
+	const factory = call!.content as (tui: unknown, theme: unknown) => { render(w: number): string[] };
+	const component = factory({ requestRender: () => {} }, { fg: (_c: string, s: string) => s, bold: (s: string) => s });
+	return component.render(width).join("\n");
+};
+
+test("U-T2: right group present → pmStats drops its $/ctx segments (no double display)", async () => {
+	const h = setup("tui", USAGE_BRANCH);
+	try {
+		h.bus.setWorkingStats("↑1.2k · ↓300 · R3k · $0.012 · 3% ctx");
+		await h.pi.fire("session_start", h.ctx);
+		await h.pi.fire("agent_start", h.ctx); // pmStats only paints while a run is live
+		const line = renderCcStatus(h);
+		assert.ok(line.includes("↑1.2k"), "token segment kept");
+		assert.ok(line.includes("↓300"), "output segment kept");
+		assert.ok(line.includes("R3k"), "cache segment kept");
+		assert.ok(!line.includes("$0.012"), "core cost segment stripped");
+		assert.ok(!line.includes("3% ctx"), "core ctx segment stripped");
+		assert.ok(line.includes("Ctx"), "right group owns the ctx number");
+		assert.ok(line.includes("$0.50"), "right group owns the cost number");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("U-T5: no usage replacement on screen → pmStats keeps its numbers", async () => {
+	const h = setup();
+	try {
+		h.bus.setWorkingStats("↑1.2k · ↓300 · $0.012 · 3% ctx");
+		await h.pi.fire("session_start", h.ctx); // empty branch → usage 0
+		await h.pi.fire("agent_start", h.ctx);
+		const line = renderCcStatus(h);
+		assert.ok(line.includes("$0.012"), "no replacement holder → keep the number");
+		assert.ok(line.includes("3% ctx"), "no replacement holder → keep ctx%");
 	} finally {
 		h.dispose();
 	}

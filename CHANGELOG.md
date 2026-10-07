@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed (usage single display, spec 2026-10-07 P1-2 step 1)
+- The running status row no longer shows cost / ctx% twice: the core-published `workingStats` segment keeps its ↑/↓/R/tok-s parts but drops the `$…` and `…% ctx` segments whenever a replacement holder is on screen (the right group, or the statusline script row when it has output). While the statusline is enabled but has not produced output yet (first run pending / empty / persistent error), the right group now renders as the fallback holder so the numbers never vanish; unknown text segments in the core string are never touched (full-segment numeric match only). True zeros still count as numbers.
+
 ### Fixed (lifecycle, spec 2026-10-07 P0-1)
 - Non-TUI sessions (`pi -p`, subagent children) are stock again: a guard lost in 1.9.0's packed-events commit let print/RPC sessions declare cctui presence, start bus consumers, install prototype patches, patch the editor, and run statusline scripts.
 - `session_shutdown` now releases everything (presence, subagent bridge, obs consumer, statusline runner, run state, editor timer, startup header, prototype patches, stale ctx refs) — a residual presence key used to silence core's notifications/working line forever after `/reload`.

@@ -82,3 +82,24 @@ export const permissionModeLabel = (
 	const label = m ? `${m.label.toLowerCase()} mode` : `${mode} mode`;
 	return `${paint(`${icon} ${label} on`)}${gray(" (shift+tab to cycle)")}`;
 };
+
+// ── P1-2 step 1 (spec U1): cost / ctx% must appear exactly once ────────────
+
+/** A full core money segment, e.g. `$0.012` / `$1.50` / `$0` (decimals incl. 0). */
+const MONEY_SEGMENT = /^\$\d+(?:\.\d+)?$/;
+/** A full core context segment, e.g. `3% ctx` / `0% ctx`. */
+const CTX_SEGMENT = /^\d+(?:\.\d+)?% ctx$/;
+
+/**
+ * Remove the cost and ctx% segments from a core workingStats string so the
+ * number is not shown twice (U1: the cctui right group / statusline script
+ * row owns it). ONLY complete numeric segments are dropped — by " · " split,
+ * full-segment match — so unknown text the user's core version may add
+ * survives, and a loose `$` prefix can never eat prose. Everything else
+ * (↑ / ↓ / R cache / ⚡ tok/s) is kept: cctui has no replacement for those.
+ */
+export const stripDuplicateStats = (pmStats: string): string =>
+	pmStats
+		.split(" · ")
+		.filter((segment) => segment.length > 0 && !MONEY_SEGMENT.test(segment) && !CTX_SEGMENT.test(segment))
+		.join(" · ");

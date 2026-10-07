@@ -65,3 +65,35 @@ test("permissionModeLabel: meta shapes the label, absent meta falls back to bare
 	);
 	assert.equal(permissionModeLabel("", { ask: { icon: "?", label: "Ask" } }, paintFor, gray), "", "no mode → empty chip");
 });
+
+// ---------------------------------------------------------------------------
+// P1-2 step 1 (U1): stripDuplicateStats — full-segment numeric dedupe only.
+
+import { stripDuplicateStats } from "../extensions/lib/cc-status-line.ts";
+
+test("U-T1: strips complete $ and % ctx segments, keeps everything else", () => {
+	assert.equal(
+		stripDuplicateStats("↑1.2k · ↓300 · R3k · ⚡45 tok/s · $0.012 · 3% ctx"),
+		"↑1.2k · ↓300 · R3k · ⚡45 tok/s",
+	);
+	assert.equal(stripDuplicateStats("↑1 · ↓2"), "↑1 · ↓2");
+	assert.equal(stripDuplicateStats(""), "");
+});
+
+test("U-T1: true zeros still count as numbers present (not treated as missing)", () => {
+	assert.equal(stripDuplicateStats("$0.000 · 0% ctx"), "");
+	assert.equal(stripDuplicateStats("↑1 · $0 · ↓2"), "↑1 · ↓2");
+	assert.equal(stripDuplicateStats("↑1 · 0% ctx · ↓2"), "↑1 · ↓2");
+});
+
+test("U-T1: decimals match; loose look-alikes and unknown text survive", () => {
+	assert.equal(stripDuplicateStats("$1.50 · 12.5% ctx"), "");
+	// NOT full numeric segments — user/core text must never be eaten.
+	assert.equal(stripDuplicateStats("$reasons · 3% ctxfoo · ↑1"), "$reasons · 3% ctxfoo · ↑1");
+	assert.equal(stripDuplicateStats("cost $x ~ 3 % ctx"), "cost $x ~ 3 % ctx");
+});
+
+test("U-T1: only-cost or only-ctx shapes", () => {
+	assert.equal(stripDuplicateStats("↑1.2k · $0.012"), "↑1.2k");
+	assert.equal(stripDuplicateStats("↑1.2k · 3% ctx"), "↑1.2k");
+});

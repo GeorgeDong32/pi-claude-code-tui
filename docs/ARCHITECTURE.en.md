@@ -55,7 +55,6 @@ The entry factory runs once at extension load, where the **renderer resolver is 
 ```
 load (jiti)
   ├─ register commands: claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline
-  ├─ UserMessageComponent.prototype.rebuild patch (strip bar padding, idempotent __ccCompact marker)
   └─ registerMarkdownTransformer (assistant plain lines forced white; user messages as CC full-width bars)
 
 session_start → enable(ctx)
@@ -65,6 +64,7 @@ session_start → enable(ctx)
   ├─ ctx.ui.setWidget("cc-status")    ← spinner / completion-line status widget
   ├─ ctx.ui.setWidget("cc-footer")    ← statusline + mode/hints rows
   ├─ patchCompactionRow(getFg)        ← CC-style compaction row
+  ├─ patchSkillRow / applyUserBarPatch (the UserMessageComponent.rebuild patch is applied at enable, NOT at load)
   ├─ publishCcTuiCapability()         ← tell pm this package exists (mutual suppression)
   └─ startCoreNotificationConsumer()  ← consume the core notification tail queue (auto-retry)
 

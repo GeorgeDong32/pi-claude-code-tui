@@ -29,6 +29,9 @@ extensions/
     cc-rows.ts              #   CC 工具行渲染器（call/result 行、diff、折叠、component memo、gutter-wrap）
     cc-compaction-row.ts    #   压缩行 prototype patch + 原生压缩指示器静音
     cc-skill-row.ts         #   skill 调用行 prototype patch（CC 式 ⏺ Skill(name)，保留点击展开）
+    cc-subagent-rows.ts     #   CC 风 fleet/async roster 绘制（drawCcFleetFrame / drawCcAsyncFrame，纯函数）
+    subagent-presentation.ts #  SubagentPresentationBridge：pi-subagents 展示 seam 的探测/注册/撤回桥
+    pi-proto-adapter.ts     #   PrototypeMethodAdapter：原型补丁的集中生命周期（所有权 restore / getter 刷新 / 形状降级）
     obs-savings.ts          #   OBS-09 消费端：observation-pack 每站点节省 → 回调（入口 appendEntry 流内伪工具行；dedupe，永不抛）
     cc-markdown.ts          #   markdown transformer：assistant 白字 + user 灰条（纯函数）
     cc-status-line.ts       #   cc-status 行：右侧组（model·effort │ Ctx │ cost）、左右拼接、footer 模式标签

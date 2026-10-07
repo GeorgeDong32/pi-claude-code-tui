@@ -29,6 +29,10 @@ extensions/
     cc-rows.ts              #   CC tool-row renderers (call/result rows, diffs, collapse, component memo, gutter-wrap)
     cc-compaction-row.ts    #   Compaction-row prototype patch + native indicator silencing
     cc-skill-row.ts         #   Skill-row prototype patch (CC-style ⏺ Skill(name), click-to-expand kept)
+    cc-subagent-rows.ts     #   CC-style fleet/async roster drawing (drawCcFleetFrame / drawCcAsyncFrame, pure)
+    subagent-presentation.ts #  SubagentPresentationBridge: probe/register/withdraw bridge over pi-subagents' presentation seam
+    pi-proto-adapter.ts     #   PrototypeMethodAdapter: centralized prototype-patch lifecycle (ownership restore / getter refresh / shape degrade)
+    obs-savings.ts          #   OBS-09 consumer: per-site observation-pack savings → callback (pseudo tool row via appendEntry; deduped, never throws)
     cc-markdown.ts          #   Markdown transformers: assistant white paint + user grey bar (pure)
     cc-status-line.ts       #   cc-status row: right group (model·effort │ Ctx │ cost), left/right join, footer mode chip
     takeover-rules.ts       #   Tool-row takeover matrix + resolver planner (pure fn, exhaustive table tests; BUILTIN_SEVEN single source)
