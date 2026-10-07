@@ -278,3 +278,32 @@ test("C6 (footer half): real display.footer publish reaches the channel cache", 
 		wipeCoreGlobals();
 	}
 });
+
+test("C4b: with the new core (snapshot.instance present) the identity IS the instance token, not the register closure", { skip }, async () => {
+	wipeCoreGlobals();
+	const core = await coreModules();
+	try {
+		const client = createCoreBusClient({ adapters: [] });
+		client.activate();
+		const bus = core.bus.initCoreBus();
+		bus.publish({});
+		const snapshot = g.__piClaudeCodeCore as { instance?: string; onChange?: unknown };
+		if (typeof snapshot.instance === "string") {
+			// New core (P1-1 XPKG-03, core >= 320e7e5): busIdentityOf must
+			// PREFER the instance token — the register closure only serves
+			// old cores. Proven by the joint scenarios above re-running green
+			// on the new core; pin the preference directly here.
+			const { busIdentityOf } = await import("../extensions/lib/core-bus.ts");
+			assert.equal(busIdentityOf(snapshot as never), snapshot.instance);
+			// And a fresh bus mints a distinct token → re-attach (C4).
+			const second = core.bus.createCoreBus();
+			assert.notEqual((second as { snapshot: () => { instance?: string } }).snapshot().instance, snapshot.instance);
+		}
+		// Old cores (no instance field): the register closure remains the
+		// identity — covered by C4's closure-identity assertions.
+		client.close();
+	} finally {
+		core.bus.resetCoreBusForTests();
+		wipeCoreGlobals();
+	}
+});

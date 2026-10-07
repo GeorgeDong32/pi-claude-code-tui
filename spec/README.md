@@ -9,7 +9,7 @@
 | 优先级 | spec | 清单项 | 规格状态 / 实施前置 |
 |---|---|---|---|
 | P0-1 | [生命周期修复](2026-10-07-p0-1-lifecycle-fixes.md) | TUI-03 / 04 / 05 / 06 | **已实施（4282bec）**；红基线 17 例取证；真机项 open（manual-verification §11） |
-| P0-2 | [core-bus client](2026-10-07-p0-2-core-bus-client.md) | TUI-01 / 02 / 12 / 14 + footer | **已实施（955de27）**；真实 core（95dcab6）联测 C1–C4/C6 绿；`snapshot.instance` 检测路径待 core P1-1 落地后联测；真机四步 open（§13） |
+| P0-2 | [core-bus client](2026-10-07-p0-2-core-bus-client.md) | TUI-01 / 02 / 12 / 14 + footer | **已实施（955de27）**；真实 core（95dcab6）联测 C1–C4/C6 绿；`snapshot.instance` 已对真实新 core（27ba11c，P1-1 落地后）重跑联测闭合；真机四步 open（§13） |
 | P1-1 | [core 工具展示](2026-10-07-p1-1-core-tool-display.md) | TUI-07 | **三步全部实施（7319c74）**；与真实 core mcp-shape 对拍绿；真机项 open（§12） |
 | P1-2 | [用量单一展示](2026-10-07-p1-2-usage-single-display.md) | TUI-08 / 10 | **第一步已实施（9accbaa）**；第二步待 core P2-4（core 95dcab6 无 modes.usage 通道）；U3 pin 可选未做 |
 | P2-1 | [ReplicaSession](2026-10-07-p2-1-replica-session.md) | TUI-11 | **已实施（0287b86）**；golden 零改动；入口级既有测试经 session 路径仍绿 |

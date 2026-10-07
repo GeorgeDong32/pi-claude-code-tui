@@ -184,3 +184,7 @@ obs 去重以 **当前 session/branch** 为域；/new 清空，不让上一会�
 - **联合 fixture（§6.3.1）**：`test/core-bus.joint.test.ts` 经 jiti（pi 宿主同款加载器，其嵌套依赖内解析）加载**真实** core `bus.ts`/`ui/notify.ts`/`ui/fallback.ts`，C1/C2/C3/C4/C6(footer 半) 全绿；reload 模拟用真实 `resetCoreBusForTests` + 手动保留 stale 快照重建"残留旧快照"条件；core checkout 缺席时整文件 skip。**两仓版本：core `95dcab6`（0.3.0 + spec batch，生产 bus 未改）× TUI 本批提交。**
 - C5/C7/C9/C10 以合成 store 覆盖 client/adapter 语义（这些测的是本仓逻辑，非跨仓交接）；C11 经真实 factory（off/on 实际槽位断言 + cc-footer coreFooter 行渲染）；"TUI reload 加载失败后 core 取槽位"的真机路径记录为 open（§13）。
 - §4.4 注释与文档：三处加载顺序注释已随模块重写消失/改写（D3 关闭）；ARCHITECTURE 中英 §7 通知段按 B3/B4 重写并新增 footer 段；AGENTS 坑 6（中英）改为"两种顺序都成立，订阅统一走 lib/core-bus.ts"。
+
+### 上游落地后的补充联测（同日，core 27ba11c）
+
+工作期间 core P1-1 落地（`320e7e5`：`snapshot.instance` = 每 bus 实例一次性随机 id，XPKG-03）。联合 fixture 已对**真实新 core 重跑全绿**（C1/C2/C3/C4/C6 + 新增 C4b 直接钉住 busIdentityOf 在 instance 在场时取 instance 而非 register 闭包；两个真实 bus 实例的 instance 互异）。§5 兼容矩阵的"新 cctui + 新 core"一行就此闭合；此前"待上游联测"项关闭。联测版本：**core `27ba11c` × TUI `b3f5675`+**（core 95dcab6 旧路径亦在同日早前验证过——instance 缺席时回退闭包身份）。
