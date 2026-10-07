@@ -2,7 +2,7 @@
 
 日期：2026-10-07
 
-状态：规格已补齐，待实施（按三步独立验收）
+状态：三步已实施（7319c74）；真实工具行验收 open，见 [后续验收规格](2026-10-08-followup-validation.md)。
 
 范围：本仓库 `extensions/lib/cc-rows.ts`、`extensions/lib/takeover-rules.ts`、入口 resolver（`extensions/claude-code-tui.ts:284-345`）
 

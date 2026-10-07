@@ -152,7 +152,7 @@ These are the host-timing/visual counterparts of the automated
       thinking" tip appearing in `-p` output, or packed rows in child sessions.
 - [ ] **TUI `/reload` round-trip**: after `/reload`, a repeatable core
       configuration warning still displays (isolated test config — see the
-      P0-2 joint protocol in §12; do not assume a CLI flag name).
+      P0-2 joint protocol in §13; do not assume a CLI flag name).
 - [ ] **`/claude-tui off → on`**: header/editor/status widget all return; no
       duplicate thinking tip; packed rows and notifications behave.
 - [ ] **Shutdown cleanliness**: quit pi after a run — no lingering
@@ -210,3 +210,23 @@ daily settings. Record host version, both repo revisions, launch args, result.
 - [ ] **Economy downgrade row**: with the observation-pack degraded in the
       isolated fixture, the dim `[core] … degraded` row appears between the
       statusline rows and the hints line, in both footer modes.
+
+
+## 14. 2026-10-08 follow-up evidence ledger — OPEN
+
+Current implementation baseline: TUI `1bf9b7f`, core `2ebd226`, pi dependency
+1.0.1. Both implementation batches and the usage consumer exist; the terminal
+checks in §11–13 remain open. The 272 passing automated tests (zero skipped)
+and successful typecheck on 2026-10-08 are not terminal evidence.
+
+Follow [the follow-up spec](../spec/2026-10-08-followup-validation.md) for U-F1
+(the fallback context denominator), J-USAGE (real modes events through TUI
+rendering/JSON), and H-T1–H-T5 (host/terminal evidence). In particular, the
+existing C7-usage test publishes a hand-authored payload through the real bus;
+it does not drive the modes producer. XPKG-09-HOST ordering evidence is still
+open. Record host version, both revisions, isolated configuration, commands,
+actual output, and cleanup per item before changing its status.
+
+The pre-existing cross-module reload ownership observation for
+pi-proto-adapter is a separate investigation, not a completed fix or a reason
+to silently skip an affected terminal scenario.

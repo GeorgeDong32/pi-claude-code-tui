@@ -2,7 +2,7 @@
 
 日期：2026-10-07
 
-状态：规格已补齐；第一步可独立实施，第二步依赖 core `spec/2026-10-07-p2-4-structured-usage-channel.md`
+状态：两步均已实施（9accbaa / 710c9c7 / 1bf9b7f）；新确认 U-F1 窗口回退缺陷与联合/终端验收见 [后续规格](2026-10-08-followup-validation.md)。
 
 范围：本仓库 `extensions/claude-code-tui.ts`（cc-status render）、`extensions/lib/cc-status-line.ts`、`extensions/lib/format.ts`、`extensions/lib/status-snapshot.ts`
 
@@ -58,7 +58,7 @@
 ### 4.2 第二步（core P2-4 落地后）
 
 - 新增 `readCoreUsage(store)`（纯读，duck-typed，放在 core-bus client 旁），返回经过 finite / 非负校验的数据（cost/input/output/cacheRead/cacheWrite 为累计值；ctxPercent/ctxTokens/contextWindow/tps 可选）或 null。
-- 右侧组的 cost 与 Ctx%，以及 statusline JSON 的 `pi.cost_usd` 与 `context_window.used_percentage` / `remaining_percentage`（`statusline.ts:37-70`）：按字段选择 core 有效值，否则用 UsageTracker，真实 0 不走回退。选择出一个 display usage 对象，同时供状态行与 statusline JSON 使用；格式化前不再重算两份百分比。used/remaining percentage 一起由同一已 clamp 的 [0,100] 值推导，round 策略一致。
+- 右侧组的 cost 与 Ctx%，以及 statusline JSON 的 `pi.cost_usd` 与 `context_window.used_percentage` / `remaining_percentage`（`statusline.ts:37-70`）：按字段选择 core 有效值，否则用 UsageTracker，真实 0 不走回退。选择出一个 display usage 对象，同时供状态行与 statusline JSON 使用；ctx 回退时连同用于计算的 contextWindow 一起选择，不得将 tracker/host 的百分比与 core 的另一个窗口分母混合（2026-10-08 U-F1 补充）；格式化前不再重算两份百分比。used/remaining percentage 一起由同一已 clamp 的 [0,100] 值推导，round 策略一致。
 - 左侧改为由结构化数字自行格式化 `↑ / ↓ / R / tok/s`（用 `format.ts` 的 `formatTokens`），不再拼接 core 字符串。§4.1 的 `stripDuplicateStats` 只保留给旧 core 使用。
 - statusline 输入更新继续走现有 debounce/request 合并；在 core usage 变化时触发输入刷新，渲染每帧不 spawn。宿主已有事件若足够则复用，并用“core 在原刷新后才 publish”的测试证明不会落后到下一轮。
 - `current_usage` 的 lastInput/lastOutput 仍取 UsageTracker（core 累计值不能冒充单次请求值）；累计 total 字段可随选定累计来源同步。不把 core 的 ctxTokens 强塞成 lastInput。新 session / bus 缺失 / usage 被清空时回退，不能保留旧 core 的数字。
@@ -91,9 +91,14 @@
 ## 8. 实施记录（2026-10-07）
 
 - **第一步已实施**（U1/B 决策）：`stripDuplicateStats` 落在 `lib/cc-status-line.ts`（按 ` · ` 分段、完整数字段匹配，`$0`/`0% ctx` 视为在场数字）；入口 cc-status render 按 §4.1 持有者矩阵选择去重——statusline 有效输出 → script 行持有；等待首结果/空输出/持续错误 → 右侧兜底组持有（新增的兜底渲染，属授权可见变化）；无任何持有者时保留 core 数字。U-T1 表测 + 入口真实 factory 接线测试（U-T2/U-T5 部分）已落地。
-- **第二步待 core P2-4**（结构化用量通道）：本仓 `readCoreUsage`、逐字段回退、statusline JSON 同源选择未实施——core 仓库 09c2dcb 尚无 `modes.usage` 通道（`grep` 核实）。待上游就绪后实施并用固定 core revision 联测。
+- **第二步已实施**（710c9c7，修复 1bf9b7f）：readCoreUsage、selectDisplayUsage、实际 ReplicaSession 与 bus 接线已落地；core P2-4 为 d539346。原“待上游”记录已失效。当前 C7-usage 联合 fixture 覆盖真实 bus + 手工 payload，完整 modes 事件至显示与终端验收仍 open。
 - 可选项 U3（effort pin 标记）未实施（可选，置后）。
 
 ### 第二步复审修复（同日）
 
 定向复审给出 REJECT：通道在场但 ctx 字段缺失时 `usedPercent` 为 null，statusline JSON 的历史推导路径把它变成 0%（直接违反 core P2-4 §4.1「不能因 usage 对象存在就把缺失的 ctxPercent 当作 0」与本规格 §4.2 逐字段回退）。已修复：ctx 显示改为**同基准**选择（core percent → core tokens（窗口取通道，缺失取宿主）→ tracker 双字段），pct 与 tokens 永不混源；同批补 onAttach 触发（bus 重挂后刷新）、onBusSnapshot 在 statusline 关闭时 requestRender。复审的其余 P3（readCoreUsage 对非法可选字段整体回退——保守安全侧；真实生产方覆盖在 core 仓自身测试）记录在案不改。
+
+
+### 2026-10-08 现状复核与新缺陷
+
+当前门禁 272 tests / typecheck 0；但窗口独立存在的合法输入未被覆盖：tracker.used=50k、hostWindow=200k、coreWindow=1M 且 core 无 ctxTokens/ctxPercent，真实渲染为 `25%(50k/1.0M)`。新 U-F1 修复、生产事件联合覆盖与真机项分别见同日后续规格；不把已有实现标回“待开始”，也不因历史自动化绿关闭新缺陷。

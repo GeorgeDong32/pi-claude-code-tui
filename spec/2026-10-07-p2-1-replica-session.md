@@ -2,7 +2,7 @@
 
 日期：2026-10-07
 
-状态：规格已补齐，依赖 P0-1（teardown 语义）与 P0-2（core-bus client）先落地
+状态：已实施（0287b86 及后续复审修复）；保留接线回归并完成 [真实生命周期验收](2026-10-08-followup-validation.md)。
 
 范围：本仓库 `extensions/claude-code-tui.ts` → 新增 `extensions/lib/replica-session.ts`
 

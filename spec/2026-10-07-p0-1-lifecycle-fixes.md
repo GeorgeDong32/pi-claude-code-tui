@@ -2,7 +2,7 @@
 
 日期：2026-10-07
 
-状态：规格已补齐，待实施
+状态：已实施（4282bec 及后续复审修复）；真实终端验收 open，见 [后续验收规格](2026-10-08-followup-validation.md)。
 
 范围：本仓库（`extensions/claude-code-tui.ts`、`extensions/lib/pi-startup-header.ts`、`extensions/lib/statusline.ts`）
 
