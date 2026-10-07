@@ -685,3 +685,66 @@ test("E5: a disposed runner never starts a process again", () => {
 	clock.advance(1_000);
 	assert.equal(children.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// P0-2/B6 (spec C6): core display.footer rows join AFTER the script rows and
+// BEFORE the hints line; absent channel keeps the historical output intact.
+
+import { visibleWidth } from "@earendil-works/pi-tui";
+
+test("C6: core footer rows render between script rows and hints; absent channel is byte-identical", () => {
+	const CORE = "[core] observation-pack degraded (compat)";
+	assert.deepEqual(
+		composeFooterLines({
+			statuslineOn: true,
+			badgeOn: false,
+			lines: ["script row 1", "script row 2"],
+			badgeText: "",
+			badgePaint: muted,
+			hints: HINTS,
+			coreFooter: [CORE],
+			width: 80,
+		}),
+		["script row 1", "script row 2", CORE, HINTS],
+	);
+	// No core channel → historical shape unchanged.
+	assert.deepEqual(
+		composeFooterLines({
+			statuslineOn: true,
+			badgeOn: false,
+			lines: ["only-script"],
+			badgeText: "",
+			badgePaint: muted,
+			hints: HINTS,
+			width: 80,
+		}),
+		["only-script", HINTS],
+	);
+	// Script off (native mode): core rows still render, above the hints.
+	assert.deepEqual(
+		composeFooterLines({
+			statuslineOn: false,
+			badgeOn: true,
+			lines: [],
+			badgeText: "",
+			badgePaint: muted,
+			hints: HINTS,
+			coreFooter: [CORE],
+			width: 80,
+		}),
+		[CORE, HINTS],
+	);
+	// Overlong core rows truncate to the width (never overflow).
+	const long = composeFooterLines({
+		statuslineOn: false,
+		badgeOn: false,
+		lines: [],
+		badgeText: "",
+		badgePaint: muted,
+		hints: "",
+		coreFooter: ["x".repeat(100)],
+		width: 20,
+	});
+	assert.equal(long.length, 1);
+	assert.equal(visibleWidth(long[0]!), 20);
+});

@@ -8,7 +8,7 @@
  * driven — never per frame — so the render path never spawns.
  */
 import { spawn } from "node:child_process";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { UsageSnapshot } from "./status-snapshot.ts";
 
 // ---------------------------------------------------------------------------
@@ -106,13 +106,21 @@ export interface FooterComposeInput {
 	badgePaint: (s: string) => string;
 	/** Pre-painted mode/hints line; "" when the slot already carries it (native-off). */
 	hints: string;
+	/**
+	 * P0-2/B6: core-published display.footer rows (economy downgrade notes),
+	 * pre-painted dim by the caller — independent rows AFTER the script
+	 * lines and BEFORE the hints line. Empty/absent keeps the historical
+	 * output byte-identical.
+	 */
+	coreFooter?: readonly string[];
 	width: number;
 }
 
 /**
  * Compose the belowEditor cc-footer widget's rows (plan D2): user statusline
- * lines first, then the mode/hints line — the widget always yields at least
- * one row so the dock never collapses it to zero height.
+ * lines first, then core footer rows (B6), then the mode/hints line — the
+ * widget always yields at least one row so the dock never collapses it to
+ * zero height.
  */
 export function composeFooterLines(input: FooterComposeInput): string[] {
 	const out: string[] = [];
@@ -123,6 +131,9 @@ export function composeFooterLines(input: FooterComposeInput): string[] {
 			line0 = appendBadge(first, input.badgePaint(input.badgeText), input.width) ?? first;
 		}
 		out.push(line0, ...input.lines.slice(1));
+	}
+	if (input.coreFooter && input.coreFooter.length > 0) {
+		for (const line of input.coreFooter) out.push(truncateToWidth(line, input.width, "…"));
 	}
 	if (input.hints !== "") out.push(input.hints);
 	return out.length > 0 ? out : [""];

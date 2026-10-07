@@ -37,7 +37,9 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | 内置默认脚本的 TS 内联副本（运行时无文件锚点，见 §8） | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts`（与 scripts/ 字节同步） |
 | `lib/status-snapshot.ts` | `UsageTracker`：按 USAGE_OBSERVATION_POINTS 采样（agent_settled 保证最终值、session_tree/compact 失效——spec 8.2） | `UsageTracker`、`USAGE_OBSERVATION_POINTS` | `status-snapshot.test.ts` |
-| `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读）；核心通知队列消费（显式重试）；生命周期 activate/withdraw 配对 | `readPmStatus`、`activateCcTuiChannel`、`withdrawCcTuiCapability` | `pm-capability.test.ts` |
+| `lib/core-bus.ts` | core-bus client（spec P0-2）：通知尾队列 / observation sites / display.footer 三个通道的唯一订阅所有者——在场声明带所有权、交接基线（B3 游标 / B5 sites 基线）、bus 实例更换检测（instance 优先，回退 onChange 闭包身份）、generation 失效旧回调 | `createCoreBusClient`、`createFooterChannel` | `core-bus.joint.test.ts`（真实 core 联测） |
+| `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读，永不订阅）+ 通知尾队列 adapter（B3 游标差分） | `readPmStatus`、`createNotificationAdapter` | `pm-capability.test.ts` |
+| `lib/obs-savings.ts` | OBS-09-SITES adapter：per-site 去重（全元组 key、会话/branch 域、branch 扫描重建）；callback 失败标记已尝试 | `createObsAdapter`、`readObsSites` | `obs-savings.test.ts` |
 | `lib/subagent-presentation.ts` | subagent 展示 seam 消费端镜像：v1 协议常量/事件名、frame/row/layout 类型、有界 register/probe 客户端、bridge 生命周期（probe→注册→晚宿主补注册→撤回） | `SubagentPresentationBridge`、`registerSubagentPresentation`、`probeSubagentPresentation` | `subagent-presentation.test.ts`（7 生命周期）+ `cc-subagent-rows.test.ts` 协议段 |
 | `lib/cc-subagent-rows.ts` | CC subagent 纯绘制：Fleet roster（glyph/树分支/选择箭头原位/紧凑 tok·time 右列/双向 overflow/identity 色散列）消费只读 frame，产出 lines+layout；无 IO、无 runtime | `drawCcFleetFrame`、`drawCcAsyncFrame`、`subagentIdentityColor` | `cc-subagent-rows.test.ts`（行型×选择×宽度×布局钉死） |
 | `lib/pi-proto-adapter.ts` | pi 自有组件原型补丁的集中生命周期：原方法保存、marker=refresh 函数（重装刷新 getter）、宿主形状检查、异常降级到原方法、restore 仅撤自己仍拥有的改写 | `PrototypeMethodAdapter` | `pi-proto-adapter.test.ts`（8 生命周期） |
@@ -69,7 +71,7 @@ session_start → enable(ctx)
   ├─ patchCompactionRow(getFg)        ← 压缩行 CC 化
   ├─ patchSkillRow / applyUserBarPatch（UserMessageComponent.rebuild 补丁在 enable 打，非加载期）
   ├─ publishCcTuiCapability()         ← 告知 pm 本包存在（互相抑制）
-  └─ startCoreNotificationConsumer()  ← 消费核心通知尾队列（失败自动重试）
+  └─ coreBusClient.activate()  ← P0-2：交接基线 + 在场声明 + 三通道订阅（重试点：session_start / cc-status / cc-footer render）
 
 运行期事件
   ├─ message_end / agent_start / agent_settled → UsageTracker.observe() → statusline 刷新、cc-status 更新
@@ -128,7 +130,8 @@ memo（plan A6）：resolver 每次调用恰好对应一个组件构造（pi 不
 ## 7. 与其他扩展的集成
 
 - **permission-modes（pm）**：`Shift+Tab` 在编辑器 `handleInput` 里拦截（先于 pi 内置思考循环），切 Plan/Auto。pm 状态经 `readPmStatus` 的三级降级链读取：核心总线快照 `__piClaudeCodeCore.modes`（主源）→ 版本化 `__piPermissionModes` 能力对象 → 遗留 `__pmWorkingStats` 字符串 + `PERMISSION_MODES_INHERITED_MODE` 环境变量。模式图标/标签取自 pm 发布的 `meta`（单一来源：core 的 MODE_META）。
-- **通知显示**：本包声明 `notificationsConsumer: true`，通过核心快照的 `onChange` 消费通知尾队列（按 `lastSeenId` 差分），核心随即停掉自己的直接转发——版本协商，避免双显；旧核心保持转发。
+- **通知显示（P0-2，`lib/core-bus.ts` 统一订阅）**：在场声明的那一刻即通知所有权交接点——本包声明 `notificationsConsumer: true`，核心停掉直接转发、fallback 只推进游标。游标起点（B3）：attach 到声明时的同一 bus 实例 → 从声明时刻的队列最大 id 续（fallback 已显示的历史不重放）；bus 更换（reload/迟到加载）→ 从 0 开始（新 bus 的队列从未被显示——本包在场压制了两条路径）。attach 立即消费当前快照（onChange 不回放，交接窗口不丢）；shutdown/close 撤回在场（B4）——shutdown 到下一次 session_start 之间由核心 fallback 自行显示，不丢失。两种加载顺序都成立；bus 实例更换由 `snapshot.instance`（core P1-1+）或 `onChange` 闭包身份检测（旧 core，同一 bus 复用同一 register 闭包）。局限如实：尾队列 cap 20 无 ACK——早于 attach 被挤出窗口的条目不可恢复。
+- **core footer 行（B6）**：核心经济模块降级时发布的 `display.footer`（如 observation-pack 兼容降级提示）由本包渲染为独立 dim 行，位于 statusline 脚本行之后、hints 行之前；字段缺失/换 bus 清空缓存。`/claude-tui off` 恢复宿主 stock footer，不自动交回 core（core 只在 session_start 尝试安装 modes footer；off 后降级行无渲染者，直到后续实际安装扩展 footer——core 加载期 console.warn 仍在）。
 - **pi-subagents（展示 seam）**：subagent **底栏**（Fleet roster）经 `pi-subagents:presentation:v1:*` 事件族接管绘制——本包的 `SubagentPresentationBridge` 在 session_start 时 probe/注册 `drawCcFleetFrame`，宿主侧投影只读 frame、校验 layout、失败自动回退原生并去重诊断（console.warn 一条）。spec：`spec/2026-10-05-cc-tui-subagent-presentation.md`。工具行走原有 resolver 决策不变（auto 让路 / `/claude-tools on` 强制）；`/claude-tui off` 撤回 adapter 即恢复原生。要求 pi-subagents ≥ presentation-seam 分支（fork GeorgeDong32/pi-subagents），无 seam 时保持原生底栏、无 timer 无空白占位。
 - **pi-subagents（工具行）**：`on` 模式专门适配（call 行 agent 类型 + 任务摘要、live 卡豁免折叠），见 §4.1 与 README。
 - **槽位共存**：头图/编辑器槽位后写者胜；与其余 TUI 套件同用时建议本包排在 packages 列表后面。

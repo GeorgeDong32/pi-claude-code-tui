@@ -78,12 +78,11 @@ import {
 } from "./lib/prefs.ts";
 import {
 	PM_MODE_ENV,
-	activateCcTuiChannel,
-	startCoreNotificationConsumer,
+	createNotificationAdapter,
 	readPmStatus,
-	withdrawCcTuiCapability,
 } from "./lib/pm-capability.ts";
-import { startObsSavingsConsumer, stopObsSavingsConsumer, type ObsSavingsSite } from "./lib/obs-savings.ts";
+import { createObsAdapter, type ObsSavingsSite } from "./lib/obs-savings.ts";
+import { createCoreBusClient, createFooterChannel } from "./lib/core-bus.ts";
 import { applyPiHeaderLook, disposePiHeaderLook } from "./lib/pi-startup-header.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -446,10 +445,9 @@ export default function (pi: ExtensionAPI) {
 			invalidate() {},
 			render(width: number): string[] {
 				dockTui = tui;
-				// Per-frame retry point for the DC5b subscription (idempotent:
-				// one null check once attached) — the read below is pure.
-				startCoreNotificationConsumer(displayCoreNotification);
-				startObsSavingsConsumer(appendPackedEntry); // idempotent retry (OBS-09)
+				// P0-2: per-frame retry point (O(1) when attached — one
+				// identity comparison; re-attaches after a bus change).
+				coreBusClient.retry();
 				// NOTE: never touch ctx.* in render — after session
 				// replacement/reload the captured ctx is stale and any
 				// access throws uncaught inside render (kills pi). Model
@@ -555,6 +553,10 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget("cc-footer", (_tui, theme) => ({
 			invalidate() {},
 			render(width: number): string[] {
+				// P0-2/C8: this render is the retry point that stays alive in
+				// native-footer mode (cc-status is unmounted there) — no
+				// timers, no polling; O(1) while attached.
+				coreBusClient.retry();
 				// Width changes re-run the script (its layout usually depends on
 				// OVERRIDE_TERM_WIDTH); request() debounces and dedups, so this
 				// per-frame call only acts on actual changes.
@@ -562,10 +564,16 @@ export default function (pi: ExtensionAPI) {
 					statuslineWidth = width;
 					refreshStatusline();
 				}
+				// P0-2/B6: core's display.footer rows (economy downgrade notes)
+				// render as independent dim rows AFTER the script rows and
+				// BEFORE the hints line — absent channel keeps the historical
+				// output byte-identical.
+				const coreFooter = coreFooterChannel.lines().map((line) => theme.fg("dim", line));
 				return composeFooterLines({
 					statuslineOn: statusLinePrefs.enabled,
 					badgeOn: statusLinePrefs.badge,
 					lines: statuslineRunner ? statuslineRunner.getRenderLines() : [],
+					coreFooter,
 					badgeText: (() => {
 						if (!statusLinePrefs.badge) return "";
 						// CC-style effort chip (`● high · /effort`): effort only —
@@ -733,6 +741,17 @@ export default function (pi: ExtensionAPI) {
 	const appendPackedEntry = (sites: readonly ObsSavingsSite[]): void => {
 		pi.appendEntry("cc-tui/observation-packed", { sites });
 	};
+	// --- Core-bus client (spec P0-2): ONE subscription owner for the three
+	// channels this package consumes — notification tail queue, observation
+	// sites, display.footer. Handoff baseline captured at presence
+	// declaration; BOTH load orders handled via the retry points below
+	// (enable / session_start / cc-status render / cc-footer render — no
+	// timers, no polling; native-footer mode stays covered by cc-footer).
+	const obsAdapter = createObsAdapter(appendPackedEntry);
+	const coreFooterChannel = createFooterChannel(() => dockTui?.requestRender());
+	const coreBusClient = createCoreBusClient({
+		adapters: [createNotificationAdapter(displayCoreNotification), obsAdapter.adapter, coreFooterChannel.adapter],
+	});
 	// Renderer for the packed-event entries: same CC-style pseudo tool row
 	// (packedEventRows) rendered IN the conversation flow. Registered at
 	// load; renderers must never throw (the host shows a fallback box if
@@ -776,14 +795,12 @@ export default function (pi: ExtensionAPI) {
 		if (enabled) teardownSession(ctx, "shutdown");
 		enabled = true;
 		latestCtx = ctx;
-		// DC5b: activate = publish the capability + start consuming core's
-		// notification tail queue in one call (withdraw is the single
-		// reverse). Returns false while the core bus is v1/not loaded — the
-		// explicit retries below re-attempt at session_start and on the
-		// status widget's per-frame render, so it attaches right after
-		// core's first publish.
-		activateCcTuiChannel(displayCoreNotification);
-		startObsSavingsConsumer(appendPackedEntry);
+		// P0-2: activate = capture the handoff baseline → declare presence →
+		// attach, in one synchronous segment. Returns false while the core
+		// bus is v1/absent (both load orders occur) — the retry points
+		// (session_start + widget renders) attach right after core's first
+		// publish.
+		coreBusClient.activate();
 		cacheAccentAnsi(ctx);
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
 		currentProviderName = ctx.model?.provider || "";
@@ -868,8 +885,11 @@ export default function (pi: ExtensionAPI) {
 			footerRequeueTimer = null;
 		}
 		teardownStep("subagent-bridge", () => subagentBridge.stop());
-		teardownStep("obs-savings", () => stopObsSavingsConsumer());
-		teardownStep("cc-tui-presence", () => withdrawCcTuiCapability());
+		// P0-2: one close covers the old obs-stop + presence-withdraw steps —
+		// unsubscribe (generation invalidates late callbacks), detach the
+		// three adapters, withdraw OUR presence object only. Between this
+		// shutdown and the next session_start, core's fallback owns display.
+		teardownStep("core-bus-client", () => coreBusClient.close());
 		teardownStep("statusline", () => teardownStatusline());
 		teardownStep("run-state", () => runState.halt());
 		teardownStep("editor", () => {
@@ -956,10 +976,15 @@ export default function (pi: ExtensionAPI) {
 		// stock experience — no usage observation, no bus retries, no enable.
 		if (ctx.mode !== "tui") return;
 		observeUsage(ctx);
-		// Retry point for the DC5b subscription (core may have published its
-		// bus only now — enable-time often misses; BOTH load orders occur).
-		startCoreNotificationConsumer(displayCoreNotification);
-		startObsSavingsConsumer(appendPackedEntry);
+		// P0-2: rebuild the per-session obs dedupe from the branch's persisted
+		// packed entries (reload/resume), then re-attempt the bus attach —
+		// core may have published only now (either load order).
+		try {
+			obsAdapter.resetSeenFromBranch((ctx.sessionManager?.getBranch?.() ?? []) as never);
+		} catch {
+			// best-effort resume hygiene
+		}
+		coreBusClient.retry();
 		refreshToolSchemas(); // P1-1 R2: late-loaded core tools become summarizable
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
 	});

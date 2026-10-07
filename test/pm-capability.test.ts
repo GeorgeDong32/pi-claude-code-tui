@@ -4,13 +4,11 @@ import assert from "node:assert/strict";
 
 import {
 	PM_MODE_ENV,
-	activateCcTuiChannel,
+	createNotificationAdapter,
 	publishCcTuiCapability,
-	startCoreNotificationConsumer,
-	stopCoreNotificationConsumer,
 	readPmStatus,
-	withdrawCcTuiCapability,
 } from "../extensions/lib/pm-capability.ts";
+import { createCoreBusClient, type CoreBusAdapter } from "../extensions/lib/core-bus.ts";
 
 const cap = (over: Record<string, unknown> = {}) => ({
 	version: 1,
@@ -72,112 +70,251 @@ test("no channel at all yields empty status", () => {
 	assert.deepEqual(readPmStatus({}), { workingStats: "", mode: "" });
 });
 
-test("cc-tui presence publish/withdraw keeps both keys in sync", () => {
+// ---- client-based lifecycle (P0-2): presence + notification adapter -----
+
+interface TestBus {
+	store: Record<string, unknown>;
+	listeners: Array<() => void>;
+	publish(patch: Record<string, unknown>): void;
+}
+
+const newBus = (initial: Record<string, unknown> = {}): TestBus => {
+	const listeners: Array<() => void> = [];
+	const store: Record<string, unknown> = {
+		__piClaudeCodeCore: {
+			version: 2,
+			onChange: (fn: () => void) => {
+				listeners.push(fn);
+				return () => {
+					const idx = listeners.indexOf(fn);
+					if (idx >= 0) listeners.splice(idx, 1);
+				};
+			},
+			notifications: [] as Array<{ id: number; level: string; msg: string }>,
+			...initial,
+		},
+	};
+	return {
+		store,
+		listeners,
+		publish(patch) {
+			Object.assign(store.__piClaudeCodeCore as Record<string, unknown>, patch);
+			for (const listener of [...listeners]) listener();
+		},
+	};
+};
+
+const wireNotifications = (store: Record<string, unknown>, shown: Array<[string, string]>, adapters: CoreBusAdapter[] = []) => {
+	const client = createCoreBusClient({
+		store,
+		adapters: [...adapters, createNotificationAdapter((msg, level) => shown.push([msg, level]))],
+	});
+	return client;
+};
+
+test("presence publish keeps both keys in sync (direct probe helper)", () => {
 	const store: Record<string, unknown> = {};
 	publishCcTuiCapability(store);
 	assert.equal((store.__piCcTui as { active: boolean }).active, true);
 	assert.equal(store.__ccTuiActive, true);
-	withdrawCcTuiCapability(store);
-	assert.equal(store.__piCcTui, undefined);
-	assert.equal(store.__ccTuiActive, undefined);
+	delete store.__piCcTui;
+	delete store.__ccTuiActive;
 });
 
-test("DC5: the bus snapshot itself is the primary source", () => {
-	const meta = { ask: { icon: "●", label: "Ask", role: "muted" } };
-	const store: Record<string, unknown> = {
-		__piClaudeCodeCore: { version: 2, revision: 3, modes: { mode: "bypass", workingStats: "↑7", meta } },
-		__piPermissionModes: cap({ mode: "ask", workingStats: "old" }),
-	};
-	assert.deepEqual(readPmStatus(store), { workingStats: "↑7", mode: "bypass", meta });
+test("P0-2: client activate declares presence; close withdraws exactly our keys", () => {
+	const bus = newBus();
+	const client = wireNotifications(bus.store, [], [{ onAttach() {}, onDetach() {} }]);
+	client.activate();
+	assert.deepEqual((bus.store.__piCcTui as Record<string, unknown>).notificationsConsumer, true);
+	assert.equal(bus.store.__ccTuiActive, true);
+	assert.ok(bus.listeners.length >= 1, "attached");
+	client.close();
+	assert.equal(bus.store.__piCcTui, undefined, "presence withdrawn at close");
+	assert.equal(bus.store.__ccTuiActive, undefined);
+	assert.equal(bus.listeners.length, 0, "unsubscribed at close");
 });
 
-test("DC5: null snapshot stats falls back through to the legacy key", () => {
-	const store: Record<string, unknown> = {
-		__piClaudeCodeCore: { version: 2, revision: 3, modes: { mode: "auto", workingStats: null } },
-		__pmWorkingStats: "(↑3)",
-	};
-	assert.deepEqual(readPmStatus(store), { workingStats: "↑3", mode: "auto" });
-});
-
-test("DC5b: capability declares notificationsConsumer", () => {
-	const store: Record<string, unknown> = {};
-	publishCcTuiCapability(store);
-	assert.deepEqual((store.__piCcTui as Record<string, unknown>).notificationsConsumer, true);
-	withdrawCcTuiCapability(store);
-	assert.equal(store.__piCcTui, undefined);
-});
-
-test("DC5b: consumer subscribes via snapshot onChange and diffs by lastSeenId (fast-forward, no replay)", async () => {
-	const store: Record<string, unknown> = {};
-	const listeners = new Set<() => void>();
-	let queue: Array<{ id: number; level: string; msg: string }> = [];
-	// v1 snapshot first — subscription must return false, then succeed on v2.
-	function makeSnap(withOnChange: boolean) {
-		return withOnChange
-			? { version: 2, onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); }, notifications: queue }
-			: { version: 1, notifications: queue };
-	}
-	store.__piClaudeCodeCore = makeSnap(false);
+test("P0-2/B3: same bus — cursor starts at the declaration id (fallback-shown history not replayed)", () => {
+	const bus = newBus({ notifications: [{ id: 1, level: "warning", msg: "shown by fallback" }] });
 	const shown: Array<[string, string]> = [];
-	assert.equal(startCoreNotificationConsumer((m, l) => shown.push([m, l]), store), false);
-	// Upgrade to v2 with pre-existing history (id 1) — attaching must not replay it.
-	stopCoreNotificationConsumer(); // isolate from prior tests (module singleton)
-	queue = [{ id: 1, level: "info", msg: "history" }];
-	store.__piClaudeCodeCore = makeSnap(true);
-	assert.equal(startCoreNotificationConsumer((m, l) => shown.push([m, l]), store), true);
-	assert.deepEqual(shown, []); // fast-forwarded past id 1
-	// A publish appends and fires listeners — only the new item shows.
-	// (The snapshot must be re-issued so its notifications ref sees the queue.)
-	queue = [...queue, { id: 2, level: "warning", msg: "fresh" }];
-	store.__piClaudeCodeCore = makeSnap(true);
-	for (const l of listeners) l();
-	assert.deepEqual(shown, [["fresh", "warning"]]);
-	// Redelivery of the same snapshot is idempotent.
-	for (const l of listeners) l();
-	assert.deepEqual(shown, [["fresh", "warning"]]);
-	stopCoreNotificationConsumer();
-	assert.equal(listeners.size, 0);
+	const client = wireNotifications(bus.store, shown);
+	client.activate(); // declaration sees max id 1 → cursor 1
+	assert.deepEqual(shown, [], "history the fallback already displayed is not replayed");
+	bus.publish({ notifications: [{ id: 1, level: "warning", msg: "shown by fallback" }, { id: 2, level: "info", msg: "fresh" }] });
+	assert.deepEqual(shown, [["fresh", "info"]]);
+	bus.publish({}); // idempotent redelivery
+	assert.deepEqual(shown, [["fresh", "info"]]);
+	client.close();
 });
 
-test("DC5b: the subscription attach is explicit — readPmStatus never subscribes", () => {
-	const store: Record<string, unknown> = {};
-	const listeners = new Set<() => void>();
+test("P0-2/B3: handoff window — items published between declaration and attach show exactly once", () => {
+	const bus = newBus();
+	const shown: Array<[string, string]> = [];
+	const client = wireNotifications(bus.store, shown);
+	// Startup window (cctui-first): declaration happens with NO bus; core
+	// publishes while presence is live (nobody else displays); attach comes
+	// at the next retry point.
+	const store = bus.store;
+	const detached = createCoreBusClient({
+		store,
+		adapters: [createNotificationAdapter((msg, level) => shown.push([msg, level]))],
+	});
+	void detached;
+	void client;
+	// Direct: declare before the bus exists, then bring the bus up.
+	const fresh: Record<string, unknown> = {};
+	const early = createCoreBusClient({
+		store: fresh,
+		adapters: [createNotificationAdapter((msg, level) => shown.push([msg, level]))],
+	});
+	early.activate(); // no snapshot at all
+	assert.deepEqual(shown, []);
+	// Core loads and its session_start notification lands while presence is live.
+	const listeners: Array<() => void> = [];
+	fresh.__piClaudeCodeCore = {
+		version: 2,
+		onChange: (fn: () => void) => {
+			listeners.push(fn);
+			return () => {
+				const idx = listeners.indexOf(fn);
+				if (idx >= 0) listeners.splice(idx, 1);
+			};
+		},
+		notifications: [{ id: 1, level: "warning", msg: "--effort unknown level" }],
+	};
+	early.retry(); // next retry point attaches
+	assert.deepEqual(shown, [["--effort unknown level", "warning"]], "handoff window item shown exactly once");
+	early.close();
+	client.close();
+	detached.close();
+});
+
+test("P0-2/B3: bus change — the new bus's queue replays from 0 (it was never displayed)", () => {
+	const bus1 = newBus();
+	const shown: Array<[string, string]> = [];
+	const client = wireNotifications(bus1.store, shown, [{ onAttach() {}, onDetach() {} }]);
+	client.activate();
+	// Reload: the snapshot on the store is replaced wholesale by a NEW bus
+	// (fresh register closure), carrying its own session_start queue.
+	const listeners2: Array<() => void> = [];
+	bus1.store.__piClaudeCodeCore = {
+		version: 2,
+		onChange: (fn: () => void) => {
+			listeners2.push(fn);
+			return () => {
+				const idx = listeners2.indexOf(fn);
+				if (idx >= 0) listeners2.splice(idx, 1);
+			};
+		},
+		notifications: [{ id: 1, level: "warning", msg: "post-reload warning" }],
+	};
+	client.retry(); // detects the identity change, re-attaches
+	assert.deepEqual(shown, [["post-reload warning", "warning"]]);
+	client.close();
+	assert.equal(listeners2.length, 0);
+});
+
+test("P0-2: late callbacks from an old generation deliver nothing", () => {
+	const bus = newBus();
+	const shown: Array<[string, string]> = [];
+	const client = wireNotifications(bus.store, shown);
+	client.activate();
+	const staleListener = bus.listeners[0]!;
+	client.close(); // generation invalidates it
+	bus.publish({ notifications: [{ id: 1, level: "info", msg: "late" }] });
+	staleListener(); // a straggler fires directly
+	assert.deepEqual(shown, []);
+});
+
+test("P0-2: an old client's close never withdraws a NEWER instance's presence", () => {
+	const bus = newBus();
+	const a = wireNotifications(bus.store, []);
+	const b = wireNotifications(bus.store, []);
+	a.activate();
+	b.activate(); // replaces the presence object
+	assert.notEqual(bus.store.__piCcTui, undefined);
+	a.close(); // stale close — must not touch b's keys
+	assert.notEqual(bus.store.__piCcTui, undefined, "newer presence survives the old close");
+	assert.equal(bus.store.__ccTuiActive, true);
+	b.close();
+	assert.equal(bus.store.__piCcTui, undefined);
+	assert.equal(bus.store.__ccTuiActive, undefined);
+});
+
+test("P0-2: readPmStatus stays a pure read — constructing/activating is what subscribes", () => {
+	const bus = newBus({ modes: { mode: "ask", workingStats: null } });
+	assert.equal(bus.listeners.length, 0);
+	readPmStatus(bus.store);
+	readPmStatus(bus.store);
+	assert.equal(bus.listeners.length, 0, "readPmStatus must not attach a subscription");
+	const client = wireNotifications(bus.store, []);
+	client.activate();
+	assert.ok(bus.listeners.length >= 1);
+	client.close();
+	assert.equal(bus.listeners.length, 0);
+});
+
+test("P0-2/C9: repeated activate does not advance the baseline; cap overflow shows the visible tail", () => {
+	const bus = newBus();
+	const shown: Array<[string, string]> = [];
+	const client = wireNotifications(bus.store, shown);
+	client.activate();
+	// Overflow the cap-20 tail: ids 1..25, only the last 20 remain visible.
+	const queue = Array.from({ length: 25 }, (_, i) => ({ id: i + 1, level: "info", msg: `m${i + 1}` }));
+	bus.publish({ notifications: queue.slice(-20) });
+	client.activate(); // repeated — must NOT re-truncate (items already shown stay shown)
+	assert.equal(shown.length, 20, "visible tail consumed once");
+	// A redelivered identical snapshot adds nothing.
+	bus.publish({});
+	assert.equal(shown.length, 20);
+	client.close();
+});
+
+test("P0-2/C9: v1 snapshot (no onChange) and a corrupt snapshot stay safe and retryable", () => {
+	const store: Record<string, unknown> = { __piClaudeCodeCore: { version: 1 } };
+	const shown: Array<[string, string]> = [];
+	const client = createCoreBusClient({ store, adapters: [createNotificationAdapter((m, l) => shown.push([m, l]))] });
+	client.activate();
+	assert.equal(client.retry(), false, "v1 is not subscribable");
+	assert.deepEqual(shown, []);
+	// Upgrade to v2 — retry attaches cleanly.
+	const listeners: Array<() => void> = [];
 	store.__piClaudeCodeCore = {
 		version: 2,
-		onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); },
-		notifications: [],
-		modes: { mode: "ask", workingStats: null },
+		onChange: (fn: () => void) => {
+			listeners.push(fn);
+			return () => {
+				const idx = listeners.indexOf(fn);
+				if (idx >= 0) listeners.splice(idx, 1);
+			};
+		},
+		notifications: [{ id: 3, level: "error", msg: "boom" }],
 	};
-	const shown: Array<[string, string]> = [];
-	stopCoreNotificationConsumer(); // isolate from prior tests (module singleton)
-	// Pure read: no listener appears no matter how many frames read status.
-	readPmStatus(store);
-	readPmStatus(store);
-	assert.equal(listeners.size, 0, "readPmStatus must not attach a subscription");
-	// The explicit retry hook is idempotent once attached.
-	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
-	startCoreNotificationConsumer((m, l) => shown.push([m, l]), store);
-	assert.equal(listeners.size, 1);
-	stopCoreNotificationConsumer();
+	assert.equal(client.retry(), true);
+	assert.deepEqual(shown, [["boom", "error"]]);
+	client.close();
 });
 
-test("lifecycle pairing: activateCcTuiChannel publishes + attaches in one call", () => {
-	const store: Record<string, unknown> = {};
-	const listeners = new Set<() => void>();
-	store.__piClaudeCodeCore = {
-		version: 2,
-		onChange: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); },
-		notifications: [],
-	};
-	stopCoreNotificationConsumer();
-	const attached = activateCcTuiChannel(() => {}, store);
-	assert.equal(attached, true);
-	assert.deepEqual(store.__piCcTui, { version: 1, active: true, notificationsConsumer: true });
-	assert.equal(store.__ccTuiActive, true);
-	assert.equal(listeners.size, 1);
-	// withdraw is the single reverse entry: capability keys gone, consumer stopped.
-	withdrawCcTuiCapability(store);
-	assert.equal(store.__piCcTui, undefined);
-	assert.equal(store.__ccTuiActive, undefined);
-	assert.equal(listeners.size, 0);
+test("P0-2/C9: malformed queue items are skipped, display throws do not block later items", () => {
+	const bus = newBus();
+	const shown: Array<[string, string]> = [];
+	let throwOnce = true;
+	const client = createCoreBusClient({
+		store: bus.store,
+		adapters: [
+			createNotificationAdapter((msg, level) => {
+				if (throwOnce && msg === "first") {
+					throwOnce = false;
+					throw new Error("stale ctx");
+				}
+				shown.push([msg, level]);
+			}),
+		],
+	});
+	client.activate();
+	bus.publish({
+		notifications: ["junk", null, { id: 1, level: "info", msg: "first" }, { id: 2, level: "info", msg: "second" }],
+	});
+	assert.deepEqual(shown, [["second", "info"]], "throwing item dropped (cursor advanced), later item shown");
+	client.close();
 });

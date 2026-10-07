@@ -133,6 +133,7 @@ const useFakeBus = () => {
 	refresh();
 	return {
 		listeners,
+		snapshot,
 		notify: (msg: string, level = "info") => {
 			const id = state.queue.length > 0 ? state.queue[state.queue.length - 1]!.id + 1 : 1;
 			state.queue = [...state.queue, { id, level, msg }];
@@ -426,6 +427,54 @@ test("U-T5: no usage replacement on screen → pmStats keeps its numbers", async
 		const line = renderCcStatus(h);
 		assert.ok(line.includes("$0.012"), "no replacement holder → keep the number");
 		assert.ok(line.includes("3% ctx"), "no replacement holder → keep ctx%");
+	} finally {
+		h.dispose();
+	}
+});
+
+// ---------------------------------------------------------------------------
+// P0-2 (spec C11): slot ownership across /claude-tui off→on and core footer
+// rows through the real cc-footer widget.
+
+test("C11: /claude-tui off restores stock slots; on re-owns them; no core re-install claims", async () => {
+	const h = setup();
+	try {
+		await h.pi.fire("session_start", h.ctx);
+		const tui = h.pi.commands.get("claude-tui");
+		assert.ok(tui);
+		await tui.handler("", h.ctx); // toggle OFF
+		const g = globalThis as Record<string, unknown>;
+		assert.equal(g.__piCcTui, undefined, "presence withdrawn at off");
+		// Actual slot restoration (not just presence): footer slot released
+		// (setFooter(undefined)), both widgets removed.
+		const footerCalls = h.rec.calls.filter((c) => c.method === "setFooter");
+		assert.ok(footerCalls.some((c) => c.key === "undefined"), "footer slot released to stock");
+		assert.ok(countCalls(h.rec, "setWidget", "cc-status") >= 1 && h.rec.calls.some((c) => c.method === "setWidget" && c.key === "cc-status" && c.content === undefined), "cc-status widget removed");
+		assert.ok(h.rec.calls.some((c) => c.method === "setWidget" && c.key === "cc-footer" && c.content === undefined), "cc-footer widget removed");
+		await tui.handler("", h.ctx); // toggle ON
+		assert.notEqual(g.__piCcTui, undefined, "presence re-declared");
+		assert.ok(h.rec.calls.filter((c) => c.method === "setWidget" && c.key === "cc-status" && c.content !== undefined).length >= 2, "cc-status re-installed");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("C11b: core display.footer rows render in the cc-footer widget (dim, before hints)", async () => {
+	const h = setup();
+	try {
+		h.bus.snapshot.display = { footer: ["[core] observation-pack degraded (compat)"] };
+		await h.pi.fire("session_start", h.ctx);
+		const call = [...h.rec.calls].reverse().find((c) => c.method === "setWidget" && c.key === "cc-footer" && typeof c.content === "function");
+		assert.ok(call, "cc-footer registered");
+		const factory = call!.content as (tui: unknown, theme: unknown) => { render(w: number): string[] };
+		const component = factory({ requestRender: () => {} }, { fg: (_c: string, s: string) => `<${s}>`, bold: (s: string) => s });
+		const rows = component.render(100);
+		const text = rows.join("\n");
+		assert.ok(text.includes("observation-pack degraded"), "core footer row rendered");
+		// Dim paint from the theme rides the line; hints stay after it.
+		const coreIdx = rows.findIndex((r) => r.includes("observation-pack degraded"));
+		const hintsIdx = rows.findIndex((r) => r.includes("bash mode"));
+		assert.ok(coreIdx >= 0 && hintsIdx > coreIdx, "core row above the hints line");
 	} finally {
 		h.dispose();
 	}

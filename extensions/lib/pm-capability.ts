@@ -105,7 +105,10 @@ export function readPmStatus(globalStore: Record<string, unknown> = globalThis a
 	return { workingStats, mode: process.env[PM_MODE_ENV]?.trim() ?? "" };
 }
 
-/** Publish this extension's presence for pm's suppression probe (B7). */
+/** Publish this extension's presence for pm's suppression probe (B7).
+ * Spec P0-2: subscription-managed presence lives in lib/core-bus.ts
+ * (createCoreBusClient handles declare/withdraw with ownership); this
+ * helper remains for direct probe scenarios only. */
 export function publishCcTuiCapability(globalStore: Record<string, unknown> = globalThis as never): void {
 	// DC5b: notificationsConsumer declares that this build consumes the
 	// core bus's notification tail queue itself — core then stops its
@@ -116,83 +119,58 @@ export function publishCcTuiCapability(globalStore: Record<string, unknown> = gl
 	globalStore.__ccTuiActive = true;
 }
 
-/** Lifecycle pairing (2026-10-03): activate = publish + start consuming in
- * one call; withdrawCcTuiCapability is the single reverse entry (it stops
- * the consumer internally). Callers no longer juggle four functions. */
-export function activateCcTuiChannel(
-	display: (msg: string, level: string) => void,
-	globalStore: Record<string, unknown> = globalThis as never,
-): boolean {
-	publishCcTuiCapability(globalStore);
-	return startCoreNotificationConsumer(display, globalStore);
-}
-
-export function withdrawCcTuiCapability(globalStore: Record<string, unknown> = globalThis as never): void {
-	stopCoreNotificationConsumer();
-	delete globalStore.__piCcTui;
-	delete globalStore.__ccTuiActive;
-}
-
-// ---- DC5b: notification tail-queue consumer --------------------------------
+// ---- DC5b: notification tail-queue adapter ---------------------------------
 //
-// Subscribes through the core snapshot's data-carried onChange and diffs
-// the bounded notifications queue by lastSeenId. Load order puts cctui
-// before core, so the bus may not exist (or still be v1) at enable time —
-// the ENTRY retries startCoreNotificationConsumer explicitly (enable,
-// session_start, and the status widget's per-frame render), so the first
-// retry after core's first publish attaches it.
+// Subscription lifecycle lives in ONE place now — lib/core-bus.ts (spec
+// 2026-10-07 P0-2/B1). This module contributes the notification adapter:
+// diff the bounded tail queue by lastSeenId, starting from the handoff
+// cursor (B3: max id at presence declaration on the same bus; 0 after a
+// bus change). BOTH load orders (cctui-first and core-first) are handled by
+// the client's retry points — the old "cctui loads before core" comment was
+// half the truth.
+
+import type { CoreBusAdapter, CoreBusHandoff, CoreSnapshotLike } from "./core-bus.ts";
 
 type NotificationItem = { id: number; level: string; msg: string };
-type CoreSnapshotLike = {
-	onChange?: (fn: () => void) => () => void;
-	notifications?: readonly NotificationItem[];
-};
-
-let notifyDisplay: ((msg: string, level: string) => void) | null = null;
-let notifyUnsubscribe: (() => void) | null = null;
-let notifyLastSeenId = 0;
-
-function trySubscribeCoreNotifications(globalStore: Record<string, unknown> = globalThis as never): boolean {
-	if (notifyUnsubscribe || !notifyDisplay) return notifyUnsubscribe !== null;
-	const snap = globalStore.__piClaudeCodeCore as CoreSnapshotLike | undefined;
-	const register = snap?.onChange;
-	if (!register) return false;
-	// Fast-forward past history published before we attached (the fallback
-	// adapter already displayed it) — only future items are ours.
-	const current = snap?.notifications;
-	if (current && current.length > 0) notifyLastSeenId = current[current.length - 1]!.id;
-	notifyUnsubscribe = register(() => {
-		const live = globalStore.__piClaudeCodeCore as CoreSnapshotLike | undefined;
-		for (const item of live?.notifications ?? []) {
-			if (item.id <= notifyLastSeenId) continue;
-			notifyLastSeenId = item.id;
-			try {
-				notifyDisplay?.(item.msg, item.level as string);
-			} catch {
-				// Stale context: drop this one rather than replay-loop.
-			}
-		}
-	});
-	return true;
-}
 
 /**
- * Start (or retry) consuming the core notification queue — idempotent once
- * attached. Returns false while the core bus is not ready (v1 snapshot /
- * not loaded); the entry re-calls this at enable, session_start, and each
- * status-widget render frame.
+ * Consume the core notification tail queue through a core-bus client.
+ * Display failures advance the cursor anyway (one attempt per item, no
+ * blocking, no replay loop) — the queue has no ACK, so this is "attempted",
+ * not "shown".
  */
-export function startCoreNotificationConsumer(
-	display: (msg: string, level: string) => void,
-	globalStore: Record<string, unknown> = globalThis as never,
-): boolean {
-	notifyDisplay = display;
-	return trySubscribeCoreNotifications(globalStore);
-}
-
-export function stopCoreNotificationConsumer(): void {
-	notifyUnsubscribe?.();
-	notifyUnsubscribe = null;
-	notifyLastSeenId = 0;
-	notifyDisplay = null;
+export function createNotificationAdapter(display: (msg: string, level: string) => void): CoreBusAdapter {
+	let cursor = 0;
+	const consume = (snapshot: CoreSnapshotLike | undefined): void => {
+		const queue = snapshot?.notifications;
+		if (!Array.isArray(queue)) return;
+		for (const raw of queue) {
+			if (raw == null || typeof raw !== "object") continue;
+			const item = raw as Partial<NotificationItem>;
+			if (typeof item.id !== "number" || !Number.isFinite(item.id)) continue;
+			if (typeof item.msg !== "string" || typeof item.level !== "string") continue;
+			if (item.id <= cursor) continue;
+			cursor = item.id; // advance BEFORE attempting display (single attempt)
+			try {
+				display(item.msg, item.level);
+			} catch {
+				// Stale sink: drop this one rather than replay-loop.
+			}
+		}
+	};
+	return {
+		onAttach(snapshot: CoreSnapshotLike, handoff: CoreBusHandoff) {
+			// B3: same bus → continue from the declaration cursor (the
+			// fallback already showed earlier items); new bus → its queue
+			// was never displayed (our presence suppressed both paths).
+			cursor = handoff.sameBusAsPresence ? handoff.presenceMaxNotifyId : 0;
+			consume(snapshot);
+		},
+		onSnapshot(snapshot) {
+			consume(snapshot);
+		},
+		onDetach() {
+			cursor = 0;
+		},
+	};
 }

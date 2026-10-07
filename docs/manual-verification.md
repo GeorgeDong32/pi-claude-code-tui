@@ -175,3 +175,28 @@ These are the host-timing/visual counterparts of the automated
       `tool: "mcp_exa_search"` renders `exa - search (MCP)`; a direct-named
       `exa_search` (with the env allowlist set) renders `exa - search (MCP)`;
       bare `mcp` without a resolvable target renders unbadged.
+
+## 13. Core-bus handoff (spec 2026-10-07 P0-2) — OPEN, not yet executed on a real terminal
+
+Automated joint fixtures (`test/core-bus.joint.test.ts`) drive the real core
+bus/notify/fallback for the three review scenarios; the items below are the
+host-timing counterparts that automation cannot see. Use an ISOLATED test
+agentDir/settings fixture (PI_CODING_AGENT_DIR to a temp dir); never touch the
+daily settings. Record host version, both repo revisions, launch args, result.
+
+- [ ] **Both load orders + a repeatable config warning + `/reload`**: with a
+      deterministic warning source (e.g. an invalid effort pin or profile in
+      the isolated settings), start pi with extensions in core-first order,
+      `/reload`, confirm the warning shows exactly once; repeat with cctui
+      first. Do not assume a CLI flag name — use whatever the isolated config
+      can trigger deterministically.
+- [ ] **`/claude-tui off → on` + native footer toggle**: notifications, packed
+      rows and the footer show no unexpected duplicates; after off the footer
+      slot is the host stock footer (no cc-footer widget, no downgrade row);
+      after on the rows return.
+- [ ] **TUI load failure after reload** (isolated fixture with a deliberately
+      broken cctui entry): core's own session_start paths own the display —
+      the footer slot and warnings come from core, not a stale replica.
+- [ ] **Economy downgrade row**: with the observation-pack degraded in the
+      isolated fixture, the dim `[core] … degraded` row appears between the
+      statusline rows and the hints line, in both footer modes.

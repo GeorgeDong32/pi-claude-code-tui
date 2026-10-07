@@ -171,3 +171,16 @@ obs 去重以 **当前 session/branch** 为域；/new 清空，不让上一会�
 
 - 本仓库：`extensions/lib/pm-capability.ts:109-198`、`extensions/lib/obs-savings.ts:32-100`、`extensions/claude-code-tui.ts:409-416, 501-531, 705-715, 833-840`、`extensions/lib/statusline.ts:96-129`
 - core：`extensions/bus.ts:116-199`、`extensions/ui/notify.ts:26-68`、`extensions/ui/fallback.ts:37-72`、`lib/pi-compat.ts:81-95`
+
+---
+
+## 9. 实施记录（2026-10-07）
+
+状态：TUI 侧全部实施；自动化绿（251 tests / tsc 0 错）。真机四步（§6.3）保持 open（docs/manual-verification.md §13）。
+
+- **lib/core-bus.ts**：`createCoreBusClient({ store, adapters })` 按 §4.1 落地——activate 同步段采集基线（bus 身份 + 通知 max id + obs keys）→ 写带所有权的 presence 对象 → 订阅 → 立即消费当前快照；retry O(1) 快路径；close 幂等退订/撤回仅自己的 presence/generation 失效。身份检测 B2：`snapshot.instance` 优先（当前 core 09c2dcb 无此字段——已实现的检测路径以 onChange 闭包身份运行，core P1-1 落地后自动切换，**待上游联测**）；v1/无 onChange 不订阅、可重试。
+- **三 adapter**：`createNotificationAdapter`（pm-capability.ts，B3 游标：同 bus 从声明 id 续、换 bus 从 0，display 前推进游标）；`createObsAdapter`（obs-savings.ts，B5 全元组 key + 会话域 + `resetSeenFromBranch` 在 session_start 事件路径扫描 branch 重建，onAttach 基线与 branch-scan 并集）；`createFooterChannel`（core-bus.ts，校验/去重/清空语义）。旧的 activateCcTuiChannel/startCoreNotificationConsumer 等模块级单例 API 删除，入口只用 client；teardown 的 obs-stop + presence-withdraw 两步合并为一个 `coreBusClient.close()` 步骤（顺序不变，记录为实施偏差）。
+- **footer 渲染（B6）**：`composeFooterLines` 新增 `coreFooter` 槽位（script 行后、hints 前，宽度截断）；cc-footer render 涂 dim 并传行；native footer 模式由 cc-footer render 承担重试点（C8）。无 core 时默认空数组，golden 输出不变。
+- **联合 fixture（§6.3.1）**：`test/core-bus.joint.test.ts` 经 jiti（pi 宿主同款加载器，其嵌套依赖内解析）加载**真实** core `bus.ts`/`ui/notify.ts`/`ui/fallback.ts`，C1/C2/C3/C4/C6(footer 半) 全绿；reload 模拟用真实 `resetCoreBusForTests` + 手动保留 stale 快照重建"残留旧快照"条件；core checkout 缺席时整文件 skip。**两仓版本：core `95dcab6`（0.3.0 + spec batch，生产 bus 未改）× TUI 本批提交。**
+- C5/C7/C9/C10 以合成 store 覆盖 client/adapter 语义（这些测的是本仓逻辑，非跨仓交接）；C11 经真实 factory（off/on 实际槽位断言 + cc-footer coreFooter 行渲染）；"TUI reload 加载失败后 core 取槽位"的真机路径记录为 open（§13）。
+- §4.4 注释与文档：三处加载顺序注释已随模块重写消失/改写（D3 关闭）；ARCHITECTURE 中英 §7 通知段按 B3/B4 重写并新增 footer 段；AGENTS 坑 6（中英）改为"两种顺序都成立，订阅统一走 lib/core-bus.ts"。

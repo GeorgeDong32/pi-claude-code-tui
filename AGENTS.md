@@ -46,7 +46,9 @@ extensions/
     statusline.ts           #   statusline JSON 合成、badge、子进程 runner、footer 组合
     statusline-default-script.ts  # 内置默认脚本的 TS 内联副本（与 scripts/ 字节同步）
     status-snapshot.ts      #   UsageTracker：会话用量快照（每事件重算，供每帧读缓存）
-    pm-capability.ts        #   permission-modes 能力通道消费端 + 核心通知队列消费（activate/withdraw 配对）
+    core-bus.ts             #   core-bus client（P0-2）：三通道唯一订阅所有者——在场/交接基线/bus 更换检测/generation；footer 通道缓存
+    tool-summary.ts         #   schema 驱动的通用工具参数摘要（P1-1 R2：preferred 字段 + required string）
+    pm-capability.ts        #   permission-modes 状态消费端（纯读链）+ 核心通知尾队列 adapter
     prefs.ts                #   ~/.pi/agent/claude-tui.json 读改写（原子）
 themes/claude-code.json     # claude-code 主题（vars/colors）
 scripts/statusline-default.sh   # 默认 statusline 脚本（source of truth，与 TS 内联副本字节同步）
@@ -79,7 +81,7 @@ src/                        # 空目录残留（无文件，勿引用）
 3. **`ctx` / `ctx.ui.theme` 会过期**。session 替换或 `/reload` 后旧 ctx 失效。不要在 enable 时捕获 theme 存闭包长期用；要么每帧从当前 ctx 取，要么像 `cc-compaction-row.ts` 那样传 `getFg()` 惰性读取。启动头（`pi-startup-header.ts`）也不例外：render 只能读入口注入的 getter 和 `setHeader` 工厂参数里的 theme，不能访问 ctx。
 4. **prototype patch 必须幂等**。用 `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。现存的 patch 只剩压缩行 / skill 行 / 用户消息条——工具行已改走官方 `pi.registerToolRenderer` 通道（1.8.0 起），不再依赖 patch。
 5. **工具行走官方渲染器通道（pi ≥ 1.0.1）**：`pi.registerToolRenderer` 的 resolver 只能在加载段注册、逐组件构造求值；让路必须原样返回 `next()`（吞掉会剥夺内置/他人渲染器）。头图、编辑器仍是单占位槽、后写者胜。与其他 TUI 扩展共存的策略是 auto 让路（`pi.getAllTools()` 源元数据探测——`next()` 无法区分内置渲染器与他人注册）+ `/claude-tools on` 强制接管 + `FORCE_RESULT_EXEMPT`（pi-subagents 的 live 卡等不折叠）。
-6. **加载顺序不可假设**。本包可能在 core / 其他扩展之前加载，`enable` 时探测不到后加载者。所有探测点都要有重试：`readPmStatus()` 每次调用幂等重试订阅核心总线，会话事件里再补一次。
+6. **加载顺序不可假设**。本包可能在 core / 其他扩展之前或之后加载（两种顺序都会在实际配置中出现），`enable` 时可能探测不到后加载者。所有探测点都要有重试；**订阅统一走 `lib/core-bus.ts`**（在场带所有权、交接基线、bus 更换检测、generation 失效旧回调），重试点是 session_start 与 cc-status / cc-footer 的 render（O(1) 快路径）；`readPmStatus()` 保持纯读、永不订阅。
 7. **运行时没有文件锚点**。jiti 以 data: URL 求值扩展文件，`import.meta.url` 不指向安装目录。需要文件内容的东西（默认 statusline 脚本）必须内联成 TS 字符串，且与 `scripts/statusline-default.sh` **字节级同步**（`test/statusline.test.ts` 校验）——改脚本两处一起改，或跑同步测试看红。
 8. **`keyText()` 在无 host 测试环境返回 `""`**。所有展开提示都要有字面量 fallback（如 `"ctrl+o"`）。
 9. **prefs 是共享文件**：`~/.pi/agent/claude-tui.json` 同时存 `toolRows` 和 `statusLine`。写入必须走 `savePrefs()` 的 read-modify-write + tmp/rename 原子替换，禁止整文件覆盖（历史上互相清过对方的键）。
