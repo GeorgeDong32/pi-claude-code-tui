@@ -1,0 +1,44 @@
+Error: Failed to load extension "/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht4c/broken-tui.ts": Failed to l
+oad extension: deliberate load failure for H-T4c
+Hint: Start without extensions using "pi -ne".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

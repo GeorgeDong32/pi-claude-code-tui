@@ -1,0 +1,45 @@
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.0.4 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Call the goal_question tool now with a short question about testing display rows. Then reply done.
+
+ The user is asking me to call a "goal_question" tool with a short question about testing display rows, then reply "done".
+
+ Looking at my available tools:
+ - read
+ - bash
+ - edit
+ - write
+ - plan_ready
+ - propose_goal_draft
+ - memory_consolidate
+ - session_recall
+ - obs_recall
+ - get_goal
+ - pi_review_report
+
+ There's no "goal_question" tool available to me. The user might be testing whether I'll hallucinate a tool call or pretend it succeeded. I should
+ not fabricate a tool call that doesn't exist.
+
+ I should inform the user that the goal_question tool is not available in my current toolset, and perhaps ask if they meant something else (like
+ get_goal or propose_goal_draft).
+
+ Per the communication style memory: all replies default to Chinese, keep technical terms in English, be concise.
+
+ I should not pretend to call a non-existent tool. Let me reply in Chinese, concisely.
+
+ 我这里没有 goal_question 这个工具——当前可用的工具里没有这个名字（相关的只有 get_goal、propose_goal_draft、plan_ready 等）。
+
+ 所以无法执行这个调用。如果你是想测试工具调用流程，可以告诉我用哪个
+
+✶ Improvising… (9s · esc to interrupt) ↑0 · ↓0                                                                      GLM 5.3 Flash·high│Ctx 1%(7k/1.0M)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

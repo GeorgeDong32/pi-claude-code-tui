@@ -10,12 +10,12 @@
 
 | 优先级 | spec | 清单项 | 当前状态 / 剩余验收 |
 |---|---|---|---|
-| P0-1 | [生命周期修复](2026-10-07-p0-1-lifecycle-fixes.md) | TUI-03 / 04 / 05 / 06 | 已实施 4282bec + 复审修复；真实 print/reload/off/on/退出验证 open（manual §11） |
-| P0-2 | [core-bus client](2026-10-07-p0-2-core-bus-client.md) | TUI-01 / 02 / 12 / 14 + footer | 已实施 955de27；2a7984f 对新 instance 联测；真实槽位/通知/reload 验收 open（§13） |
-| P1-1 | [core 工具展示](2026-10-07-p1-1-core-tool-display.md) | TUI-07 | 三步已实施 7319c74；真实 goal/obs/proxy/MCP 行验收 open（§12） |
-| P1-2 | [用量单一展示](2026-10-07-p1-2-usage-single-display.md) | TUI-08 / 10 | 两步已实施 9accbaa / 710c9c7；1bf9b7f 补缺失 ctx 回退；**U-F1 已修 f609b9b**；J-USAGE 生产事件联合 fixture 已落地（modes-producer.joint）；完整终端验收 open（§12.5） |
+| P0-1 | [生命周期修复](2026-10-07-p0-1-lifecycle-fixes.md) | TUI-03 / 04 / 05 / 06 | 已实施 4282bec + 复审修复；**真实 print/reload/off/on/退出验证已执行（manual §11，evidence ledger）** |
+| P0-2 | [core-bus client](2026-10-07-p0-2-core-bus-client.md) | TUI-01 / 02 / 12 / 14 + footer | 已实施 955de27；2a7984f 对新 instance 联测；**真实槽位/通知/reload 验收已执行（§13，经济降级行 OPEN：宿主版本门控）** |
+| P1-1 | [core 工具展示](2026-10-07-p1-1-core-tool-display.md) | TUI-07 | 三步已实施 7319c74；**真实 goal/obs/MCP 行验收已执行（§12；多页 obs 头需 populated pack，open）** |
+| P1-2 | [用量单一展示](2026-10-07-p1-2-usage-single-display.md) | TUI-08 / 10 | 两步已实施 9accbaa / 710c9c7；1bf9b7f 补缺失 ctx 回退；**U-F1 已修 f609b9b**；J-USAGE 生产事件联合 fixture 已落地（modes-producer.joint）；**终端验收已执行（§12.5；等待态瞬态由表测覆盖）** |
 | P2-1 | [ReplicaSession](2026-10-07-p2-1-replica-session.md) | TUI-11 | 已实施 0287b86 + 复审修复，golden 保持；沿用生命周期真实验收 |
-| P3-1 | [文档与小问题](2026-10-07-p3-1-docs-and-nits.md) | TUI-09 / 13 / 15 | D1–D7 已实施；D5 的 XPKG-09-HOST 取证 open；D8 可选未做 |
+| P3-1 | [文档与小问题](2026-10-07-p3-1-docs-and-nits.md) | TUI-09 / 13 / 15 | D1–D7 已实施；**D5 的 XPKG-09-HOST 取证已执行（双顺序+live 更新，尽力语义如实）**；D8 可选未做 |
 
 2026-10-08 本轮执行后基线 npm test 为 **278 passed / 0 skipped**（272 + U-F1 三例 + J-USAGE 三例），typecheck 退出 0。`test/modes-producer.joint.test.ts` 以真实 core modes 生产事件驱动本仓真实 entry 接线（对 core `2ebd226`）；C7-usage 保留为传输/校验层证据。终端验收仍 open。
 

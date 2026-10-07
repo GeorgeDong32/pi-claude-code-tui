@@ -141,52 +141,76 @@ file; badge overlapping wide CJK output.
 - [ ] **async widget**（`subagent-async` 下方面板，多开后台任务时可见）：CC 视觉语言——`● subagents · background` 头、树连接符 `├─/└─`、detail 行 CC `⎿` gutter、折叠态单行 `● subagents (N/M running, …)`；`/claude-tui off` 后回到原生 `⠋ Async agents · background` 形态。极窄终端（<22 行）下是原生渐进卡片（v1 已知降级，见 spec/notes/async-surface-plan.md）。
 - [ ] 对应 async 树被 Fleet 完整覆盖时折叠（coverage），不完整时保持双显——中途 resize/展开不应闪烁丢行。
 
-## 11. Lifecycle fixes (spec 2026-10-07 P0-1) — OPEN, not yet executed on a real terminal
+## 11. Lifecycle fixes (spec 2026-10-07 P0-1) — executed 2026-10-08 (see the [evidence ledger](evidence/2026-10-08-host/LEDGER.md))
 
 These are the host-timing/visual counterparts of the automated
 `test/entry-lifecycle.test.ts` / statusline runner suites.
 
-- [ ] **`pi -p "hello"` output has no thinking tip** and the print session
+- [x] **`pi -p "hello"` output has no thinking tip** and the print session
       writes no `cc-tui/observation-packed` entry (check the session file
       afterwards). Broken looks like: the one-time "ctrl+t toggles collapsed
       thinking" tip appearing in `-p` output, or packed rows in child sessions.
-- [ ] **TUI `/reload` round-trip**: after `/reload`, a repeatable core
+      *Evidence: run/ht1 print-mode logs — stdout exactly `ok`, 0 packed entries.*
+- [x] **TUI `/reload` round-trip**: after `/reload`, a repeatable core
       configuration warning still displays (isolated test config — see the
       P0-2 joint protocol in §13; do not assume a CLI flag name).
-- [ ] **`/claude-tui off → on`**: header/editor/status widget all return; no
+      *Evidence: run/ht1 — `--effort ultra` (core flag) warns each start, no
+      accumulation. Cross-package note: core's effort warning itself
+      double-displays (its DC3 dual-write), with AND without cctui — core's
+      issue, not this package's.*
+- [x] **`/claude-tui off → on`**: header/editor/status widget all return; no
       duplicate thinking tip; packed rows and notifications behave.
-- [ ] **Shutdown cleanliness**: quit pi after a run — no lingering
+      *Evidence: run/ht1 after-off/after-on snapshots — header + footer chip
+      gone and back; tip exactly once across the cycle.*
+- [x] **Shutdown cleanliness**: quit pi after a run — no lingering
       statusline child processes (`ps` while a slow custom script would have
       been in flight) beyond the TERM→KILL window.
+      *Evidence: run/ht1c — `sleep 30` script in flight at quit; no survivor
+      3s later.*
 
-## 12. Core tool display (spec 2026-10-07 P1-1) — OPEN, not yet executed
+## 12. Core tool display (spec 2026-10-07 P1-1) — executed 2026-10-08 (see the [evidence ledger](evidence/2026-10-08-host/LEDGER.md))
 
-- [ ] **Force mode goal rows**: with `toolRows: true` (or `/claude-tools on`),
-      trigger `goal_question`, `apply_goal_tweak` and `abort_goal` — each
-      renders a one-line CC row (`⏺ Apply Goal Tweak(tightened step 2)`), not
-      a JSON dump or a whole revised objective.
-- [ ] **Generic schema rows**: any newly registered core tool with a
+- [x] **Force mode goal rows**: with `toolRows: true` (or `/claude-tools on`),
+      the core goal-family tools render one-line CC rows —
+      `⏺ propose_goal_draft(verify goal row rendering end to end)`
+      (spec-era names `goal_question`/`apply_goal_tweak` do not exist in
+      core; its actual family is `propose_goal_draft`/`get_goal`/`plan_ready`),
+      and `⏺ get_goal({})` shows the bounded JSON fallback. *Evidence:
+      run/ht2b.*
+- [x] **Generic schema rows**: any newly registered core tool with a
       recognizable top-level string param summarizes without a per-name
       branch; tools with no schema window render the bounded JSON fallback.
-- [ ] **obs_recall**: a multi-page recall shows the human header derived from
-      structured details (`15.5KB · 241 lines · start→+15.5KB · more ▸`);
-      error recalls ("Unknown observation id") keep their raw text.
-- [ ] **Proxy / direct MCP rows**: a proxy-shaped `mcp` call with
-      `tool: "mcp_exa_search"` renders `exa - search (MCP)`; a direct-named
-      `exa_search` (with the env allowlist set) renders `exa - search (MCP)`;
-      bare `mcp` without a resolvable target renders unbadged.
+      *Evidence: run/ht2b (schema summary + `{}` fallback).*
+- [x] **obs_recall**: an error recall keeps its raw text —
+      `⏺ Recall Observation(obs_nonexistent1 · start)` +
+      `⎿ Unknown observation id: obs_nonexistent123` (multi-page header
+      needs a populated pack; error path exercised live). *Evidence: run/ht2.*
+- [x] **Proxy / direct MCP rows**: a direct-named MCP tool
+      (`mcp__dummy__echo_search`, local stdio server) renders
+      `⏺ dummy - echo_search (MCP)(query=mcp row)` + `⎿ dummy echo: mcp row`.
+      Host fact: `--no-extensions` also disables MCP registration. *Evidence:
+      run/ht2f (bare `mcp` proxy shape covered by the unit mirror +
+      `run/ht2d` probe).*
 
-## 12.5 Usage numbers shown once (spec 2026-10-07 P1-2) — OPEN
+## 12.5 Usage numbers shown once (spec 2026-10-07 P1-2) — executed 2026-10-08 (see the [evidence ledger](evidence/2026-10-08-host/LEDGER.md))
 
-- [ ] During a run with core publishing workingStats, the cc-status row shows
+- [x] During a run with core publishing workingStats, the cc-status row shows
       cost and ctx% exactly once: while the statusline script has output the
       numbers live on the script row and the core segment keeps only
       ↑/↓/R/tok-s; with the statusline disabled/pending/failed the RIGHT group
       shows them and the core segment drops `$…` / `…% ctx`. A true zero
       (`$0.000`, `0% ctx`) counts as present (never dropped as "missing").
       `pi -p`-style sessions and native-footer mode show no extra copies.
+      *Evidence: run/ht1 (script row `Ctx 0% (0/1M)`, right collapsed),
+      run/ht3 (off → right group `Ctx 1%(10k/1.0M)│$0.0008`; native footer →
+      pi stock line only), run/ht4a (mid-run `↑3k · ↓64 · ⚡10 tok/s` +
+      right group), run/ht3c (persistent error row + self-heal). Waiting
+      state is transient (<300 ms) — holder matrix table-tested. NOTE: the
+      "set false-cmd three times" recipe below cannot reach the 3-failure
+      threshold (each `set` recreates the runner and resets the counter) —
+      use `set` once plus real turns (message_end refreshes).*
 
-## 13. Core-bus handoff (spec 2026-10-07 P0-2) — OPEN, not yet executed on a real terminal
+## 13. Core-bus handoff (spec 2026-10-07 P0-2) — executed 2026-10-08 (see the [evidence ledger](evidence/2026-10-08-host/LEDGER.md))
 
 Automated joint fixtures (`test/core-bus.joint.test.ts`) drive the real core
 bus/notify/fallback for the three review scenarios; the items below are the
@@ -194,33 +218,54 @@ host-timing counterparts that automation cannot see. Use an ISOLATED test
 agentDir/settings fixture (PI_CODING_AGENT_DIR to a temp dir); never touch the
 daily settings. Record host version, both repo revisions, launch args, result.
 
-- [ ] **Both load orders + a repeatable config warning + `/reload`**: with a
+- [x] **Both load orders + a repeatable config warning + `/reload`**: with a
       deterministic warning source (e.g. an invalid effort pin or profile in
       the isolated settings), start pi with extensions in core-first order,
       `/reload`, confirm the warning shows exactly once; repeat with cctui
       first. Do not assume a CLI flag name — use whatever the isolated config
       can trigger deterministically.
-- [ ] **`/claude-tui off → on` + native footer toggle**: notifications, packed
+      *Evidence: run/ht1 (core-first) + run/ht4a (tui-first) — `--effort
+      ultra` warns per session_start in both. Per-item display is doubled by
+      core's own DC3 dual-write (see ledger H-T1b); cctui's channel shows
+      each item once (joint C1–C3 fixtures).*
+- [x] **`/claude-tui off → on` + native footer toggle**: notifications, packed
       rows and the footer show no unexpected duplicates; after off the footer
       slot is the host stock footer (no cc-footer widget, no downgrade row);
       after on the rows return.
-- [ ] **TUI load failure after reload** (isolated fixture with a deliberately
+      *Evidence: run/ht1 after-off/after-on, run/ht3 native-footer.*
+- [x] **TUI load failure after reload** (isolated fixture with a deliberately
       broken cctui entry): core's own session_start paths own the display —
       the footer slot and warnings come from core, not a stale replica.
+      *Evidence: run/ht4e — mid-session entry break + `/reload`: session
+      survives, core fallback warnings + core modes footer + stock usage
+      line, no stale cc surfaces. (Startup-time breakage aborts pi entirely —
+      run/ht4c — a different host behavior, recorded.)*
 - [ ] **Economy downgrade row**: with the observation-pack degraded in the
       isolated fixture, the dim `[core] … degraded` row appears between the
       statusline rows and the hints line, in both footer modes.
+      *OPEN — cannot be triggered on this host: `probePiCompat` gates on
+      `pi < 0.87.0` (host is 1.0.2) and exposes no override; patching core is
+      out of scope. Recovery: re-run on a pi < 0.87 host. The rendering path
+      is covered by joint C6 + composeFooterLines tables.*
 
 
-## 14. 2026-10-08 follow-up evidence ledger — OPEN (terminal items)
+## 14. 2026-10-08 follow-up evidence ledger — terminal items executed; economy row OPEN
 
 Current implementation baseline: TUI `1bf9b7f` + the 2026-10-08 follow-up
-commits (U-F1 basis fix, J-USAGE joint suite), core `2ebd226`, pi dependency
-1.0.1. Automated status: 278 passing / 0 skipped tests + clean typecheck;
-`test/modes-producer.joint.test.ts` now drives the REAL core modes producer
+commits (U-F1 basis fix, J-USAGE joint suite, H-T evidence), core `ff81050`
+(fixed snapshot; D4 reader withdrawal included), pi host 1.0.2. Automated
+status: 278 passing / 0 skipped tests + clean typecheck;
+`test/modes-producer.joint.test.ts` drives the REAL core modes producer
 through the real bus into this package's real entry wiring (status row +
 statusline JSON through the actual script protocol) — factory-fixture-level
-evidence, still NOT terminal evidence. The checks in §11–13 remain open.
+evidence. H-T1–H-T5 terminal evidence was executed on 2026-10-08 via a PTY
+driver with pyte screen emulation — see the
+[host evidence ledger](evidence/2026-10-08-host/LEDGER.md) (per-item logs and
+visible-screen snapshots). Remaining OPEN: the economy downgrade row (host
+version gate) and the multi-page obs_recall header (needs a populated
+observation pack). XPKG-09-HOST ordering evidence delivered (both load
+orders, live widget updates; best-effort semantics described, not a general
+async guarantee).
 
 The pre-existing cross-module reload ownership observation for
 pi-proto-adapter is a separate investigation, not a completed fix or a reason

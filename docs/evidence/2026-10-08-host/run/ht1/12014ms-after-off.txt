@@ -1,0 +1,40 @@
+[Extension issues]
+  path (temp) ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts conflicts with
+built-in shortcut. Skipping.
+
+
+ Warning: --effort ultra: unknown effort level
+
+ Warning: --effort ultra: unknown effort level
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ Claude Code TUI replica disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1/proj (master)
+0.0%/1.0M (auto)                                                                                                    glm/glm-5.3-flash • high
+think:high

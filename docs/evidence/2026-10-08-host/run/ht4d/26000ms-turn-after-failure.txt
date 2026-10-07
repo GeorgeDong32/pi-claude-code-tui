@@ -1,0 +1,44 @@
+Error: Failed to load extension "/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht4d/tui-entry-live.ts": Failed
+to load extension: Cannot find module './lib/cc-rows.ts'
+Require stack:
+- /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht4d/tui-entry-live.ts
+Hint: Start without extensions using "pi -ne".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

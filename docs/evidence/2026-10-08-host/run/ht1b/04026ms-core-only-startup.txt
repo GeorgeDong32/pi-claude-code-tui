@@ -1,0 +1,40 @@
+[Extension issues]
+  path (temp) ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts conflicts with
+built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ fd installed to /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1b/agent/bin/fd
+
+ Warning: --effort ultra: unknown effort level
+
+ Warning: --effort ultra: unknown effort level
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.0.4 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+pi-review: pi-review requires pi-subagents: pi install npm:pi-subagents
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1b/proj  0k/1.0M 0.0%                      GLM 5.3 Flash • high
+● Ask (shift+tab)

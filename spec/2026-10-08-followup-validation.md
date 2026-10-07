@@ -128,3 +128,15 @@ core 用户决策为 D3=A / D4=B / D6=B。TUI 当前不依赖 readCoreStatus；�
 - 生产导入核查：本仓 `extensions/`、`scripts/` 无 `readCoreStatus` / `pi-claude-code-core/types` / core-status 引用（grep 空）；TUI 直接读 bus 快照，无需替代 reader，未新增。
 - **快照路径坑（已验证并记录）**：快照若放在 `/tmp`（macOS 上为 `/private/tmp` 的 symlink），jiti 对相对导入做 realpath 归一后同一 `bus.ts` 会注册成两个模块实例——`resetCoreBusForTests` 只重置其一，C1/C3/C4 出现假红（双 singleton 双显示）。快照须放在非 symlink 路径（本轮用 `Pi-Extension/.tmp/core-d4-ff81050`，跑完已删；node_modules 可 symlink）。复现：`git -C pi-claude-code-core archive ff81050 | tar -x -C <real-path>` 后 `CC_TUI_JOINT_CORE_ROOT=<real-path> npm test`。
 - sibling 当前 HEAD 的脏工作树（C3 进行中）同轮亦绿；正式证据以固定 revision 快照为准。
+
+### H-T1–H-T5 已执行（真实终端/宿主证据，2026-10-08）
+
+完整台账与逐项日志/可见屏快照：[docs/evidence/2026-10-08-host/LEDGER.md](../docs/evidence/2026-10-08-host/LEDGER.md)。host=pi 1.0.2；TUI=`632d4e8`（`-e` 直载本仓 entry）；core=`ff81050`（git archive 固定快照，sibling 当时 C3 进行中）；隔离 `PI_CODING_AGENT_DIR`+项目 git 仓；PTY 驱动=stdlib pty + pyte 屏幕仿真（raw log + 毫秒级快照）；模型回合用本地复制的凭据（跑完即删，不落日志）。
+
+- **H-T1 PASS**：print 无 tip、session 无 packed entry；/reload 告警可重复；off→on 槽位往返、tip 仅一次；慢脚本 in-flight 退出零残留。跨包发现：core effort 告警自身双显（DC3 dual-write，有无 cctui 均 2 次）——core 侧问题，本仓仅记录。
+- **H-T2 PASS**：propose_goal_draft 通用摘要行 / get_goal JSON 回退行 / session_recall 命名行 / obs_recall 假 id 错误原文行 / 本地 stdio MCP 的 `dummy - echo_search (MCP)` 行（宿主事实：`--no-extensions` 连带禁用 MCP 注册）。manual 旧工具名（goal_question/apply_goal_tweak）在 core ff81050 不存在，清单已按实名更新。
+- **H-T3 PASS**：脚本行持数（右组塌缩）/ statusline off 右组持有（真实 turn `Ctx 1%(10k/1.0M)│$0.0008`）/ native footer 无重复 / 运行中结构化 ↑↓⚡ / 真实零 `Ctx 0% (0/1M)` / 持久错误行+自愈。发现：manual 的「set false-cmd 三次」配方达不到 3 连败阈值（每次 set 重建 runner 清零计数），需 set 一次+真实 turn 刷新；manual 已注记。
+- **H-T4 PASS（经济降级行 OPEN）**：双顺序告警/reload；off/on+native footer；reload 后 TUI 载入失败会话存活、core 自持显示（ht4e）；启动期破损则 pi 整体退出（宿主行为差异，已记）。降级行无法触发：probePiCompat 仅按 `pi<0.87` 门控且无覆盖入口，恢复条件=旧宿主重跑；渲染路径由 C6+表测覆盖。
+- **H-T5 PASS（尽力语义如实描述）**：双顺序下 goal 块在上、cc-status spinner 紧贴编辑器；turn 中 goal 块实时更新（token 计数）而 spinner 保持相邻；晚挂载 widget（goal set 于启动后 ~10s）不破坏次序。不据此声称对任意异步扩展的排序保证。
+
+XPKG-09-HOST 证据由本仓产出（上表+台账），core 任务据此回填其契约/todo；本仓未跨仓改动。

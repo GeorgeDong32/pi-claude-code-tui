@@ -1,0 +1,40 @@
+╭─── Pi v1.0.2 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                            │                             │
+│                                                                                                            │ Getting started             │
+│                                               █████████                                                    │ Ask Pi to build it          │
+│                                               ███   ███                                                    │ ──────────────────────      │
+│                                               ██████   ███                                                 │ Commands                    │
+│                                               ███      ███                                                 │ /claude-tui                 │
+│                                                                                                            │ /settings                   │
+│                                        Let's build something great                                         │ /tree                       │
+│                                    CPA/glm/glm-5.3-flash · high effort                                     │ /copy                       │
+│           ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht3b/proj             │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[Extension issues]
+  path (temp) ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts conflicts with
+built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ fd installed to /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht3b/agent/bin/fd
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.0.4 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Statusline on — badge off
+
+                                                                                                                          GLM 5.3 Flash·high
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

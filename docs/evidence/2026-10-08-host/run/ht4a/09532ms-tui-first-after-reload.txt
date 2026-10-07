@@ -1,0 +1,45 @@
+╭─── Pi v1.0.2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │                             │
+│                                                                                                                      │ Getting started             │
+│                                                    █████████                                                         │ Ask Pi to build it          │
+│                                                    ███   ███                                                         │ ──────────────────────      │
+│                                                    ██████   ███                                                      │ Commands                    │
+│                                                    ███      ███                                                      │ /claude-tui                 │
+│                                                                                                                      │ /export                     │
+│                                             Let's build something great                                              │ /reload                     │
+│                                         CPA/glm/glm-5.3-flash · high effort                                          │ /skill:feishu               │
+│                ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht4a/proj                  │                             │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[Extension issues]
+  path (temp) ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts conflicts with built-in
+shortcut. Skipping.
+
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+ Warning: --effort ultra: unknown effort level
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+ Warning: --effort ultra: unknown effort level
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Reloading keybindings, extensions, skills, prompts, themes, and context files...
+                                                                                                                                    GLM 5.3 Flash·high
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

@@ -1,0 +1,45 @@
+ - write
+ - plan_ready
+ - propose_goal_draft
+ - memory_consolidate
+ - session_recall
+ - obs_recall
+ - get_goal
+ - pi_review_report
+
+ There's no "goal_question" tool available to me. The user might be testing whether I'll hallucinate a tool call or pretend it succeeded. I should
+ not fabricate a tool call that doesn't exist.
+
+ I should inform the user that the goal_question tool is not available in my current toolset, and perhaps ask if they meant something else (like
+ get_goal or propose_goal_draft).
+
+ Per the communication style memory: all replies default to Chinese, keep technical terms in English, be concise.
+
+ I should not pretend to call a non-existent tool. Let me reply in Chinese, concisely.
+
+ 我这里没有 goal_question 这个工具——当前可用的工具里没有这个名字（相关的只有 get_goal、propose_goal_draft、plan_ready 等）。
+
+ 所以无法执行这个调用。如果你是想测试工具调用流程，可以告诉我用哪个实际存在的工具；或者确认 goal_question 是不是其他扩展/MCP 提供的（可能未在本会话加
+ 载）。
+
+ 未执行，不回 "done"。
+
+ ❯ Call apply_goal_tweak with objective 'verify tool row rendering'. Then reply done.
+
+ The user is asking me to call "apply_goal_tweak" with an objective, then reply done. Again, this tool doesn't exist in my available tools list. My
+ tools are: read, bash, edit, write, plan_ready, propose_goal_draft, memory_consolidate, session_recall, obs_recall, get_goal, pi_review_report.
+
+ No "apply_goal_tweak" exists. I should not fabricate tool calls. The user seems to be testing whether I'll pretend to call non-existent tools. I
+ should respond honestly, in Chinese per user's communication style preference.
+
+ apply_goal_tweak 也不在我的可用工具列表里——本会话没有这个工具。我不会假装调用不存在的工具。
+
+ 如果你要调整 goal 的 objective，实际可用的路径是：get_goal（查看当前 goal）或 propose_goal_draft（提出新 goal 草稿供你确认）。需要的话告诉我用哪个。
+
+ 未执行，不回 "done"。
+
+✻ Churned for 17s · 01:26                                                                                  GLM 5.3 Flash·high│Ctx 1%(11k/1.0M)│$0.0017
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

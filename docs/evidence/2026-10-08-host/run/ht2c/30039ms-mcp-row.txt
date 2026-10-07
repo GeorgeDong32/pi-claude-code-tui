@@ -1,0 +1,45 @@
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.0.4 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Call the dummy server's echo_search tool with query 'mcp row'. Then reply done.
+
+ The user asks me to call the dummy server's echo_search tool with query 'mcp row'. Let me check what tools are available. I don't see any MCP tools
+ like mcp__dummy__echo_search in my available functions. The available tools are: read, bash, edit, write, plan_ready, propose_goal_draft,
+ pi_review_report, memory_consolidate, session_recall, obs_recall, get_goal.
+
+ There's no MCP echo_search tool available. The rules say "When MCP tools (mcp__server__tool / mcp_* naming) are available for a task — search,
+ fetch, GitHub operations — prefer them over shelling out with curl". But none are available here.
+
+ Let me check if there's a dummy server configured somewhere in the project context. The cwd is a docs/evidence directory:
+ /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht2c/proj. This looks like a test/evidence run directory. Maybe
+ there's a dummy MCP server set up there.
+
+ Let me look around the directory to see what's there. Maybe the user expects me to find an MCP config in this directory and call it via some
+ mechanism. But I don't have MCP tools in my function list. I can't call an MCP tool that isn't registered.
+
+ Let me first explore the directory to understand the context.
+
+⏺ bash(ls -la /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht2c/proj 2>/dev/null; ls /Users/gd32/Coding/Pi-E…)
+  ⎿  total 0
+     drwxr-xr-x@  3 gd32  staff   96 Oct  8 01:28 .
+     ... +6 lines (ctrl+o to expand)
+
+ Interesting. There's an mcp-rows.log in the parent directory ht2c, and the proj dir only has .git. Let me look at the log and check what's in .git,
+ and look for the dummy server config.
+
+⏺ bash(cd /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht2c; ls -la agent; head -50 mcp-rows.log; echo ---; …)
+  ⎿  ╭─── Pi v1.0.2
+     ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+     ... +45 lines (ctrl+o to expand)
+
+✢ Baking… (19s · esc to interrupt) ↑13k · ↓517 · R8k · ⚡22 tok/s                                          GLM 5.3 Flash·high│Ctx 1%(12k/1.0M)│$0.0012
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools
