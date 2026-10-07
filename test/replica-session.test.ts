@@ -407,6 +407,54 @@ test("review-P1: compaction ending while disabled never sticks the compacting ro
 	}
 });
 
+// ---- U-F1 (2026-10-08 follow-up): same-basis window through the session. ----
+
+test("U-F1b: cumulative-only core channel → right group paren AND statusline JSON both use the host window", () => {
+	const h = setupSession();
+	try {
+		const branch = [
+			{
+				type: "message",
+				message: { role: "assistant", usage: { input: 40_000, output: 10_000, cost: { total: 0.25 } } },
+			},
+		];
+		(h.slots as { branch: () => unknown[] }).branch = () => branch;
+		h.session.enable(h.slots);
+		h.session.setStatusline("on", h.slots);
+		// tracker.used = 50k, host window = 200k (model fixture), core has ONLY
+		// the cumulative fields + its own 1M window — no ctx fields at all.
+		const current = { input: 1_200_000, output: 30_000, cacheRead: 500_000, cacheWrite: 0, cost: 1.5, contextWindow: 1_000_000 };
+		(h.session as unknown as { deps: { readCoreUsage: () => unknown } }).deps.readCoreUsage = () => current as never;
+		h.session.onUsagePoint("message_end", h.slots);
+		h.session.onBusSnapshot();
+		// The statusline JSON rides the SAME selection: 200k denominator.
+		const json = JSON.parse(h.deps.statusline.requests.at(-1)![0]);
+		assert.equal(json.context_window.used_percentage, 25, "JSON pct = tracker/host basis");
+		assert.equal(json.context_window.context_window_size, 200_000, "JSON window = host (selected basis), NOT core 1M");
+		assert.equal(json.pi.cost_usd, 1.5, "cost still core");
+		assert.equal(json.context_window.total_input_tokens, 1_200_000, "totals still core");
+		// The real right-group render shows the consistent paren: 25%(50k/200k).
+		h.session.onRunStart(h.slots);
+		const rows = h.session.renderStatusRow(160, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, { requestRender: () => {} });
+		const line = rows.join("\n");
+		assert.ok(line.includes("Ctx 25%"), "pct from the tracker basis");
+		assert.ok(line.includes("(50k/200k)"), "paren denominator follows the selected basis");
+		assert.ok(!line.includes("/1.0M)"), "core window must not leak into the paren");
+		assert.ok(line.includes("$1.50"), "cost from core");
+		// core later publishes COMPLETE ctx data: the selection switches back to
+		// the core basis (pct AND window) on the next bus snapshot.
+		const complete = { input: 1_400_000, output: 31_000, cacheRead: 600_000, cacheWrite: 0, cost: 1.8, ctxTokens: 150_000, ctxPercent: 12.6, contextWindow: 1_000_000 };
+		(h.session as unknown as { deps: { readCoreUsage: () => unknown } }).deps.readCoreUsage = () => complete as never;
+		h.session.onBusSnapshot();
+		const json2 = JSON.parse(h.deps.statusline.requests.at(-1)![0]);
+		assert.equal(json2.context_window.used_percentage, 13, "complete ctx → core pct");
+		assert.equal(json2.context_window.context_window_size, 1_000_000, "complete ctx → core window");
+		assert.equal(json2.pi.cost_usd, 1.8);
+	} finally {
+		h.dispose();
+	}
+});
+
 test("review-fix: toggle in a non-TUI session reports disabled", () => {
 	const h = setupSession();
 	try {

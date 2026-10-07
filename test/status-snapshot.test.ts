@@ -160,6 +160,51 @@ test("U2: missing/invalid channel → tracker wholesale; window falls back to ho
 	assert.equal(noTokens.usedTokens, null);
 });
 
+// ---- U-F1 (2026-10-08 follow-up): the ctx choice is ONE consistent result --
+// pct/tokens/window must come from the SAME basis; a valid core window must
+// not leak into the denominator of a tracker-based fallback group.
+
+test("U-F1a: cumulative-only core channel (no ctx fields) → tracker pct AND host window together, core window never mixes in", () => {
+	const d = selectDisplayUsage({
+		tracker: tracker({ used: 50_000 }),
+		core: coreUsage({ contextWindow: 1_000_000 }),
+		hostContextWindow: 200_000,
+	});
+	assert.equal(d.usedPercent, 25, "tracker pct (50k/200k)");
+	assert.equal(d.usedTokens, 50_000, "tracker tokens");
+	assert.equal(d.contextWindow, 200_000, "window follows the SELECTED basis (host), not core");
+	assert.equal(d.cost, 1.5, "cost stays core-preferred");
+	assert.equal(d.totalInput, 1_200_000, "cumulative totals stay core");
+	assert.equal(d.totalOutput, 30_000);
+});
+
+test("U-F1c: basis table — same/equal windows, percent-only, tokens-only, true zeros", () => {
+	// Equal windows: either basis yields the same displayed window.
+	const equal = selectDisplayUsage({ tracker: tracker({ used: 50_000 }), core: coreUsage({ contextWindow: 200_000 }), hostContextWindow: 200_000 });
+	assert.equal(equal.contextWindow, 200_000);
+	assert.equal(equal.usedPercent, 25);
+	// Percent-only core: core pct + core tokens(null) + core window (host fallback).
+	const pctOnly = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxPercent: 40 }), hostContextWindow: 200_000 });
+	assert.equal(pctOnly.usedPercent, 40);
+	assert.equal(pctOnly.usedTokens, null);
+	assert.equal(pctOnly.contextWindow, 200_000, "no core window → host");
+	const pctOnlyWin = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxPercent: 40, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(pctOnlyWin.contextWindow, 1_000_000, "core window serves the core-pct basis");
+	// Tokens-only core: derived pct + core window (host fallback when absent).
+	const tokOnly = selectDisplayUsage({ tracker: tracker(), core: coreUsage({ ctxTokens: 250_000, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(tokOnly.usedPercent, 25);
+	assert.equal(tokOnly.usedTokens, 250_000);
+	assert.equal(tokOnly.contextWindow, 1_000_000);
+	// True zeros: ctxTokens 0 with a window is a REAL 0 basis (0%), not missing.
+	const trueZero = selectDisplayUsage({ tracker: tracker({ used: 50_000 }), core: coreUsage({ ctxTokens: 0, contextWindow: 1_000_000 }), hostContextWindow: 200_000 });
+	assert.equal(trueZero.usedPercent, 0, "true zero stays 0");
+	assert.equal(trueZero.usedTokens, 0);
+	assert.equal(trueZero.contextWindow, 1_000_000);
+	// Channel cleared → wholesale tracker path (host window by definition).
+	const cleared = selectDisplayUsage({ tracker: tracker({ used: 50_000 }), core: null, hostContextWindow: 200_000 });
+	assert.deepEqual([cleared.usedPercent, cleared.usedTokens, cleared.contextWindow], [25, 50_000, 200_000]);
+});
+
 test("U2/re-review: channel present but BOTH ctx fields absent → tracker pct basis, never 0-from-missing", () => {
 	// core P2-4 §4.1: a present usage object with absent ctxPercent must not
 	// read as 0% — the tracker fills the field.

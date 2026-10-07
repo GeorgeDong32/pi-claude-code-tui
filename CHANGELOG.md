@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added (structured usage consumption, spec 2026-10-07 P1-2 step 2)
+- core's `modes.usage` channel (core P2-4 / XPKG-08) is consumed per-field through a validated read (`readCoreUsage` in `lib/core-bus.ts` — true zeros are data, an absent/invalid channel falls back wholesale): cost / ctx% / ctx tokens / cumulative totals prefer core with the UsageTracker filling every absent field, and the bus-snapshot hook re-refreshes the statusline when core publishes after this session's own refresh point (the cctui-first load order). The right group and the statusline JSON read the SAME selection — one clamped, once-rounded percentage for both.
+- While the structured channel is live, the running row's left segment formats its own ↑/↓/R/⚡ from the raw numbers (no `$`/`%ctx` ever enters it), so single-display holds without string stripping.
+
+### Fixed (usage fallback basis, spec 2026-10-08 follow-up U-F1)
+- `selectDisplayUsage` picked pct/tokens as fields but still returned the core-preferred context window: with a cumulative-only `modes.usage` channel (no ctx fields — legal per core P2-4), tracker.used=50k, host window=200k and a core window of 1M, the row rendered `Ctx 25%(50k/1.0M)` — a mixed-source denominator. The ctx choice is now ONE consistent result: when both core ctx fields are absent, pct/tokens/window all switch to the tracker + host window together (`25%(50k/200k)`); cost and cumulative totals stay core-preferred; true zeros remain true zeros. The statusline JSON rides the same selection (`context_window_size` follows the selected basis).
+
 ### Changed (architecture, zero visual delta — spec 2026-10-07 P2-1)
 - The entry's hidden lifecycle controller moved into `lib/replica-session.ts` (`ReplicaSession`): all mutable state, the enable/disable/shutdown order (with mid-enable rollback), session generation, the cc-status/cc-footer render delegates (try/caught, last-good truncated to the current width), and the five commands' state changes. The entry (364 lines) keeps only load-time registrations (renderer resolver, packed-entry renderer, markdown transformer, commands) and one-line event routing through a narrow `UiSlots` duck type. Golden render assertions untouched; the entry lifecycle / core-bus / P1-2 suites now run through the session path.
 

@@ -151,30 +151,38 @@ export const selectDisplayUsage = (input: DisplayUsageInput): DisplayUsage => {
 		};
 	}
 	// Structured channel present. Cost is an independent unit (core-preferred
-	// per field). The ctx DISPLAY picks ONE basis so pct and tokens never mix
-	// sources: core percent → core tokens (window = channel window, else
-	// host) → tracker (both fields, consistent). A channel that omits BOTH
-	// ctx fields therefore reads the tracker's percentage — core P2-4 §4.1:
-	// absent ctxPercent must NOT become 0%.
+	// per field). The ctx DISPLAY picks ONE basis so pct, tokens AND window
+	// never mix sources (U-F1): core percent → core group (window = channel
+	// window, else host) → core tokens (derived pct, window = channel window,
+	// else host) → tracker group (window = host, even when a channel window
+	// exists — the denominator must belong to the pct's source). A channel
+	// that omits BOTH ctx fields therefore reads the tracker's percentage —
+	// core P2-4 §4.1: absent ctxPercent must NOT become 0%.
 	const coreWindow = typeof core.contextWindow === "number" && core.contextWindow > 0 ? core.contextWindow : 0;
 	let usedPercent: number | null;
 	let usedTokens: number | null;
+	let ctxWindow: number;
 	if (typeof core.ctxPercent === "number") {
 		usedPercent = clampPercent(core.ctxPercent);
 		usedTokens = typeof core.ctxTokens === "number" ? core.ctxTokens : null; // pct-only basis: no mixed paren
+		ctxWindow = coreWindow > 0 ? coreWindow : hostContextWindow;
 	} else if (typeof core.ctxTokens === "number") {
-		const win = coreWindow > 0 ? coreWindow : hostContextWindow;
-		usedPercent = win > 0 ? clampPercent((core.ctxTokens / win) * 100) : null;
+		ctxWindow = coreWindow > 0 ? coreWindow : hostContextWindow;
+		usedPercent = ctxWindow > 0 ? clampPercent((core.ctxTokens / ctxWindow) * 100) : null;
 		usedTokens = core.ctxTokens;
 	} else {
+		// No core ctx basis at all: the WHOLE group (pct + tokens + window)
+		// switches to tracker + hostWindow — a valid coreWindow is display
+		// data for the unused basis and must not become the denominator.
 		usedPercent = hostContextWindow > 0 && tracker.used > 0 ? clampPercent((tracker.used / hostContextWindow) * 100) : null;
 		usedTokens = tracker.used > 0 ? tracker.used : null;
+		ctxWindow = hostContextWindow;
 	}
 	return {
 		cost: core.cost,
 		usedPercent,
 		usedTokens,
-		contextWindow: coreWindow > 0 ? coreWindow : hostContextWindow,
+		contextWindow: ctxWindow,
 		totalInput: core.input,
 		totalOutput: core.output,
 		structured: { input: core.input, output: core.output, cacheRead: core.cacheRead, tps: core.tps ?? 0 },

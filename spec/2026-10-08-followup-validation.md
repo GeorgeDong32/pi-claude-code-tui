@@ -103,3 +103,13 @@ core 用户决策为 D3=A / D4=B / D6=B。TUI 当前不依赖 readCoreStatus；�
 ## 7. 本轮规格复核记录
 
 2026-10-08 独立只读复核通过：U-F1 已由复核者用当前真实函数再次复现，修复规则正确；J-USAGE 的现有覆盖与新增要求区分清楚，原已完成任务没有重复派发。完整结论见 [core 配对复核记录](../../pi-claude-code-core/spec/2026-10-08-followup-execution.md#6-本轮规格复核记录)。此结论不表示本批修复或真实终端验收已经执行。
+
+## 8. 执行记录（本仓 agent，2026-10-08）
+
+### U-F1 已关闭
+
+- 红基线：U-F1a（helper 精确输入）与 U-F1b（session 渲染 + JSON）先红（contextWindow 返回 1M）后绿；U-F1c 组合表同步钉住。
+- 修复：`selectDisplayUsage` 的 ctx 选择改为整组结果 `{usedPercent, usedTokens, contextWindow}`——core percent → core tokens → tracker+hostWindow 整组回退（coreWindow 不再混入第三分支的分母）；cost/累计独立口径不变，真实零保持。
+- 验证：npm test 275 passed / 0 skipped（基线 272 + U-F1a/b/c），typecheck 退出 0。
+- 独立只读审查：ACCEPT（审查者用 git show HEAD 旧版实证先红后绿；MINOR=U-F1b 补 cumulative-only→complete-ctx 同 session 切换断言，已补入）。
+- 文档：CHANGELOG（含 710c9c7/1bf9b7f 漏记的 step 2 条目）、双语 ARCHITECTURE 模块表已同步。
