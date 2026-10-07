@@ -140,3 +140,21 @@ file; badge overlapping wide CJK output.
 - [ ] workflow 底栏：wrapper 行右侧 "usage on child rows"、phase 行（`● Tasks · …`）、完成 lane `✓ name · complete · 8s · ↓ N window · M spent`。
 - [ ] **async widget**（`subagent-async` 下方面板，多开后台任务时可见）：CC 视觉语言——`● subagents · background` 头、树连接符 `├─/└─`、detail 行 CC `⎿` gutter、折叠态单行 `● subagents (N/M running, …)`；`/claude-tui off` 后回到原生 `⠋ Async agents · background` 形态。极窄终端（<22 行）下是原生渐进卡片（v1 已知降级，见 spec/notes/async-surface-plan.md）。
 - [ ] 对应 async 树被 Fleet 完整覆盖时折叠（coverage），不完整时保持双显——中途 resize/展开不应闪烁丢行。
+
+## 11. Lifecycle fixes (spec 2026-10-07 P0-1) — OPEN, not yet executed on a real terminal
+
+These are the host-timing/visual counterparts of the automated
+`test/entry-lifecycle.test.ts` / statusline runner suites.
+
+- [ ] **`pi -p "hello"` output has no thinking tip** and the print session
+      writes no `cc-tui/observation-packed` entry (check the session file
+      afterwards). Broken looks like: the one-time "ctrl+t toggles collapsed
+      thinking" tip appearing in `-p` output, or packed rows in child sessions.
+- [ ] **TUI `/reload` round-trip**: after `/reload`, a repeatable core
+      configuration warning still displays (isolated test config — see the
+      P0-2 joint protocol in §12; do not assume a CLI flag name).
+- [ ] **`/claude-tui off → on`**: header/editor/status widget all return; no
+      duplicate thinking tip; packed rows and notifications behave.
+- [ ] **Shutdown cleanliness**: quit pi after a run — no lingering
+      statusline child processes (`ps` while a slow custom script would have
+      been in flight) beyond the TERM→KILL window.

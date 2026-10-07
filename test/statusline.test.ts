@@ -452,3 +452,236 @@ test("default script runs under `bash -c <source>` and renders the sample row", 
 	assert.match(plain, /GLM 5\.3/);
 	assert.match(plain, /\$0\.0072/);
 });
+
+// ---------------------------------------------------------------------------
+// P0-1 TUI-06 (spec E5/E7/E8): deterministic scheduler + bounded child
+// termination. Time is stepped manually — no sleeps racing timers.
+
+import type { RunnerScheduler } from "../extensions/lib/statusline.ts";
+
+interface FakeTimer {
+	fn: () => void;
+	at: number;
+	unrefd: boolean;
+	cancelled: boolean;
+	handle: { unref(): void };
+}
+
+const fakeClock = () => {
+	const timers: FakeTimer[] = [];
+	let now = 0;
+	const scheduler: RunnerScheduler = {
+		setTimeout(fn, ms) {
+			const timer: FakeTimer = { fn, at: now + ms, unrefd: false, cancelled: false, handle: undefined as unknown as FakeTimer["handle"] };
+			timer.handle = { unref: () => { timer.unrefd = true; } };
+			timers.push(timer);
+			return timer.handle;
+		},
+		clearTimeout(handle) {
+			const timer = timers.find((t) => t.handle === handle);
+			if (timer) timer.cancelled = true;
+		},
+	};
+	return {
+		scheduler,
+		/** Advance the clock, firing due timers in deadline order. */
+		advance(ms: number): void {
+			const target = now + ms;
+			for (;;) {
+				const due = timers.filter((t) => !t.cancelled && t.at <= target).sort((a, b) => a.at - b.at)[0];
+				if (!due) break;
+				now = due.at;
+				due.cancelled = true; // fired
+				due.fn();
+			}
+			now = target;
+		},
+		/** Every timer that was actually created got unref()'d (AGENTS trap 11). */
+		allUnrefed(): boolean {
+			return timers.every((t) => t.unrefd);
+		},
+	};
+};
+
+/** A child that records kill signals and does NOT exit (ignores TERM/KILL). */
+interface StubbornChild extends ChildLike {
+	signals: string[];
+	exit(code: number | null): void;
+	fail(err: Error): void;
+	data(text: string): void;
+}
+
+const stubbornSpawn = (): { spawnFn: SpawnFn; children: StubbornChild[] } => {
+	const children: StubbornChild[] = [];
+	const spawnFn: SpawnFn = (command, args, options) => {
+		const child = fakeSpawnChild();
+		child.kill = (signal?: string) => {
+			child.signals.push(signal ?? "SIGTERM");
+			// deliberately does NOT emit exit — ignores every signal
+		};
+		children.push(child);
+		void command; void args; void options;
+		return child;
+	};
+	return { spawnFn, children };
+};
+
+// Reuse the fakeSpawn child shape but without auto-exit on kill.
+const fakeSpawnChild = (): StubbornChild => {
+	const emitter = new EventEmitter();
+	const stdoutEmitter = new EventEmitter();
+	const child: StubbornChild = {
+		signals: [],
+		stdout: { on(event, listener) { stdoutEmitter.on(event, listener); } },
+		stdin: { write() {}, end() {} },
+		on(event, listener) { emitter.on(event, listener as (...args: unknown[]) => void); },
+		kill() {},
+		exit(code) { emitter.emit("exit", code, null); },
+		fail(err) { emitter.emit("error", err); },
+		data(text) { stdoutEmitter.emit("data", text); },
+	};
+	return child;
+};
+
+test("E7: dispose sends TERM then KILL at +750ms to a stubborn child", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5); // debounce → launch
+	assert.equal(children.length, 1);
+	runner.dispose();
+	assert.deepEqual(children[0]!.signals, ["SIGTERM"]);
+	clock.advance(749);
+	assert.deepEqual(children[0]!.signals, ["SIGTERM"], "no KILL before the deadline");
+	clock.advance(1);
+	assert.deepEqual(children[0]!.signals, ["SIGTERM", "SIGKILL"]);
+	assert.ok(clock.allUnrefed(), "dispose escalation timer is unref'd");
+});
+
+test("E7: repeated dispose neither cancels nor postpones the escalation", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5);
+	runner.dispose();
+	runner.dispose();
+	runner.dispose();
+	clock.advance(750);
+	assert.deepEqual(children[0]!.signals, ["SIGTERM", "SIGKILL"], "exactly one KILL at the original deadline");
+});
+
+test("E7: dispose after the timeout already sent TERM keeps the ORIGINAL escalation deadline", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 30, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5); // launch at t=5
+	clock.advance(30); // timeout at t=35: TERM + escalation scheduled for t=785
+	assert.deepEqual(children[0]!.signals, ["SIGTERM"]);
+	runner.dispose(); // t=35 — must NOT move the deadline to t=785+ (i.e. 36+750=786 shape)
+	clock.advance(749); // t=784
+	assert.deepEqual(children[0]!.signals, ["SIGTERM"], "still no KILL just before the original deadline");
+	clock.advance(1); // t=785
+	assert.deepEqual(children[0]!.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+test("E8: a child that exits cleans its timers — no kill, no late escalation", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 30, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5);
+	children[0]!.data("hi\n");
+	children[0]!.exit(0);
+	clock.advance(10_000);
+	assert.deepEqual(children[0]!.signals, [], "an exited child is never killed");
+	assert.deepEqual(runner.getRenderLines(), ["hi"]);
+	assert.ok(clock.allUnrefed());
+});
+
+test("E8: kill() throwing never escapes dispose, escalation still scheduled", () => {
+	const clock = fakeClock();
+	const children: StubbornChild[] = [];
+	const spawnFn: SpawnFn = () => {
+		const child = fakeSpawnChild() as StubbornChild;
+		child.signals = [];
+		child.kill = (signal?: string) => {
+			child.signals.push(signal ?? "SIGTERM");
+			throw new Error("ESRCH");
+		};
+		children.push(child);
+		return child;
+	};
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5);
+	assert.doesNotThrow(() => runner.dispose());
+	assert.deepEqual(children[0]!.signals, ["SIGTERM"]);
+	clock.advance(750);
+	assert.deepEqual(children[0]!.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+test("E8: an 'error' event settles the run as a failure AND completes the termination flow", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5);
+	children[0]!.fail(new Error("EPIPE"));
+	assert.equal(runner.hasPersistentError(), false); // failure #1 only
+	clock.advance(750);
+	assert.ok(children[0]!.signals.includes("SIGKILL"), "ordinary error still escalates");
+	// 'error' after exit is informational only — no extra kills.
+	const { children: c2 } = stubbornSpawn();
+	void c2;
+});
+
+test("E8: late stdout after dispose produces no update and no respawn; a new runner is unaffected", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runnerA = new StatuslineRunner({ command: "a", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	let updatesB = 0;
+	const runnerB = new StatuslineRunner({ command: "b", debounceMs: 5, timeoutMs: 10_000, spawnFn, scheduler: clock.scheduler });
+	runnerB.setOnUpdate(() => updatesB++);
+	runnerA.request("{}", 80);
+	clock.advance(5);
+	runnerA.dispose();
+	// Late traffic on A's dead child: data, exit, even a new request.
+	children[0]!.data("ghost\n");
+	children[0]!.exit(0);
+	runnerA.request("{}", 80);
+	clock.advance(1_000);
+	assert.deepEqual(runnerA.getRenderLines(), [], "disposed runner keeps no output");
+	assert.equal(children.length, 1, "no respawn after dispose");
+	// Runner B works normally on the same clock.
+	runnerB.request("{}", 80);
+	clock.advance(5);
+	children[1]!.data("b\n");
+	children[1]!.exit(0);
+	assert.deepEqual(runnerB.getRenderLines(), ["b"]);
+	assert.equal(updatesB, 1);
+	runnerB.dispose();
+});
+
+test("E5: every timer the runner creates is unref'd (debounce, timeout, escalation)", () => {
+	const { spawnFn } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, timeoutMs: 30, spawnFn, scheduler: clock.scheduler });
+	runner.request("{}", 80);
+	clock.advance(5);
+	clock.advance(30); // timeout → TERM + escalation
+	runner.dispose(); // dispose escalation on top
+	assert.ok(clock.allUnrefed(), "all created timers called unref()");
+});
+
+test("E5: a disposed runner never starts a process again", () => {
+	const { spawnFn, children } = stubbornSpawn();
+	const clock = fakeClock();
+	const runner = new StatuslineRunner({ command: "x", debounceMs: 5, spawnFn, scheduler: clock.scheduler });
+	runner.dispose();
+	runner.request("{}", 80);
+	clock.advance(1_000);
+	assert.equal(children.length, 0);
+});

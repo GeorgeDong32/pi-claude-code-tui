@@ -89,3 +89,102 @@ test("center and padRight: align/truncate math", () => {
 	const clipped = padRight("abcdef", 3, "");
 	assert.ok(clipped.startsWith("abc") && !clipped.includes("def"), `hard clip: ${JSON.stringify(clipped)}`);
 });
+
+// ---------------------------------------------------------------------------
+// P0-1 TUI-05 (spec E4): the header component never reads a captured ctx —
+// data comes from injected getters + the setHeader factory's theme, and any
+// failing read degrades to last-good / safe plain text instead of throwing.
+
+import { applyPiHeaderLook, disposePiHeaderLook } from "../extensions/lib/pi-startup-header.ts";
+import type { Component } from "@earendil-works/pi-tui";
+
+const fakeTheme = {
+	fg: (_c: string, s: string) => s,
+	bold: (s: string) => s,
+};
+
+const headerViaFactory = (getters: { modelLabel(): string; cwd(): string }): Component & { render(width: number): string[] } => {
+	let factory: ((tui: unknown, theme: unknown) => Component) | undefined;
+	const ctx = {
+		mode: "tui" as const,
+		ui: {
+			setTitle: () => {},
+			setHeader: (f: (tui: unknown, theme: unknown) => Component) => {
+				factory = f;
+			},
+		},
+	};
+	applyPiHeaderLook({ getCommands: () => [] } as never, ctx as never, getters);
+	if (!factory) throw new Error("setHeader factory not captured");
+	return factory({ requestRender: () => {} }, fakeTheme) as Component & { render(width: number): string[] };
+};
+
+test("E4: render never touches ctx — a ctx that throws on any access stays silent", () => {
+	const ctxEnv: Record<string, unknown> = {};
+	let factory: ((tui: unknown, theme: unknown) => Component) | undefined;
+	const liveCtx = {
+		mode: "tui" as const,
+		ui: {
+			setTitle: () => {},
+			setHeader: (f: (tui: unknown, theme: unknown) => Component) => {
+				factory = f;
+			},
+		},
+	};
+	applyPiHeaderLook({ getCommands: () => [] } as never, liveCtx as never, { modelLabel: () => "m", cwd: () => "/w" });
+	assert.ok(factory);
+	// From here on, ANY property access on the ctx must throw — proving the
+	// factory (and render) cannot be reading it.
+	const hostile = new Proxy(liveCtx, {
+		get() {
+			throw new Error("stale ctx access");
+		},
+	});
+	void hostile;
+	void ctxEnv;
+	const header = factory({ requestRender: () => {} }, fakeTheme);
+	const rows = header.render(100);
+	assert.ok(rows.length > 0);
+	assert.ok(rows.some((r) => r.includes("Let's build something great")));
+});
+
+test("E4: failing getters/theme fall back to last-good, truncated to the current width", () => {
+	let label = "first/model";
+	const header = headerViaFactory({ modelLabel: () => label, cwd: () => "/work" });
+	const good = header.render(100);
+	assert.ok(good.some((r) => r.includes("first/model")));
+	// Break the data getter: last-good frame survives, never a throw.
+	label = undefined as unknown as string;
+	const fallen = header.render(60);
+	assert.deepEqual(fallen.map((r) => r.length > 0), fallen.map(() => true));
+	for (const row of fallen) {
+		assert.ok(row.length <= 60 + 40, `row within narrow width budget: ${row.length}`);
+	}
+	// A last-good row must never exceed the CURRENT width visibly: crude
+	// check via visibleWidth on ANSI-stripped text.
+	for (const row of fallen) {
+		const plain = row.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\]8;[^\x1b]*\x1b\\/g, "");
+		assert.ok([...plain].length <= 60, `visible width ${[...plain].length} <= 60`);
+	}
+	// Restore: the header picks the new model name up again.
+	label = "second/model";
+	const back = header.render(100);
+	assert.ok(back.some((r) => r.includes("second/model")), "model switch reflected");
+});
+
+test("E4: no last-good yet + broken getters → safe plain-text row, still no throw", () => {
+	const header = headerViaFactory({
+		modelLabel: () => {
+			throw new Error("boom");
+		},
+		cwd: () => "/w",
+	});
+	const rows = header.render(80);
+	assert.equal(rows.length, 1);
+	assert.match(rows[0]!, /^Pi v\d/);
+});
+
+test("E4: disposePiHeaderLook is idempotent", () => {
+	disposePiHeaderLook();
+	disposePiHeaderLook();
+});

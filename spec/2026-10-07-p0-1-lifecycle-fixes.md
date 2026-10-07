@@ -150,3 +150,15 @@ E1 / E2 / E4 / E7 在当前代码上应为红，提交前确认并记录。计�
 - `extensions/lib/subagent-presentation.ts:423`
 - `extensions/lib/statusline.ts:221-235, 264-307`
 - `git show b652fe0 -- extensions/claude-code-tui.ts`
+
+---
+
+## 8. 实施记录（2026-10-07）
+
+状态：自动化部分已实施（commit 见 git log）；真机验证项保持 open（docs/manual-verification.md §11）。
+
+- §4.1/§4.2/§4.3/§4.4 全部落地：非 TUI 守卫回到 `session_start` 与 `enable()` 开头；`teardownSession(ctx, "disable"|"shutdown")` 按 8 步顺序逐项容错；启动头改为 `HeaderDataGetters` + setHeader 工厂 theme + last-good 回退（宽度截断）；statusline 计时器全部 unref，dispose 走 TERM→750ms KILL，保留既有升级截止时间。
+- 事件 handler（before/compact/compact_failed/message_end/model_select/agent_start/agent_settled/session_tree）均补 `if (!enabled) return;` 守卫。
+- 顺手并入 P3-1 的 D7（stdin 写 `activeInput`）与 D5 注释（macrotask 尽力排序说明 + generation/native 检查），D5 的真实宿主顺序取证仍未做，保持 todo。
+- 测试：`test/entry-lifecycle.test.ts`（E1/E2/E2b/E3/E6/E6b/E6c，真实 factory 接线）、`test/pi-startup-header.test.ts`（E4 ×3）、`test/statusline.test.ts`（E5/E7/E8 ×10，注入 `RunnerScheduler` 可控时钟 + 忽略信号的 fake child）。红基线已取证：stash 生产代码后 E1–E6c 7 红、E4 3 红、E7/E8 7 红；修复后 211 测试全绿 + tsc 0 错。
+- 边界确认：KILL 保证范围仅 runner 直接 child（`bash -c`），不声称回收脚本自衍生的后台进程树；非 TUI 模式零注册面之外的行为（resolver/entry renderer/markdown transformer 加载期注册保留，resolver 原样 `next()`）。

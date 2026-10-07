@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed (lifecycle, spec 2026-10-07 P0-1)
+- Non-TUI sessions (`pi -p`, subagent children) are stock again: a guard lost in 1.9.0's packed-events commit let print/RPC sessions declare cctui presence, start bus consumers, install prototype patches, patch the editor, and run statusline scripts.
+- `session_shutdown` now releases everything (presence, subagent bridge, obs consumer, statusline runner, run state, editor timer, startup header, prototype patches, stale ctx refs) — a residual presence key used to silence core's notifications/working line forever after `/reload`.
+- Startup header no longer reads a captured ctx inside render (the one violation of AGENTS traps 1/3): data comes from entry-maintained getters + the setHeader factory's theme; any failing read degrades to a last-good frame truncated to the current width.
+- Statusline runner: every timer is `unref()`d, `dispose()` runs a bounded SIGTERM → 750ms SIGKILL escalation for the in-flight child (previously it cancelled the kill escalation and only sent TERM — scripts trapping TERM survived), repeated dispose keeps the original deadline, `error` events complete the termination flow instead of pretending the child exited, and stdin is fed the launch-time input (`activeInput`) rather than the mutable latest.
+- Footer requeue macrotask is generation-guarded and cancelled at teardown; a firing after `/claude-footer on` or a session switch can no longer reinstall a dead widget.
+
 ## 1.9.0 (2026-10-06)
 
 ### Added (subagent presentation decoupling, spec 2026-10-05-cc-tui-subagent-presentation)

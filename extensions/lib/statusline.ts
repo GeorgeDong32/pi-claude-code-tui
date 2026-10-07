@@ -150,6 +150,28 @@ export type SpawnFn = (
 const realSpawn: SpawnFn = (command, args, options) =>
 	spawn(command, args, { ...options, stdio: ["pipe", "pipe", "ignore"] }) as unknown as ChildLike;
 
+/**
+ * Injectable timer source (spec P0-1 §4.4): tests step time deterministically
+ * instead of sleeping; the default is the real clock. Every handle the runner
+ * creates is `unref?.()`d (AGENTS trap 11) — the statusline must never hold
+ * the host's event loop open.
+ */
+export interface RunnerTimerHandle {
+	unref?(): void;
+}
+
+export interface RunnerScheduler {
+	setTimeout(fn: () => void, ms: number): RunnerTimerHandle;
+	clearTimeout(handle: RunnerTimerHandle | null): void;
+}
+
+const realScheduler: RunnerScheduler = {
+	setTimeout: (fn, ms) => setTimeout(fn, ms) as unknown as RunnerTimerHandle,
+	clearTimeout: (handle) => {
+		if (handle) clearTimeout(handle as NodeJS.Timeout);
+	},
+};
+
 export interface StatuslineRunnerOptions {
 	/** Shell command; run via `bash -c`, JSON on stdin. */
 	command: string;
@@ -162,6 +184,7 @@ export interface StatuslineRunnerOptions {
 	/** Stop collecting stdout past this (default 64KB) so a runaway script cannot balloon memory. */
 	maxOutputBytes?: number;
 	spawnFn?: SpawnFn;
+	scheduler?: RunnerScheduler;
 }
 
 const DEFAULTS = { debounceMs: 250, timeoutMs: 2000, maxLines: 4, maxOutputBytes: 64 * 1024 };
@@ -173,6 +196,24 @@ export function splitStatuslineOutput(out: string, maxLines: number): string[] {
 	return lines.slice(0, maxLines);
 }
 
+/**
+ * Bookkeeping for the one in-flight child. Every late callback (exit, error,
+ * stdout) closes over THIS record — it can never touch a newer run's state,
+ * and dispose's escalation keeps its own deadline independently of what the
+ * runner does next (spec P0-1 §4.4).
+ */
+interface RunHandle {
+	child: ChildLike;
+	/** Display side settled (exit or error): no further updates for this run. */
+	settled: boolean;
+	/** SIGTERM already sent (timeout or dispose path). */
+	termSent: boolean;
+	/** Initial timeout timer (TERM phase). */
+	timeout: RunnerTimerHandle | null;
+	/** TERM→KILL escalation timer; its deadline is never reset by dispose. */
+	escalation: RunnerTimerHandle | null;
+}
+
 export class StatuslineRunner {
 	private readonly command: string;
 	private readonly debounceMs: number;
@@ -180,14 +221,14 @@ export class StatuslineRunner {
 	private readonly maxLines: number;
 	private readonly maxOutputBytes: number;
 	private readonly spawnFn: SpawnFn;
+	private readonly scheduler: RunnerScheduler;
 
 	private onUpdate: (() => void) | null = null;
 	private lines: string[] = [];
 	private errorLine: string | null = null;
 	private consecutiveFailures = 0;
-	private timer: NodeJS.Timeout | null = null;
-	private child: ChildLike | null = null;
-	private killTimer: NodeJS.Timeout | null = null;
+	private timer: RunnerTimerHandle | null = null;
+	private run: RunHandle | null = null;
 	private pendingAfterInFlight = false;
 	private lastInput = "";
 	private lastWidth = 0;
@@ -206,6 +247,7 @@ export class StatuslineRunner {
 		this.maxLines = options.maxLines ?? DEFAULTS.maxLines;
 		this.maxOutputBytes = options.maxOutputBytes ?? DEFAULTS.maxOutputBytes;
 		this.spawnFn = options.spawnFn ?? realSpawn;
+		this.scheduler = options.scheduler ?? realScheduler;
 	}
 
 	/** Called after each completed run so the host can requestRender(). */
@@ -222,13 +264,13 @@ export class StatuslineRunner {
 		if (this.disposed) return;
 		this.lastInput = input;
 		this.lastWidth = width;
-		if (this.child) {
+		if (this.run) {
 			this.pendingAfterInFlight = true;
 			return;
 		}
 		if (input === this.servedInput && width === this.servedWidth && this.timer === null) return;
-		if (this.timer) clearTimeout(this.timer);
-		this.timer = setTimeout(() => {
+		if (this.timer) this.scheduler.clearTimeout(this.timer);
+		this.timer = this.schedule(() => {
 			this.timer = null;
 			this.launch();
 		}, this.debounceMs);
@@ -244,21 +286,53 @@ export class StatuslineRunner {
 		return this.errorLine !== null;
 	}
 
+	/**
+	 * Terminal teardown (spec P0-1 §4.4). Idempotent: a second dispose never
+	 * cancels or postpones a live escalation. The in-flight child gets the
+	 * bounded termination flow — SIGTERM now, SIGKILL at most 750ms later —
+	 * with the escalation callback holding ONLY this run's record. If the
+	 * normal timeout already entered the TERM→KILL phase, its original
+	 * deadline stands. Scope: the direct child only; independent background
+	 * processes a script detached are not claimed (best-effort under a live
+	 * event loop, not a synchronous wait).
+	 */
 	dispose(): void {
+		if (this.disposed) return;
 		this.disposed = true;
 		if (this.timer) {
-			clearTimeout(this.timer);
+			this.scheduler.clearTimeout(this.timer);
 			this.timer = null;
 		}
-		if (this.killTimer) {
-			clearTimeout(this.killTimer);
-			this.killTimer = null;
+		this.pendingAfterInFlight = false;
+		this.onUpdate = null;
+		const run = this.run;
+		this.run = null;
+		if (!run || run.settled) return; // nothing in flight / child already exited
+		if (run.escalation) return; // TERM→KILL already running: keep its deadline
+		if (!run.termSent) {
+			run.termSent = true;
+			try {
+				run.child.kill(); // SIGTERM
+			} catch {
+				// kill() throwing must never escape dispose; the escalation
+				// below is still scheduled — do not treat the child as reaped.
+			}
 		}
-		if (this.child) {
-			const child = this.child;
-			this.child = null;
-			child.kill();
-		}
+		run.escalation = this.schedule(() => {
+			run.escalation = null;
+			try {
+				run.child.kill("SIGKILL");
+			} catch {
+				// already gone
+			}
+		}, 750);
+	}
+
+	/** setTimeout + unref through the injected scheduler. */
+	private schedule(fn: () => void, ms: number): RunnerTimerHandle {
+		const handle = this.scheduler.setTimeout(fn, ms);
+		handle.unref?.();
+		return handle;
 	}
 
 	private launch(): void {
@@ -275,60 +349,101 @@ export class StatuslineRunner {
 			this.settle(`spawn: ${(err as Error).message}`);
 			return;
 		}
-		this.child = child;
+		const run: RunHandle = { child, settled: false, termSent: false, timeout: null, escalation: null };
+		this.run = run;
 
 		// Collect raw buffers and decode once at settle: streaming chunks can
 		// split a UTF-8 sequence mid-way (mojibake), a single concat cannot.
 		const chunks: Buffer[] = [];
 		let bytes = 0;
-		let settled = false;
 		let timedOut = false;
+		const clearRunTimers = (): void => {
+			if (run.timeout) {
+				this.scheduler.clearTimeout(run.timeout);
+				run.timeout = null;
+			}
+			if (run.escalation) {
+				this.scheduler.clearTimeout(run.escalation);
+				run.escalation = null;
+			}
+		};
 		const finish = (reason: string) => {
-			if (settled) return;
-			settled = true;
-			this.settle(reason, Buffer.concat(chunks).toString("utf8"));
+			// A late exit after an earlier settle still clears any
+			// error-path escalation ("child exited → no further kill").
+			clearRunTimers();
+			if (run.settled) return;
+			run.settled = true;
+			if (this.run === run) this.run = null;
+			this.settle(timedOut ? "timeout" : reason, Buffer.concat(chunks).toString("utf8"));
 		};
 
-		this.killTimer = setTimeout(() => {
+		run.timeout = this.schedule(() => {
 			timedOut = true;
-			try {
-				child.kill(); // SIGTERM first
-			} catch {
-				// already gone — exit/error event settles the run
-			}
-			// Escalate: a script that traps SIGTERM must not hang the slot.
-			this.killTimer = setTimeout(() => {
+			run.timeout = null;
+			// Schedule the escalation BEFORE sending TERM: with a child whose
+			// exit event resolves synchronously (tests, some platforms) the
+			// exit path must find and clear a real deadline, never miss one.
+			run.escalation = this.schedule(() => {
+				run.escalation = null;
+				if (run.settled) return;
 				try {
 					child.kill("SIGKILL");
 				} catch {
 					// already gone
 				}
 			}, 750);
+			if (!run.termSent) {
+				run.termSent = true;
+				try {
+					child.kill(); // SIGTERM first
+				} catch {
+					// already gone — exit/error settles the run
+				}
+			}
 		}, this.timeoutMs);
 
 		child.stdout?.on("data", (chunk) => {
+			if (this.disposed || run.settled) return; // late data after dispose: dropped
 			const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
 			bytes += buf.length;
 			if (bytes > this.maxOutputBytes) return; // stop collecting, keep what we have
 			chunks.push(buf);
 		});
 		child.on("exit", (code) => {
-			if (this.killTimer) {
-				clearTimeout(this.killTimer);
-				this.killTimer = null;
-			}
-			finish(timedOut ? "timeout" : code === 0 ? "ok" : `exit ${code ?? "?"}`);
+			finish(code === 0 ? "ok" : `exit ${code ?? "?"}`);
 		});
 		child.on("error", (err) => {
-			if (this.killTimer) {
-				clearTimeout(this.killTimer);
-				this.killTimer = null;
-			}
+			// An 'error' event is NOT an exit: the process may never have
+			// spawned (ENOENT) or may still be alive. Settle the display
+			// side, then run the bounded termination flow — killing an
+			// already-dead child is a harmless no-op, skipping it for a
+			// live one is the leak this prevents (spec P0-1 §4.4). An
+			// error arriving AFTER exit is informational only.
+			const settledBefore = run.settled;
 			finish(`error: ${err.message}`);
+			if (settledBefore) return;
+			if (!run.termSent) {
+				run.termSent = true;
+				try {
+					child.kill(); // SIGTERM
+				} catch {
+					// already gone
+				}
+			}
+			if (run.escalation === null) {
+				run.escalation = this.schedule(() => {
+					run.escalation = null;
+					try {
+						child.kill("SIGKILL");
+					} catch {
+						// already gone
+					}
+				}, 750);
+			}
 		});
 
 		try {
-			child.stdin?.write(this.lastInput);
+			child.stdin?.write(this.activeInput);
 			child.stdin?.end();
 		} catch {
 			// EPIPE racing a fast-exiting script — the exit event still settles
@@ -336,7 +451,6 @@ export class StatuslineRunner {
 	}
 
 	private settle(reason: string, out = ""): void {
-		this.child = null;
 		if (this.disposed) return;
 		// What completed is what the child was fed at launch — NOT lastInput,
 		// which may have moved on while the child was in flight.

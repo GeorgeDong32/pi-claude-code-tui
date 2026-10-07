@@ -73,7 +73,7 @@ src/                        # 空目录残留（无文件，勿引用）
 
 1. **`render()` / `updateDisplay()` 里绝不能抛异常**。渲染回调在 pi 无法捕获的调用栈里执行，抛了整个 pi 直接挂。所有容错（prefs 读失败、脚本失败、主题缺失）都吞掉并降级。
 2. **渲染热路径上不要 spawn、不要全量重扫**。每帧被调用的 render 只读缓存：会话用量靠 `UsageTracker`（`message_end` 时重算一次），statusline 是事件驱动 + 250ms debounce + in-flight 合并，每帧最多触发一次宽度变化检测。
-3. **`ctx` / `ctx.ui.theme` 会过期**。session 替换或 `/reload` 后旧 ctx 失效。不要在 enable 时捕获 theme 存闭包长期用；要么每帧从当前 ctx 取，要么像 `cc-compaction-row.ts` 那样传 `getFg()` 惰性读取。
+3. **`ctx` / `ctx.ui.theme` 会过期**。session 替换或 `/reload` 后旧 ctx 失效。不要在 enable 时捕获 theme 存闭包长期用；要么每帧从当前 ctx 取，要么像 `cc-compaction-row.ts` 那样传 `getFg()` 惰性读取。启动头（`pi-startup-header.ts`）也不例外：render 只能读入口注入的 getter 和 `setHeader` 工厂参数里的 theme，不能访问 ctx。
 4. **prototype patch 必须幂等**。用 `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。现存的 patch 只剩压缩行 / skill 行 / 用户消息条——工具行已改走官方 `pi.registerToolRenderer` 通道（1.8.0 起），不再依赖 patch。
 5. **工具行走官方渲染器通道（pi ≥ 1.0.1）**：`pi.registerToolRenderer` 的 resolver 只能在加载段注册、逐组件构造求值；让路必须原样返回 `next()`（吞掉会剥夺内置/他人渲染器）。头图、编辑器仍是单占位槽、后写者胜。与其他 TUI 扩展共存的策略是 auto 让路（`pi.getAllTools()` 源元数据探测——`next()` 无法区分内置渲染器与他人注册）+ `/claude-tools on` 强制接管 + `FORCE_RESULT_EXEMPT`（pi-subagents 的 live 卡等不折叠）。
 6. **加载顺序不可假设**。本包可能在 core / 其他扩展之前加载，`enable` 时探测不到后加载者。所有探测点都要有重试：`readPmStatus()` 每次调用幂等重试订阅核心总线，会话事件里再补一次。

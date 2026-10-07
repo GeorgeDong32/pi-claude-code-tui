@@ -2,7 +2,26 @@ import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-wor
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { readEffortLevel } from "./host-status.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { formatCwd, formatModelLabel } from "./format.ts";
+import { formatCwd } from "./format.ts";
+
+/**
+ * Live data getters for the startup header (spec P0-1 TUI-05, decision N4):
+ * the header must never read a captured ctx inside render — ctx goes stale
+ * after session replace/reload and any access throws uncaught (AGENTS trap
+ * 3). The entry supplies modelLabel (maintained by enable/model_select) and
+ * a cwd snapshot; render falls back to the last-good frame when any getter
+ * or the theme fails.
+ */
+export interface HeaderDataGetters {
+	modelLabel(): string;
+	cwd(): string;
+}
+
+/** Minimal theme surface the header paints with (duck-typed host Theme). */
+export interface HeaderTheme {
+	fg(color: string, s: string): string;
+	bold(s: string): string;
+}
 
 const LOGO_CELL = "███";
 const LOGO_ANIMATION_INTERVAL_MS = 120;
@@ -186,13 +205,19 @@ class PiStartupHeader implements Component {
 	// runner cannot parse `private readonly x` constructor params, and the
 	// pure half of this module is unit-tested via node --test.
 	private readonly pi: ExtensionAPI;
-	private readonly ctx: ExtensionContext;
 	private readonly tui: TUI;
+	/** Theme handed to the setHeader factory by the host (fresh per factory call). */
+	private readonly theme: HeaderTheme;
+	/** Live model/cwd getters — never a captured ctx (P0-1 TUI-05). */
+	private readonly getters: HeaderDataGetters;
+	/** Last frame that rendered without throwing, for render() fallback. */
+	private lastGood: string[] = [];
 
-	constructor(pi: ExtensionAPI, ctx: ExtensionContext, tui: TUI) {
+	constructor(pi: ExtensionAPI, tui: TUI, theme: HeaderTheme, getters: HeaderDataGetters) {
 		this.pi = pi;
-		this.ctx = ctx;
 		this.tui = tui;
+		this.theme = theme;
+		this.getters = getters;
 		const pool = collectPiCommandNames(this.pi.getCommands());
 		this.tipCommands = pickSlashCommandTips(pool, {
 			fixed: ["claude-tui"],
@@ -211,7 +236,24 @@ class PiStartupHeader implements Component {
 	}
 
 	render(width: number): string[] {
-		const theme = this.ctx.ui.theme;
+		// AGENTS trap 1: render must never throw. Every injected dependency
+		// (theme, getters) is read inside this try — a stale/broken one
+		// degrades to the last-good frame truncated to the CURRENT width
+		// (a wider stale frame would corrupt the layout), or to a safe
+		// plain-text row when no good frame exists yet.
+		try {
+			this.lastGood = this.renderFrame(width);
+			return this.lastGood;
+		} catch {
+			if (this.lastGood.length > 0) {
+				return this.lastGood.map((line) => truncateToWidth(line, width, ""));
+			}
+			return [truncateToWidth(`Pi v${VERSION}`, width, "")];
+		}
+	}
+
+	private renderFrame(width: number): string[] {
+		const theme = this.theme;
 		const paint = (s: string) => theme.fg("accent", s);
 		const muted = (s: string) => theme.fg("muted", s);
 		const dim = (s: string) => theme.fg("dim", s);
@@ -221,9 +263,9 @@ class PiStartupHeader implements Component {
 
 		const innerWidth = width - 2;
 		const { leftWidth, rightWidth, useTips } = headerColumnWidths(innerWidth);
-		const model = formatModelLabel(this.ctx.model);
+		const model = this.getters.modelLabel();
 		const effort = readEffortLevel(this.pi) ?? "off";
-		const cwd = formatCwd(this.ctx.cwd);
+		const cwd = formatCwd(this.getters.cwd());
 
 		const leftLines = [
 			...piLogoFrame(this.frame, paint).map((line) => center(line, leftWidth)),
@@ -271,13 +313,17 @@ class PiStartupHeader implements Component {
  * Apply the Pi-look startup header (animated logo + "Let's build something
  * great" + model/effort/cwd + tips sidebar). Extracted from the upstream
  * standalone extension for use inside the combined CC-TUI extension.
+ *
+ * P0-1 TUI-05: the header component never sees ctx — the factory theme
+ * parameter (host-provided per setHeader call, pi >= 1.0.1) and the entry's
+ * live getters are the only data sources.
  */
-export function applyPiHeaderLook(pi: ExtensionAPI, ctx: ExtensionContext): void {
+export function applyPiHeaderLook(pi: ExtensionAPI, ctx: ExtensionContext, getters: HeaderDataGetters): void {
 	if (ctx.mode !== "tui") return;
 
 	ctx.ui.setTitle("Pi");
-	ctx.ui.setHeader((tui) => {
-		const header = new PiStartupHeader(pi, ctx, tui);
+	ctx.ui.setHeader((tui, theme) => {
+		const header = new PiStartupHeader(pi, tui, theme, getters);
 		activeHeader = header;
 		return header;
 	});

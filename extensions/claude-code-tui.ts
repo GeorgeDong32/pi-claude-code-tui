@@ -66,7 +66,7 @@ import {
 	StatuslineRunner,
 } from "./lib/statusline.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./lib/statusline-default-script.ts";
-import { buildCompletionLine, effortBadgeSymbol, formatDuration } from "./lib/format.ts";
+import { buildCompletionLine, effortBadgeSymbol, formatDuration, formatModelLabel } from "./lib/format.ts";
 import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
 import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
 import {
@@ -239,6 +239,10 @@ export default function (pi: ExtensionAPI) {
 	let currentModelName = "";
 	let currentProviderName = "";
 	let currentContextWindow = 0;
+	// Header data getters (P0-1 TUI-05/N4): the startup header never reads a
+	// captured ctx — the entry keeps these live via enable/model_select.
+	let headerModelLabel = "Default model";
+	let headerCwd = process.cwd();
 
 	// --- Editor: flat rules + gold ❯ + blinking bar cursor (CodexStyleEditor,
 	// lib/claude-tui-editor.ts) ---
@@ -583,10 +587,19 @@ export default function (pi: ExtensionAPI) {
 			// microtask is NOT enough — the extension runner's per-handler
 			// awaits flush the microtask queue before the next extension's
 			// session_start runs.
+			// P0-1: best-effort ordering only — a macrotask is not guaranteed
+			// to land after every async handler or a later widget update
+			// (XPKG-09-HOST records the assumption); the callback re-checks
+			// the session generation and the footer mode so a stale fire
+			// after teardown/native-switch cannot reinstall a dead widget.
+			const requeueGeneration = sessionGeneration;
+			if (footerRequeueTimer) clearTimeout(footerRequeueTimer);
 			const requeue = setTimeout(() => {
-				if (enabled) setStatusWidget(ctx);
+				footerRequeueTimer = null;
+				if (enabled && sessionGeneration === requeueGeneration && !showNativeFooter) setStatusWidget(ctx);
 			}, 0);
 			requeue.unref?.();
+			footerRequeueTimer = requeue;
 		}
 	};
 
@@ -703,6 +716,15 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	const enable = (ctx: ExtensionContext) => {
+		// P0-1 TUI-03: the whole replica (UI, presence, subscriptions, bridge,
+		// patches, external processes) is TUI-only — print/RPC sessions keep
+		// stock rendering and zero footprint. Loading-time registrations
+		// (resolver, entry renderer, markdown transformer) are unaffected.
+		if (ctx.mode !== "tui") return;
+		// A fresh session_start while a previous context is still live (/new,
+		// /resume without a shutdown in between): release the old one first
+		// through the shared teardown so nothing leaks across sessions.
+		if (enabled) teardownSession(ctx, "shutdown");
 		enabled = true;
 		latestCtx = ctx;
 		// DC5b: activate = publish the capability + start consuming core's
@@ -717,6 +739,8 @@ export default function (pi: ExtensionAPI) {
 		currentModelName = ctx.model?.name || ctx.model?.id || "";
 		currentProviderName = ctx.model?.provider || "";
 		currentContextWindow = ctx.model?.contextWindow || 0;
+		headerModelLabel = formatModelLabel(ctx.model);
+		headerCwd = ctx.cwd;
 		// Tool rows: explicit choice wins; otherwise auto-detect. Detection
 		// runs here (not at load) so every extension has registered already.
 		// TUI-only: print/RPC modes keep stock rendering. The resolver channel
@@ -736,7 +760,7 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 		}
-		channelActive = true; // TUI session active (non-TUI enable returned above)
+		channelActive = true; // TUI session active (enable returned early otherwise)
 		// Presentation seam: probe → register (or re-register on late hosts).
 		// Bounded handshake; no host means native roster stays — never blank.
 		try {
@@ -747,7 +771,10 @@ export default function (pi: ExtensionAPI) {
 		patchCompactionRow(() => themeFg);
 		patchSkillRow(() => themeFg);
 		applyUserBarPatch();
-		applyPiHeaderLook(pi, ctx);
+		applyPiHeaderLook(pi, ctx, {
+			modelLabel: () => headerModelLabel,
+			cwd: () => headerCwd,
+		});
 		setEditor(ctx);
 		applyFooterMode(ctx);
 		applyWorking(ctx);
@@ -761,39 +788,77 @@ export default function (pi: ExtensionAPI) {
 		if (statuslineWidth > 0) refreshStatusline();
 	};
 
-	const disable = (ctx: ExtensionContext) => {
-		enabled = false;
-		channelActive = false; // resolver yields stock renderers from now on
-		subagentBridge.stop(); // withdraw the CC adapters; native roster returns
-		stopObsSavingsConsumer();
-		withdrawCcTuiCapability();
-		teardownStatusline();
-		runState.halt();
-		if (ctx.mode !== "tui") return;
-		disposePiHeaderLook();
+	// --- Shared teardown (P0-1 TUI-04) ---------------------------------------
+	// disable (user off) and session_shutdown (session end) both release every
+	// resource the replica owns, in this order (spec §4.2). Every step is
+	// individually contained: one throwing must never block the rest, and
+	// teardown itself must never throw into the host event handler.
+	let sessionGeneration = 0;
+	let footerRequeueTimer: NodeJS.Timeout | null = null;
+	const teardownStep = (label: string, fn: () => void): void => {
 		try {
-			(ctx.ui as { setWorkingVisible?: (v: boolean) => void }).setWorkingVisible?.(true);
-			ctx.ui.setHiddenThinkingLabel(); // restore pi's default label
+			fn();
 		} catch {
-			/* older pi */
+			// A failing release step is logged nowhere by design (render/event
+			// paths must stay silent) — the remaining steps still run.
+			void label;
 		}
-		ctx.ui.setHeader(undefined);
-		ctx.ui.setEditorComponent(undefined);
-		activeEditor?.release(); // spec 8.1: disable releases the blink timer too
-		activeEditor = null;
-		// spec 8.3: withdraw our prototype rewrites (only the ones we still
-		// own) so /claude-tui off restores stock rendering.
-		restoreCompactionRow();
-		restoreSkillRow();
-		restoreUserBarPatch();
+	};
+	const teardownSession = (ctx: ExtensionContext, reason: "disable" | "shutdown"): void => {
+		void reason; // (both reasons release identically; disable adds slot restore)
+		// Gate re-entrant setup FIRST: generation invalidates every late
+		// callback (footer requeue, bridge handshakes) from this session.
+		enabled = false;
+		channelActive = false;
+		sessionGeneration++;
+		if (footerRequeueTimer) {
+			clearTimeout(footerRequeueTimer);
+			footerRequeueTimer = null;
+		}
+		teardownStep("subagent-bridge", () => subagentBridge.stop());
+		teardownStep("obs-savings", () => stopObsSavingsConsumer());
+		teardownStep("cc-tui-presence", () => withdrawCcTuiCapability());
+		teardownStep("statusline", () => teardownStatusline());
+		teardownStep("run-state", () => runState.halt());
+		teardownStep("editor", () => {
+			activeEditor?.release();
+			activeEditor = null;
+		});
+		teardownStep("header", () => {
+			disposePiHeaderLook();
+			if (ctx.mode === "tui") ctx.ui.setHeader(undefined);
+		});
+		teardownStep("compaction-row", () => restoreCompactionRow());
+		teardownStep("skill-row", () => restoreSkillRow());
+		teardownStep("user-bar", () => restoreUserBarPatch());
+		// Drop stale session references so a late closure cannot reach a
+		// replaced session through latestCtx/dockTui.
+		teardownStep("stale-refs", () => {
+			latestCtx = null;
+			dockTui = null;
+			headerModelLabel = "Default model";
+			headerCwd = process.cwd();
+		});
+	};
+
+	const disable = (ctx: ExtensionContext) => {
+		teardownSession(ctx, "disable");
+		if (ctx.mode !== "tui") return;
+		// UI slot restore (spec N2): shutdown skips this — the next session's
+		// enable re-owns the slots, and restoring them during exit is noise.
+		teardownStep("working-visible", () => {
+			(ctx.ui as { setWorkingVisible?: (v: boolean) => void }).setWorkingVisible?.(true);
+		});
+		teardownStep("thinking-label", () => ctx.ui.setHiddenThinkingLabel());
+		teardownStep("editor-component", () => ctx.ui.setEditorComponent(undefined));
 		// Replica fully off: relinquish the footer slot (restores pi's
 		// built-in footer). Single-occupancy caveat still applies, but an
 		// explicit off means the user wants stock pi back.
-		ctx.ui.setFooter(undefined);
-		ctx.ui.setWidget("cc-status", undefined);
-		ctx.ui.setWidget("cc-footer", undefined);
-		ctx.ui.setWorkingIndicator();
-		ctx.ui.setWorkingMessage();
+		teardownStep("footer-slot", () => ctx.ui.setFooter(undefined));
+		teardownStep("cc-status-widget", () => ctx.ui.setWidget("cc-status", undefined));
+		teardownStep("cc-footer-widget", () => ctx.ui.setWidget("cc-footer", undefined));
+		teardownStep("working-indicator", () => ctx.ui.setWorkingIndicator());
+		teardownStep("working-message", () => ctx.ui.setWorkingMessage());
 	};
 
 	// (The Plan/Auto mode system was removed — pi-permission-modes owns mode
@@ -806,8 +871,8 @@ export default function (pi: ExtensionAPI) {
 	// also reshapes the context picture, so both events re-run the statusline
 	// script (data is cached — one debounced spawn, not a scan).
 	pi.on("session_before_compact", async (_event, ctx) => {
-		refreshStatusline();
 		if (!enabled) return;
+		refreshStatusline();
 		spinnerPaint = accentFg(ctx);
 		runState.startCompaction();
 		// pi shows its native indicator row before this event fires; mute it
@@ -822,18 +887,23 @@ export default function (pi: ExtensionAPI) {
 		hush(4);
 	});
 	pi.on("session_compact", async (_event, ctx) => {
+		if (!enabled) return;
 		runState.stopCompaction();
 		observeUsageEvent(ctx, true);
 		refreshStatusline();
 	});
 	pi.on("session_compact_failed", async () => {
+		if (!enabled) return;
 		runState.stopCompaction();
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		// P0-1 TUI-03: non-TUI sessions (pi -p, subagent children) keep the
+		// stock experience — no usage observation, no bus retries, no enable.
+		if (ctx.mode !== "tui") return;
 		observeUsage(ctx);
 		// Retry point for the DC5b subscription (core may have published its
-		// bus only now — enable-time often misses, cctui loads before core).
+		// bus only now — enable-time often misses; BOTH load orders occur).
 		startCoreNotificationConsumer(displayCoreNotification);
 		startObsSavingsConsumer(appendPackedEntry);
 		enable(ctx); // enable()'s tail ensures/refreshes the statusline (TUI only)
@@ -849,22 +919,27 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("message_end", async (_event, ctx) => {
+		if (!enabled) return;
 		observeUsage(ctx);
 		refreshStatusline();
 	});
 
 	pi.on("model_select", async (event, _ctx) => {
+		if (!enabled) return;
 		currentModelName = event.model?.name || event.model?.id || "";
 		currentProviderName = event.model?.provider || "";
 		currentContextWindow = event.model?.contextWindow || 0;
+		headerModelLabel = formatModelLabel(event.model);
 		refreshStatusline();
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
+		if (!enabled) return;
 		startRun(ctx);
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
+		if (!enabled) return;
 		endRun(ctx);
 		// Post-append guarantee (spec 8.2): the final assistant message is in
 		// the branch by the time the run settles — no follow-up user message
@@ -876,16 +951,19 @@ export default function (pi: ExtensionAPI) {
 	// compaction both replace what getBranch() returns — recompute, never
 	// carry stale totals across.
 	pi.on("session_tree", async (_event, ctx) => {
+		if (!enabled) return;
 		observeUsageEvent(ctx, true);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		runState.halt();
-		teardownStatusline();
-		activeEditor?.release(); // spec 8.1: no blink timer outlives the session
+		// P0-1 TUI-04: full teardown — presence withdrawn (a residual key
+		// silences core's fallback forever), subscriptions dropped, patches
+		// restored, header disposed, runner halted. UI slot restore is
+		// disable-only; the next session re-owns the slots.
+		teardownSession(ctx, "shutdown");
 		if (ctx.mode === "tui") {
-			ctx.ui.setWorkingIndicator();
-			ctx.ui.setEditorComponent(undefined);
+			teardownStep("working-indicator", () => ctx.ui.setWorkingIndicator());
+			teardownStep("editor-component", () => ctx.ui.setEditorComponent(undefined));
 		}
 	});
 
