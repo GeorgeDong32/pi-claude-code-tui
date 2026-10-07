@@ -78,10 +78,12 @@ export const snapshotOf = (store: Record<string, unknown>): CoreSnapshotLike | u
  * token when present, else the register closure (stable per bus instance).
  * null = v1 / not identifiable → do not subscribe.
  */
+const INSTANCE_TYPES = new Set(["string", "number", "bigint", "symbol"]);
+
 export const busIdentityOf = (snapshot: CoreSnapshotLike | undefined): unknown => {
 	if (!snapshot) return null;
 	const instance = snapshot.instance;
-	if (instance != null && (typeof instance === "object" || ["string", "number", "bigint", "symbol"].includes(typeof instance))) {
+	if (instance != null && (typeof instance === "object" || INSTANCE_TYPES.has(typeof instance))) {
 		return instance;
 	}
 	return typeof snapshot.onChange === "function" ? snapshot.onChange : null;

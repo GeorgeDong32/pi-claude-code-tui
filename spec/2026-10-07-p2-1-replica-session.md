@@ -137,3 +137,7 @@ render 委托不得增加每帧分配：沿用现有缓存，renderStatusRow 每
 ### 审查修复批（同日）
 
 独立审查（生命周期轴）发现 1 个 P1：`onCompactionEnd/onCompactionFailed` 的 enabled 门把 `stopCompaction()` 也挡掉——压缩在 off 期间结束时 `compacting` 残留，off→on 后状态行永久卡在 "Compacting context…"。已修复：`stopCompaction()` 无条件执行（与旧入口一致），仅 usage/statusline 部分保持门控。同批修复：toggle 在非 TUI 不再谎报 enabled；`onSessionStart` 的 `coreBus.retry()` 容错包裹、branch-scan 移到 enable 之后（避免 re-enable 的 onDetach 清掉刚扫描的 keys）；enable 失败回滚加 console.warn（响亮守卫策略）；`enabling` 状态按 §4.2 字面补上；P0-2 client 的 register 调用容错（订阅失败保持可重试）+ busIdentityOf 类型表外提（热路径零分配）+ mcpDisplayName 的 direct-servers Set 按环境串缓存；删除 pi-startup-header 的模块级 apply/dispose 双所有权（测试改为直接构造）；pm-capability 过时注释改写；session_start 的 schema 刷新加 enabled 门。
+
+### 复修复核（re-review 后补丁）
+
+复审发现 458c119 的 busIdentityOf 类型表外提因替换脚本中途断言失败而**实际未落盘**（提交信息与上一段记录虚报——正是本仓记忆中「python 批量替换静默失败」事故模式，复审抓住）。现已真实落地（INSTANCE_TYPES 模块级 Set）。同批：enable 回滚日志对非 Error 抛出物加固（`.message ?? String`）；ARCHITECTURE 中英里 pi-startup-header 的 `applyPiHeaderLook` 导出引用改为 `PiStartupHeader`；manual-verification 的 P1-2 条目移到正确的 §12.5 位置。复审结论 ACCEPT（11/12 当轮已修，第 12 项即本补丁）。

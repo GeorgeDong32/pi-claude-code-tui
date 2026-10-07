@@ -257,7 +257,8 @@ export class ReplicaSession {
 			// (including the presence) and stay retryable. Loud, like the
 			// other register-time guards — a permanently failing enable must
 			// not be invisible.
-			console.warn(`[claude-tui] enable failed and rolled back: ${(error as Error).message}`);
+			const reason = (error as Error | null | undefined)?.message ?? String(error);
+			console.warn(`[claude-tui] enable failed and rolled back: ${reason}`);
 			try {
 				this.release(ui);
 			} catch {

@@ -33,7 +33,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行（经 pi-proto-adapter 生命周期）；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`restoreCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
 | `lib/cc-skill-row.ts` | 把原生 `[skill]` 盒子补丁成 CC 式 `⏺ Skill(name)` 行（经 pi-proto-adapter）；展开块复用 cc-rows 的 gutter-wrap（字节钉死），保留原生点击展开 | `patchSkillRow`、`restoreSkillRow` | `cc-skill-row.test.ts`（含字节级展开块断言） |
 | `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused、unref、release 幂等——spec 8.1）、补全面板弹到框上方 | `CodexStyleEditor` | `claude-tui-editor.test.ts`（timer 生命周期）+ 人工验证 |
-| `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏；header 布局宽度与 tips 选取纯函数同居于此（唯一使用者） | `applyPiHeaderLook`、`headerColumnWidths`、`pickSlashCommandTips` | `pi-startup-header.test.ts`（布局/tips 表测） |
+| `lib/pi-startup-header.ts` | Pi-look 启动头：13 帧动画 logo、"Let's build something great"、模型/effort/cwd、tips 侧栏；header 布局宽度与 tips 选取纯函数同居于此（唯一使用者） | `PiStartupHeader`、`headerColumnWidths`、`pickSlashCommandTips` | `pi-startup-header.test.ts`（布局/tips 表测） |
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | 内置默认脚本的 TS 内联副本（运行时无文件锚点，见 §8） | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts`（与 scripts/ 字节同步） |
 | `lib/status-snapshot.ts` | `UsageTracker`：按 USAGE_OBSERVATION_POINTS 采样（agent_settled 保证最终值、session_tree/compact 失效——spec 8.2） | `UsageTracker`、`USAGE_OBSERVATION_POINTS` | `status-snapshot.test.ts` |

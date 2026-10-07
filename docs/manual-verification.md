@@ -176,7 +176,7 @@ These are the host-timing/visual counterparts of the automated
       `exa_search` (with the env allowlist set) renders `exa - search (MCP)`;
       bare `mcp` without a resolvable target renders unbadged.
 
-### 13.0 Running status row shows no duplicate numbers (spec 2026-10-07 P1-2) — OPEN
+## 12.5 Usage numbers shown once (spec 2026-10-07 P1-2) — OPEN
 
 - [ ] During a run with core publishing workingStats, the cc-status row shows
       cost and ctx% exactly once: while the statusline script has output the
