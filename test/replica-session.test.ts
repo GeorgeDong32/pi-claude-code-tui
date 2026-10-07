@@ -386,3 +386,34 @@ test("usage points keep the tracker fed (P1-2 holder matrix uses the numbers)", 
 		h.dispose();
 	}
 });
+
+test("review-P1: compaction ending while disabled never sticks the compacting row", () => {
+	const h = setupSession();
+	try {
+		h.session.enable(h.slots);
+		h.session.onCompactionStart(h.slots);
+		let rows = h.session.renderStatusRow(120, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, { requestRender: () => {} });
+		assert.ok(rows.join("\n").includes("Compacting context…"), "compacting while enabled");
+		// /claude-tui off MID-COMPACTION, then the end event lands while off.
+		h.session.disable(h.slots);
+		h.session.onCompactionEnd(h.slots);
+		h.session.onCompactionFailed(); // idempotent
+		// on again: the row must NOT be stuck on "Compacting context…".
+		h.session.enable(h.slots);
+		rows = h.session.renderStatusRow(120, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, { requestRender: () => {} });
+		assert.ok(!rows.join("\n").includes("Compacting context…"), "compaction state cleared across off→on");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("review-fix: toggle in a non-TUI session reports disabled", () => {
+	const h = setupSession();
+	try {
+		const rpc = makeSlots("rpc", h.rec);
+		assert.equal(h.session.toggle(rpc), false, "enable no-ops → not enabled");
+		assert.deepEqual(h.rec.events, []);
+	} finally {
+		h.dispose();
+	}
+});
