@@ -195,7 +195,7 @@ function twoColumn(
 	return `${padRight(left, leftWidth)} ${paint("│")} ${padRight(right, rightWidth, "…")}`;
 }
 
-class PiStartupHeader implements Component {
+export class PiStartupHeader implements Component {
 	private frame = 0;
 	private readonly timer: NodeJS.Timeout;
 	/** Cached once so logo animation frames don't reshuffle tip commands. */

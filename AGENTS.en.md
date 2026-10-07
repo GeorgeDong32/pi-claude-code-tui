@@ -47,6 +47,7 @@ extensions/
     statusline-default-script.ts  # TS inline copy of the bundled default script (byte-synced with scripts/)
     status-snapshot.ts      #   UsageTracker: session usage snapshot (recomputed per event, cached per frame)
     core-bus.ts             #   core-bus client (P0-2): single subscription owner for three channels — ownership presence / handoff baselines / bus-change detection / generation; footer channel cache
+    replica-session.ts      #   ReplicaSession (P2-1): the lifecycle controller — mutable state / enable-stop order / generation / render delegates / command state; the entry only wires
     tool-summary.ts         #   schema-driven generic tool-arg summaries (P1-1 R2: preferred fields + required string)
     pm-capability.ts        #   permission-modes status consumer (pure read chain, never subscribes) + core notification tail-queue adapter
     prefs.ts                #   ~/.pi/agent/claude-tui.json read-modify-write (atomic)

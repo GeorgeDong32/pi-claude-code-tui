@@ -47,6 +47,7 @@ extensions/
     statusline-default-script.ts  # 内置默认脚本的 TS 内联副本（与 scripts/ 字节同步）
     status-snapshot.ts      #   UsageTracker：会话用量快照（每事件重算，供每帧读缓存）
     core-bus.ts             #   core-bus client（P0-2）：三通道唯一订阅所有者——在场/交接基线/bus 更换检测/generation；footer 通道缓存
+    replica-session.ts      #   ReplicaSession（P2-1）：生命周期控制器——可变状态/启停顺序/generation/render 委托/命令态；入口只做接线
     tool-summary.ts         #   schema 驱动的通用工具参数摘要（P1-1 R2：preferred 字段 + required string）
     pm-capability.ts        #   permission-modes 状态消费端（纯读链）+ 核心通知尾队列 adapter
     prefs.ts                #   ~/.pi/agent/claude-tui.json 读改写（原子）

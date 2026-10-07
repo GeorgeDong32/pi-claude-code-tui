@@ -37,6 +37,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/statusline.ts` | CC 兼容 statusline：JSON 合成、badge 数学、一次性子进程 runner、footer 行组合 | `buildStatuslineJson`、`composeFooterLines`、`StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | 内置默认脚本的 TS 内联副本（运行时无文件锚点，见 §8） | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts`（与 scripts/ 字节同步） |
 | `lib/status-snapshot.ts` | `UsageTracker`：按 USAGE_OBSERVATION_POINTS 采样（agent_settled 保证最终值、session_tree/compact 失效——spec 8.2） | `UsageTracker`、`USAGE_OBSERVATION_POINTS` | `status-snapshot.test.ts` |
+| `lib/replica-session.ts` | ReplicaSession（P2-1）：入口隐藏生命周期控制器的唯一家——19 项可变状态、enable/disable/shutdown 顺序、generation、render 委托（last-good 截断）、命令态变更；入口只留加载期注册与事件路由 | `ReplicaSession`、`UiSlots` | `replica-session.test.ts` |
 | `lib/core-bus.ts` | core-bus client（spec P0-2）：通知尾队列 / observation sites / display.footer 三个通道的唯一订阅所有者——在场声明带所有权、交接基线（B3 游标 / B5 sites 基线）、bus 实例更换检测（instance 优先，回退 onChange 闭包身份）、generation 失效旧回调 | `createCoreBusClient`、`createFooterChannel` | `core-bus.joint.test.ts`（真实 core 联测） |
 | `lib/pm-capability.ts` | permission-modes 状态消费端（版本化能力通道 → 总线快照 → 遗留键的降级链，纯读，永不订阅）+ 通知尾队列 adapter（B3 游标差分） | `readPmStatus`、`createNotificationAdapter` | `pm-capability.test.ts` |
 | `lib/obs-savings.ts` | OBS-09-SITES adapter：per-site 去重（全元组 key、会话/branch 域、branch 扫描重建）；callback 失败标记已尝试 | `createObsAdapter`、`readObsSites` | `obs-savings.test.ts` |
@@ -59,8 +60,15 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 
 ```
 load（jiti）
-  ├─ 注册命令：claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline
+  ├─ 注册命令：claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline（handler 只路由到 ReplicaSession）
+  ├─ registerToolRenderer resolver（读 session.toolRowsDecisionInput()，见 §4）
+  ├─ registerEntryRenderer(cc-tui/observation-packed)
   └─ registerMarkdownTransformer（assistant 纯文本强制白色；user 消息 CC 式全宽灰条）
+
+生命周期状态与顺序归 lib/replica-session.ts（P2-1）：入口事件 handler 全部是
+`session.onXxx(ctx)` 一行路由；enable 顺序 = core-bus activate（在场/交接基线）
+→ 模型信息 → 工具行判定 → bridge start → 补丁 → header → editor → footer 模式
+→ working → thinking tip → statusline，任一步失败整体回滚。
 
 session_start → enable(ctx)
   ├─ 工具行模式判定（见 §4）

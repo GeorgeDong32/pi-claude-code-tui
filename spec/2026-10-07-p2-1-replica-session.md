@@ -121,3 +121,15 @@ render 委托不得增加每帧分配：沿用现有缓存，renderStatusRow 每
 ## 7. 代码依据
 
 `extensions/claude-code-tui.ts:141-797, 799-992`、`extensions/lib/run-state.ts`、`extensions/lib/subagent-presentation.ts`
+
+---
+
+## 8. 实施记录（2026-10-07）
+
+状态：已实施；自动化绿（262 tests / tsc 0 错 / golden 零改动）；真机条目沿用 docs/manual-verification.md 既有清单（§13 等，仍 open）。
+
+- §4.1 interface 全量落地（class + 构造注入，S1/S2/S3/S4-B：先搬状态与生命周期，同批搬入 render 体与命令态——两步在单一提交内完成，因为 render 体依赖已搬入的状态，分批反而引入转发层）。入口 1034 → 364 行。
+- §4.2 内部规则逐条落实：非 TUI 直接返回；enable 顺序按规格；disable/shutdown 共享私有 release（disable 追加槽位恢复）；release 的每步独立 try/catch；enable 整体 try/catch → 回滚（含 presence）→ 可重试；inactive 状态下重复 disable/shutdown 短路；generation 检查 footer requeue 与晚到回调；render 委托整体 try/catch + last-good 按当前宽度截断（status 无缓存回 []，footer 回 [""]）；状态写权集中在 class，入口零副本（删除测试：入口不再持有 enabled/channelActive/latestCtx 等任何一份）。
+- **偏差登记**：(a) teardown 步骤 2+3（obs-stop + presence-withdraw）合并为 `coreBusClient.close()` 单步（P0-2 引入统一 client 后的两步合一，顺序不变）；(b) `renderStatusRow/renderFooterRows` 需要额外的 `tui`/`includeHints` 参数（widget 工厂注入 dock 与 hints 开关），签名略宽于 §4.1 草图；(c) run-state 的 tick/verb 经构造注入（规格 clock 项），并补充 `statuslineFactory` 注入（测试用 fake runner，避免真 spawn）。
+- §5.1 矩阵 11 条全绿（rpc 零调用 / 释放序列 / off→on 幂等单 tip / footer 切换 + **D6 专项断言**（native 模式 silence 0 次、blank 模式 ≥1 次）/ auto-yield 单通知 / 模型切换（状态行 name + header provider/id）/ render 毒化不抛 + 降级 / 中途抛错回滚 + 双 shutdown 短路 / requeue 取消零写入 / statusline on-off 工厂 / usage 点位喂入 P1-2 持有者矩阵）。
+- 既有入口级测试（entry-lifecycle / C11 / U-T2 / U-T5）现在全部经过 session 路径仍绿——行为等价的最好证据；golden 套件零改动。

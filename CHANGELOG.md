@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed (architecture, zero visual delta — spec 2026-10-07 P2-1)
+- The entry's hidden lifecycle controller moved into `lib/replica-session.ts` (`ReplicaSession`): all mutable state, the enable/disable/shutdown order (with mid-enable rollback), session generation, the cc-status/cc-footer render delegates (try/caught, last-good truncated to the current width), and the five commands' state changes. The entry (364 lines) keeps only load-time registrations (renderer resolver, packed-entry renderer, markdown transformer, commands) and one-line event routing through a narrow `UiSlots` duck type. Golden render assertions untouched; the entry lifecycle / core-bus / P1-2 suites now run through the session path.
+
 ### Fixed (core-bus client, spec 2026-10-07 P0-2)
 - Notifications lost across load-order/reload windows: subscription ownership for all three core channels (notification tail queue, observation sites, display.footer) moved into one client (`lib/core-bus.ts`) with a presence-declaration handoff baseline (B3 cursor), bus-instance-change detection (`snapshot.instance` preferred, `onChange` closure identity on old cores), generation-invalidated late callbacks, and attach-time consumption of the current snapshot. The reload/startup-window/core-first scenarios from the 2026-10-07 review now show each notification exactly once (joint fixtures drive the REAL core bus/notify/fallback; skipped when the sibling checkout is absent).
 - Packed-row duplicates: observation-site dedupe keys the full tuple (tool/id/toolCallId/avoidedTokens) over the current session/branch domain — a stop→start cycle or an unrelated publish re-delivering the persisted channel no longer duplicates rows; reload/resume rebuilds the seen set from the branch's persisted entries; off-period batches are not back-filled.

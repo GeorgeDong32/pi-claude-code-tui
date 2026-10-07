@@ -37,6 +37,7 @@ themes/claude-code.json         ← theme (pi theme system)
 | `lib/statusline.ts` | CC-compatible statusline: JSON synthesis, badge math, one-shot child-process runner, footer composition | `buildStatuslineJson`, `composeFooterLines`, `StatuslineRunner` | `statusline.test.ts` |
 | `lib/statusline-default-script.ts` | TS inline copy of the bundled default script (no filesystem anchor at runtime, see §8) | `DEFAULT_STATUSLINE_SCRIPT` | `statusline.test.ts` (byte-sync with scripts/) |
 | `lib/status-snapshot.ts` | `UsageTracker`: scans the branch once per `message_end`, caches used/cost/last/total usage | `UsageTracker` | `status-snapshot.test.ts` |
+| `lib/replica-session.ts` | ReplicaSession (P2-1): the single home of the entry's hidden lifecycle controller — the mutable state, enable/disable/shutdown order, generation, render delegates (last-good truncation), command state changes; the entry keeps only load-time registration + event routing | `ReplicaSession`, `UiSlots` | `replica-session.test.ts` |
 | `lib/core-bus.ts` | core-bus client (spec P0-2): the single subscription owner for three channels — notification tail queue, observation sites, display.footer — with ownership-tagged presence, handoff baselines (B3 cursor / B5 sites baseline), bus-instance-change detection (`instance` first, `onChange` closure identity fallback), and generation-invalidated late callbacks | `createCoreBusClient`, `createFooterChannel` | `core-bus.joint.test.ts` (real-core joint fixtures) |
 | `lib/pm-capability.ts` | permission-modes status consumer (versioned capability channel → bus snapshot → legacy-key fallback chain, pure read, never subscribes) + the notification tail-queue adapter (B3 cursor diffing) | `readPmStatus`, `createNotificationAdapter` | `pm-capability.test.ts` |
 | `lib/obs-savings.ts` | OBS-09-SITES adapter: per-site dedupe (full tuple key, session/branch domain, branch-scan rebuild); callback failures mark the batch attempted | `createObsAdapter`, `readObsSites` | `obs-savings.test.ts` |
@@ -56,8 +57,16 @@ The entry factory runs once at extension load, where the **renderer resolver is 
 
 ```
 load (jiti)
-  ├─ register commands: claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline
+  ├─ register commands: claude-tui / claude-tools / claude-footer / claude-verb / claude-statusline (handlers only route into ReplicaSession)
+  ├─ registerToolRenderer resolver (reads session.toolRowsDecisionInput(); see §4)
+  ├─ registerEntryRenderer(cc-tui/observation-packed)
   └─ registerMarkdownTransformer (assistant plain lines forced white; user messages as CC full-width bars)
+
+Lifecycle state and order live in lib/replica-session.ts (P2-1): every entry
+event handler is a one-line `session.onXxx(ctx)` route; enable order = core-bus
+activate (presence/handoff baseline) → model info → tool-row decision → bridge
+start → patches → header → editor → footer mode → working → thinking tip →
+statusline, with a full rollback when any step throws.
 
 session_start → enable(ctx)
   ├─ tool-row mode decision (see §4)
