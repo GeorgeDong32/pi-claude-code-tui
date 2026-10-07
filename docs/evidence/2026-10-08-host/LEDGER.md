@@ -39,10 +39,12 @@ Evidence levels in this ledger: **T** = real terminal (PTY, visible screen),
   cc footer chip are gone; `/claude-tui` (on) restores both; thinking tip
   appears exactly once across the whole cycle (startup only — absent after
   reload AND after re-enable).
-- **d. shutdown kills the in-flight statusline child** (`run/ht1c`, level T):
-  prefs `statusLine.command = "sleep 30; echo …"`; quit (ctrl+c) while the
-  child is in flight; 3s later `ps` shows **no** `sleep 30` survivor — the
-  TERM→KILL escalation works.
+- **d. shutdown kills the in-flight statusline child** (`run/ht1d`, level T):
+  prefs `statusLine.command = "sleep 30; echo slow-done"`; quit (ctrl+c)
+  while the child is in flight; the captured `ps` check 3s later
+  (`run/ht1d/lingering-check.txt`) shows **no** survivor — the TERM→KILL
+  escalation works. Raw PTY capture in `slow-statusline-quit.log`
+  (driver exit=0).
 
 ## H-T2 core tool display — PASS (MCP included)
 
@@ -133,8 +135,12 @@ Level T; goal active (`/goals-set`), mid-turn snapshots in BOTH orders:
 ## Cleanup
 
 Per run: driver ctrl+c → pi exit recorded in the raw log tail
-(`<<<DRIVER exit=0 …>>>`); no lingering statusline/sleep children (H-T1d
-check); `run/*/agent` (incl. credential copies) and the core snapshot were
-deleted after evidence extraction; `run/*/proj` git dirs remain for
-reproduction. `.venv` (pyte) is gitignored and recreatable via
-`uv venv .venv && uv pip install pyte`.
+(`<<<DRIVER exit=0 …>>>`); no lingering statusline/sleep children (captured:
+`run/ht1d/lingering-check.txt`); `run/*/agent` (incl. credential copies) and
+the core snapshot were deleted after evidence extraction (snapshot recipe in
+spec §9); `run/*/proj` git dirs stay LOCAL only (gitignored). Raw `*.log`
+captures are committed alongside the `*ms-*.txt` screen snapshots (the
+evidence dir's `.gitignore` re-includes them against the root `*.log` rule).
+`.venv` (pyte) is gitignored and recreatable via `uv venv .venv && uv pip
+install pyte`. The H-T1a packed-entry check ran live on the session file
+before deletion (0 entries).

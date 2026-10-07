@@ -5,10 +5,10 @@
 │                                               ██████   ███                                                 │ ──────────────────────      │
 │                                               ███      ███                                                 │ Commands                    │
 │                                            ██████████████████                                              │ /claude-tui                 │
-│                                                                                                            │ /core                       │
-│                                        Let's build something great                                         │ /auto                       │
-│                                    CPA/glm/glm-5.3-flash · high effort                                     │ /sisyphus-set               │
-│           ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1c/proj             │                             │
+│                                                                                                            │ /reload                     │
+│                                        Let's build something great                                         │ /claude-footer              │
+│                                    CPA/glm/glm-5.3-flash · high effort                                     │ /goal-note                  │
+│           ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1d/proj             │                             │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 [Extension issues]
   path (temp) ~/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-ff81050/extensions/index.ts
@@ -21,7 +21,7 @@ built-in shortcut. Skipping.
  Fell back to the system theme.
 
  fd not found. Downloading...
- fd installed to /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1c/agent/bin/fd
+ fd installed to /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht1d/agent/bin/fd
 
  Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
 

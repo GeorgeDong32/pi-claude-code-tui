@@ -1,0 +1,2 @@
+ps check at 01:44:19 (~3s after quit):
+(no lingering statusline children — PASS)
