@@ -133,3 +133,7 @@ render 委托不得增加每帧分配：沿用现有缓存，renderStatusRow 每
 - **偏差登记**：(a) teardown 步骤 2+3（obs-stop + presence-withdraw）合并为 `coreBusClient.close()` 单步（P0-2 引入统一 client 后的两步合一，顺序不变）；(b) `renderStatusRow/renderFooterRows` 需要额外的 `tui`/`includeHints` 参数（widget 工厂注入 dock 与 hints 开关），签名略宽于 §4.1 草图；(c) run-state 的 tick/verb 经构造注入（规格 clock 项），并补充 `statuslineFactory` 注入（测试用 fake runner，避免真 spawn）。
 - §5.1 矩阵 11 条全绿（rpc 零调用 / 释放序列 / off→on 幂等单 tip / footer 切换 + **D6 专项断言**（native 模式 silence 0 次、blank 模式 ≥1 次）/ auto-yield 单通知 / 模型切换（状态行 name + header provider/id）/ render 毒化不抛 + 降级 / 中途抛错回滚 + 双 shutdown 短路 / requeue 取消零写入 / statusline on-off 工厂 / usage 点位喂入 P1-2 持有者矩阵）。
 - 既有入口级测试（entry-lifecycle / C11 / U-T2 / U-T5）现在全部经过 session 路径仍绿——行为等价的最好证据；golden 套件零改动。
+
+### 审查修复批（同日）
+
+独立审查（生命周期轴）发现 1 个 P1：`onCompactionEnd/onCompactionFailed` 的 enabled 门把 `stopCompaction()` 也挡掉——压缩在 off 期间结束时 `compacting` 残留，off→on 后状态行永久卡在 "Compacting context…"。已修复：`stopCompaction()` 无条件执行（与旧入口一致），仅 usage/statusline 部分保持门控。同批修复：toggle 在非 TUI 不再谎报 enabled；`onSessionStart` 的 `coreBus.retry()` 容错包裹、branch-scan 移到 enable 之后（避免 re-enable 的 onDetach 清掉刚扫描的 keys）；enable 失败回滚加 console.warn（响亮守卫策略）；`enabling` 状态按 §4.2 字面补上；P0-2 client 的 register 调用容错（订阅失败保持可重试）+ busIdentityOf 类型表外提（热路径零分配）+ mcpDisplayName 的 direct-servers Set 按环境串缓存；删除 pi-startup-header 的模块级 apply/dispose 双所有权（测试改为直接构造）；pm-capability 过时注释改写；session_start 的 schema 刷新加 enabled 门。

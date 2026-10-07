@@ -1,4 +1,4 @@
-import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { readEffortLevel } from "./host-status.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -309,32 +309,12 @@ export class PiStartupHeader implements Component {
 }
 
 
-/**
- * Apply the Pi-look startup header (animated logo + "Let's build something
- * great" + model/effort/cwd + tips sidebar). Extracted from the upstream
- * standalone extension for use inside the combined CC-TUI extension.
- *
- * P0-1 TUI-05: the header component never sees ctx — the factory theme
- * parameter (host-provided per setHeader call, pi >= 1.0.1) and the entry's
- * live getters are the only data sources.
- */
-export function applyPiHeaderLook(pi: ExtensionAPI, ctx: ExtensionContext, getters: HeaderDataGetters): void {
-	if (ctx.mode !== "tui") return;
-
-	ctx.ui.setTitle("Pi");
-	ctx.ui.setHeader((tui, theme) => {
-		const header = new PiStartupHeader(pi, tui, theme, getters);
-		activeHeader = header;
-		return header;
-	});
-}
-
-export function disposePiHeaderLook(): void {
-	activeHeader?.dispose();
-	activeHeader = undefined;
-}
-
-let activeHeader: PiStartupHeader | undefined;
+// Header lifecycle note: since P2-1 the ReplicaSession owns the header
+// instance (it installs the setHeader factory and disposes on release).
+// There is deliberately NO module-level activeHeader/apply/dispose pair
+// here — a second ownership system for one resource was the trap the
+// 2026-10-07 review flagged. Construct PiStartupHeader directly (tests) or
+// through ReplicaSession.applyHeader (production).
 
 // ── Header layout & tips (homed here 2026-10-03 — this module is their only consumer) ──
 

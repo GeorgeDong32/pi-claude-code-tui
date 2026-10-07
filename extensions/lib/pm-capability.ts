@@ -60,10 +60,9 @@ function readLegacyStats(globalStore: Record<string, unknown>): string {
 
 /**
  * Read pm's published status with the full fallback chain — a PURE read:
- * no subscription side effects (2026-10-03; the DC5b retry hook moved to
- * the explicit startCoreNotificationConsumer call sites — entry retries at
- * enable / session_start / render, same idempotent semantics, but the
- * read itself no longer hides an attach).
+ * no subscription side effects. Since P0-2 the subscription lifecycle
+ * lives in lib/core-bus.ts (activate/retry/close); this read never hides
+ * an attach.
  */
 export function readPmStatus(globalStore: Record<string, unknown> = globalThis as never): PmStatus {
 	// DC5: the bus snapshot itself is the primary source (v1+; always-full

@@ -208,8 +208,7 @@ export function createCoreBusClient(options: CoreBusClientOptions = {}): CoreBus
 			const register = snapshot.onChange;
 			if (typeof register !== "function") return false;
 			const gen = ++generation;
-			attachedBusId = id;
-			unsubscribe = register(() => {
+			const listener = (): void => {
 				// Late callbacks from an older bus/generation deliver nothing
 				// and must never read a snapshot belonging to a new session.
 				if (gen !== generation || !active) return;
@@ -219,7 +218,18 @@ export function createCoreBusClient(options: CoreBusClientOptions = {}): CoreBus
 					return;
 				}
 				for (const adapter of adapters) safe(() => adapter.onSnapshot?.(live));
-			});
+			};
+			attachedBusId = id;
+			// Subscribe failures must never reach the host (P0-2 §4.1): stay
+			// detached, invalidate the generation, remain retryable.
+			try {
+				unsubscribe = register(listener);
+			} catch {
+				unsubscribe = null;
+				attachedBusId = null;
+				generation++;
+				return false;
+			}
 			// onChange does NOT replay the current state — consume it now so
 			// the handoff window (presence → attach) is not lost to the next
 			// unrelated publish.

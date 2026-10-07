@@ -95,7 +95,7 @@ test("center and padRight: align/truncate math", () => {
 // data comes from injected getters + the setHeader factory's theme, and any
 // failing read degrades to last-good / safe plain text instead of throwing.
 
-import { applyPiHeaderLook, disposePiHeaderLook } from "../extensions/lib/pi-startup-header.ts";
+import { PiStartupHeader } from "../extensions/lib/pi-startup-header.ts";
 import type { Component } from "@earendil-works/pi-tui";
 
 const fakeTheme = {
@@ -103,46 +103,17 @@ const fakeTheme = {
 	bold: (s: string) => s,
 };
 
-const headerViaFactory = (getters: { modelLabel(): string; cwd(): string }): Component & { render(width: number): string[] } => {
-	let factory: ((tui: unknown, theme: unknown) => Component) | undefined;
-	const ctx = {
-		mode: "tui" as const,
-		ui: {
-			setTitle: () => {},
-			setHeader: (f: (tui: unknown, theme: unknown) => Component) => {
-				factory = f;
-			},
-		},
-	};
-	applyPiHeaderLook({ getCommands: () => [] } as never, ctx as never, getters);
-	if (!factory) throw new Error("setHeader factory not captured");
-	return factory({ requestRender: () => {} }, fakeTheme) as Component & { render(width: number): string[] };
-};
+const headerViaFactory = (getters: { modelLabel(): string; cwd(): string }): Component & { render(width: number): string[] } =>
+	new PiStartupHeader({ getCommands: () => [] } as never, { requestRender: () => {} } as never, fakeTheme, getters) as never;
 
-test("E4: render never touches ctx — a ctx that throws on any access stays silent", () => {
-	const ctxEnv: Record<string, unknown> = {};
-	let factory: ((tui: unknown, theme: unknown) => Component) | undefined;
-	const liveCtx = {
-		mode: "tui" as const,
-		ui: {
-			setTitle: () => {},
-			setHeader: (f: (tui: unknown, theme: unknown) => Component) => {
-				factory = f;
-			},
-		},
-	};
-	applyPiHeaderLook({ getCommands: () => [] } as never, liveCtx as never, { modelLabel: () => "m", cwd: () => "/w" });
-	assert.ok(factory);
-	// From here on, ANY property access on the ctx must throw — proving the
-	// factory (and render) cannot be reading it.
-	const hostile = new Proxy(liveCtx, {
-		get() {
-			throw new Error("stale ctx access");
-		},
+test("E4: the component takes NO ctx at all — construction without any context object", () => {
+	// Since P2-1 the header is constructed with (pi, tui, theme, getters)
+	// only; there is no ctx parameter to go stale. Constructing against
+	// hostile pi/tui/theme objects that throw on exotic access still renders.
+	const header = new PiStartupHeader({ getCommands: () => [] } as never, { requestRender: () => {} } as never, fakeTheme, {
+		modelLabel: () => "first/model",
+		cwd: () => "/w",
 	});
-	void hostile;
-	void ctxEnv;
-	const header = factory({ requestRender: () => {} }, fakeTheme);
 	const rows = header.render(100);
 	assert.ok(rows.length > 0);
 	assert.ok(rows.some((r) => r.includes("Let's build something great")));
@@ -184,7 +155,11 @@ test("E4: no last-good yet + broken getters → safe plain-text row, still no th
 	assert.match(rows[0]!, /^Pi v\d/);
 });
 
-test("E4: disposePiHeaderLook is idempotent", () => {
-	disposePiHeaderLook();
-	disposePiHeaderLook();
+test("E4: dispose (the session's release path) is idempotent", () => {
+	const header = new PiStartupHeader({ getCommands: () => [] } as never, { requestRender: () => {} } as never, fakeTheme, {
+		modelLabel: () => "m",
+		cwd: () => "/w",
+	});
+	header.dispose();
+	header.dispose();
 });

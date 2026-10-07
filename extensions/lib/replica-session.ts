@@ -119,7 +119,7 @@ export interface ReplicaSessionDeps {
 	pickCompletionVerb?: () => string;
 }
 
-type SessionState = "inactive" | "active" | "disposing";
+type SessionState = "inactive" | "enabling" | "active" | "disposing";
 
 const CLAUDE_DIM = "\x1b[38;2;153;153;153m";
 const CLAUDE_WARNING = "\x1b[38;2;255;204;0m";
@@ -252,9 +252,12 @@ export class ReplicaSession {
 		this.ui = ui;
 		try {
 			this.setup(ui);
-		} catch {
+		} catch (error) {
 			// Never enabled with half the UI: roll back everything acquired
-			// (including the presence) and stay retryable.
+			// (including the presence) and stay retryable. Loud, like the
+			// other register-time guards — a permanently failing enable must
+			// not be invisible.
+			console.warn(`[claude-tui] enable failed and rolled back: ${(error as Error).message}`);
 			try {
 				this.release(ui);
 			} catch {
@@ -292,7 +295,7 @@ export class ReplicaSession {
 
 	private setup(ui: UiSlots): void {
 		this.enabled = true;
-		this.sessionState = "active";
+		this.sessionState = "enabling"; // transient — setup is synchronous
 		// P0-2: presence declaration + handoff baseline + subscription in one
 		// synchronous segment (retry points keep it fresh afterwards).
 		this.deps.coreBus.activate();
@@ -319,6 +322,7 @@ export class ReplicaSession {
 		// first run.
 		this.ensureStatuslineRunner();
 		if (this.statuslineWidth > 0) this.refreshStatusline();
+		this.sessionState = "active";
 	}
 
 	/** Shared release (P0-1 §4.2 order; P0-2 folded obs+presence into the client close). */
@@ -382,11 +386,15 @@ export class ReplicaSession {
 		const ui = this.deps.uiOf(ctx);
 		if (ui.mode !== "tui") return;
 		this.observeUsage(ui);
-		// P0-2: rebuild the per-session obs dedupe from the branch's persisted
-		// packed entries (reload/resume), then re-attempt the bus attach.
-		this.slot(ui, "obs-branch-scan", () => this.deps.obsAdapter.resetSeenFromBranch(ui.branch?.() ?? []));
-		this.deps.coreBus.retry();
 		this.enable(ctx);
+		// P0-2: rebuild the per-session obs dedupe from the branch's persisted
+		// packed entries (reload/resume) — AFTER enable so a re-enable's
+		// onDetach wipe cannot discard the scan; the attach baseline union
+		// already covers the snapshot's current sites.
+		this.slot(ui, "obs-branch-scan", () => this.deps.obsAdapter.resetSeenFromBranch(ui.branch?.() ?? []));
+		// Contained: a throwing store getter / register must never reach the
+		// host's session_start dispatch (P0-2 §4.1).
+		this.slot(ui, "core-bus-retry", () => void this.deps.coreBus.retry());
 	}
 
 	/** Usage observation points (spec 8.2 sampling stays in the tracker). */
@@ -441,13 +449,16 @@ export class ReplicaSession {
 	}
 
 	onCompactionEnd(ctx: unknown): void {
-		if (!this.enabled) return;
+		// Compaction state must clear even when the end event lands while
+		// disabled/shutdown (review P2-1 finding 1: the enabled gate left
+		// "Compacting context…" stuck across an off→on cycle — run-state
+		// gates nothing here in the old entry either).
 		this.runState.stopCompaction();
+		if (!this.enabled) return;
 		this.onUsagePoint("session_compact", ctx);
 	}
 
 	onCompactionFailed(): void {
-		if (!this.enabled) return;
 		this.runState.stopCompaction();
 	}
 
@@ -472,7 +483,7 @@ export class ReplicaSession {
 			return false;
 		}
 		this.enable(ctx);
-		return true;
+		return this.isEnabled(); // enable no-ops in non-TUI mode
 	}
 
 	/** /claude-tools on|off|auto; returns the user message. */

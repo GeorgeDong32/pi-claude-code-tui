@@ -291,7 +291,7 @@ export default function (pi: ExtensionAPI) {
 	// --- Event routing (handlers stay thin; the session owns behavior) ---
 	pi.on("session_start", async (_event, ctx) => {
 		session.onSessionStart(ctx);
-		refreshToolSchemas(); // P1-1 R2 (also refreshed inside enable's caller)
+		if (session.isEnabled()) refreshToolSchemas(); // P1-1 R2 — TUI sessions only
 	});
 	pi.on("session_before_compact", async (_event, ctx) => session.onCompactionStart(ctx));
 	pi.on("session_compact", async (_event, ctx) => session.onCompactionEnd(ctx));

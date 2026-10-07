@@ -422,16 +422,22 @@ const MCP_NAME = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)__(.+)$/;
 const MCP_NAME_FALLBACK = /^(?:mcp__|mcp_)([A-Za-z0-9_-]+)_(.+)$/;
 const DIRECT_NAME = /^([a-z][a-z0-9]*)_[a-z][a-z0-9_]*$/i;
 
-/** Core's PI_CORE_MCP_DIRECT_SERVERS allowlist as a lowercase set. */
+/** Core's PI_CORE_MCP_DIRECT_SERVERS allowlist as a lowercase set.
+ * Cached by the raw env string — this read sits on the render hot path. */
+const EMPTY_SERVERS: ReadonlySet<string> = new Set();
+let directServersCache: { raw: string; set: ReadonlySet<string> } | null = null;
 const directKnownServers = (): ReadonlySet<string> => {
 	const raw = process.env.PI_CORE_MCP_DIRECT_SERVERS;
-	if (!raw) return new Set();
-	return new Set(
+	if (!raw) return EMPTY_SERVERS;
+	if (directServersCache?.raw === raw) return directServersCache.set;
+	const set = new Set(
 		raw
 			.split(",")
 			.map((s) => s.trim().toLowerCase())
 			.filter(Boolean),
 	);
+	directServersCache = { raw, set };
+	return set;
 };
 
 export const mcpDisplayName = (name: string, args?: unknown): string | null => {

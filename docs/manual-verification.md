@@ -176,6 +176,16 @@ These are the host-timing/visual counterparts of the automated
       `exa_search` (with the env allowlist set) renders `exa - search (MCP)`;
       bare `mcp` without a resolvable target renders unbadged.
 
+### 13.0 Running status row shows no duplicate numbers (spec 2026-10-07 P1-2) — OPEN
+
+- [ ] During a run with core publishing workingStats, the cc-status row shows
+      cost and ctx% exactly once: while the statusline script has output the
+      numbers live on the script row and the core segment keeps only
+      ↑/↓/R/tok-s; with the statusline disabled/pending/failed the RIGHT group
+      shows them and the core segment drops `$…` / `…% ctx`. A true zero
+      (`$0.000`, `0% ctx`) counts as present (never dropped as "missing").
+      `pi -p`-style sessions and native-footer mode show no extra copies.
+
 ## 13. Core-bus handoff (spec 2026-10-07 P0-2) — OPEN, not yet executed on a real terminal
 
 Automated joint fixtures (`test/core-bus.joint.test.ts`) drive the real core
