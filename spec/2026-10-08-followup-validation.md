@@ -1,7 +1,7 @@
 # TUI 用量边界修复与联合验收规格
 
 日期：2026-10-08
-状态：原 6 份规格的必做实现已落地；本批包含一个新确认的用量缺陷及剩余联合/终端验收。
+状态：原 6 份规格的必做实现已落地；本批包含一个新确认的用量缺陷及剩余联合/终端验收。**2026-10-09 追加批**：H-T2j bare MCP 退化输入验收补齐（PASS）、H-T5 时序因果勘误（宿主源码核验）、经济降级行条件复核（仍 OPEN，结构性不可达已写明）——见 §10 表与 LEDGER 2026-10-09 批章节；配对 core C5 封装收口 revision `c4dab5f`。
 核对基线：TUI `1bf9b7f30c9c13c5d18c129538ca66b9145f34ee`；core `2ebd226189b1edc4fcf502a3638152bbdec2907e`。
 执行入口：[TUI prompt](2026-10-08-execution-prompt.md)；配对 [core 后续规格](../../pi-claude-code-core/spec/2026-10-08-followup-execution.md)。
 
@@ -177,18 +177,22 @@ XPKG-09-HOST 证据由本仓产出（上表+台账），core 任务据此回填�
 | H-T5 双加载序 goal 块/spinner 相邻 | T | PASS | run/ht4a/ht4b（首批） |
 | H-T5 晚挂载 widget（启动后 10s） | T | PASS | run/ht4a（首批） |
 | H-T5 turn 中 goal 块实时更新 | T | PASS | run/ht4a（首批） |
-| H-T5 后挂 session_start 跨 macrotask await | T | **PASS（跟进批补齐）** | run/ht5m-*：handlers 顺序执行、widget 按注册完成序；goal/spinner 相邻性双序保持——边界如实描述,非任意异步保证 |
+| H-T5 后挂 session_start 跨 macrotask await | T | **PASS（跟进批补齐；2026-10-09 因果勘误）** | run/ht5m-* + 宿主源码核验（emit 按扩展加载序逐个 await handler；setWidget 为插入序 Map，重复 set 移到末尾，最后插入者紧贴编辑器）——**原「goal 在 await 期间注册」表述有误**：顺序 await 使后续 handler 在 await 期间不可能启动；probe 位置由加载序决定，await 只改变与定时器延后回调（cctui spinner requeue）的相对次序。双序下真正恒定的是 goal 块在 spinner 槽位之上（goal 同步 remount、spinner 走宏任务）。core-first 截图中 probe 位于状态区与编辑器之间，按边界如实描述，不再笼统称「紧贴编辑器」 |
+| H-T2j bare MCP（name=mcp 退化 args.tool） | T | **PASS（2026-10-09 批补齐）** | run/ht2j-force：缺失/空/不可解析均为通用 JSON 行、无徽标、不误标、不抛错；有效对照正确识别为 `dummy - echo_search (MCP)`；run/ht2j-auto：裸 `mcp` 名按 R5 整体让位宿主 stock 行（auto-yield），参数不丢失；U 级退化输入单测补齐 |
 
 ### 仍 OPEN
 
-- **经济模块降级行（H-T4）**：`probePiCompat` 仅按 `pi<0.87.0` 门控；装配层
-  （core `extensions/index.ts` economy 块）把真实编译期 VERSION 硬穿进工厂，无
-  env/config 覆盖——pi 1.0.2 上无任何生产路径可走降级分支。已尝试：源码核查
-  （probe 输入与装配穿线）、宿主能力面（pi 1.0.2 无 exposure=proxy 等 producer）。
-  恢复条件（精确）：① 任意 pi<0.87 宿主上的 **core-only** 会话（TUI peer 要求
-  pi≥1.0.1,该宿主上 TUI 会话不是有效目标）；② 或 core 侧为 version 输入加测试
-  seam（仅为验收加产品开关已被裁定为反模式,未做）。渲染路径由 joint C6 +
-  composeFooterLines 表测覆盖（U/F 级）。
+- **经济模块降级行（H-T4）**：2026-10-09 对 core `c4dab5f` 复核全部 probe 条件——
+  `probePiCompat` 仅按 `pi<0.87.0` 门控（`lib/pi-compat.ts` MIN_PI_VERSION）；装配层
+  （core `extensions/index.ts` economy 块）把编译期 VERSION 硬穿进工厂，无
+  env/config 覆盖。覆盖现状分层：factory 级降级接线已由 core
+  `compat-degrade.test.ts` 钉住（version 0.85.0 走真实工厂→降级 footer 行）；行的
+  消费渲染由 joint C6 + composeFooterLines 表测覆盖；仍缺的是真机行级（T 级）证据，
+  且当前结构性不可达——TUI 需要 pi≥0.99 的 renderer-resolver API（任何 pi<0.87 宿主
+  都没有，「旧宿主跑 TUI」不是有效目标），core-only 旧宿主会话经 core 自有 fallback
+  显示（非 TUI 行，且已被裁定不能替代），仅为验收加 version seam 已被裁定为反模式。
+  恢复条件：(a) 用户重新裁定接受 version 输入 seam；(b) 未来出现降级分支真实可达且
+  TUI 兼容的宿主面。
 
 ### 其他勘误（本批固化）
 

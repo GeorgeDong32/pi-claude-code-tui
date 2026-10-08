@@ -1,0 +1,40 @@
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Call the tool named mcp exactly four times in a row, no other tools, with EXACTLY these arguments: call 1: {}
+ (completely empty, no tool field at all); call 2: {"tool": ""} (tool is the empty string); call 3: {"tool":
+ "not_a_valid mcp shape 123"}; call 4: {"tool": "mcp__dummy__echo_search", "args": {"note": "control"}}. Then reply
+ with exactly: done
+
+ The user wants me to call the mcp tool exactly four times with specific arguments, no other tools, then reply "done".
+
+ The calls are independent of each other — there are no dependencies between them. The instruction says "in a row" and
+ "no other tools". The system prompt says if multiple tool calls have no dependencies, make them all in the same block.
+
+ Let me make the four calls:
+ 1. {} - completely empty, no tool field
+ 2. {"tool": ""} - empty string tool
+ 3. {"tool": "not_a_valid mcp shape 123"} - invalid tool shape
+ 4. {"tool": "mcp__dummy__echo_search", "args": {"note": "control"}} - valid-ish MCP tool name
+
+ The mcp tool schema requires nothing (required: []), so these all fit. I'll make all four calls in one block since
+ they're independent.
+
+⏺ mcp({})
+  ⎿  probe proxy echo for {}
+
+⏺ mcp({"tool":""})
+  ⎿  probe proxy echo for {"tool":""}
+
+⏺ mcp({"tool":"not_a_valid mcp shape 123"})
+  ⎿  probe proxy echo for {"tool":"not_a_valid mcp shape 123"}
+
+⏺ dummy - echo_search (MCP)(tool=mcp__dummy__echo_search args={"note":"control"})
+  ⎿  probe proxy echo for {"tool":"mcp__dummy__echo_search","args":{"note":"control"}}
+
+ done
+
+✻ Cogitated for 13s · 00:51                                                   GLM 5.3 Flash·high│Ctx 1%(8k/1.0M)│$0.0008
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

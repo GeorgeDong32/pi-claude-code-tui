@@ -287,11 +287,24 @@ statusline JSON through the actual script protocol) — factory-fixture-level
 evidence. H-T1–H-T5 terminal evidence was executed on 2026-10-08 via a PTY
 driver with pyte screen emulation — see the
 [host evidence ledger](evidence/2026-10-08-host/LEDGER.md) (per-item logs and
-visible-screen snapshots). Remaining OPEN: the economy downgrade row (host
+visible-screen snapshots). ~~Remaining OPEN: the economy downgrade row (host
 version gate) and the multi-page obs_recall header (needs a populated
-observation pack). XPKG-09-HOST ordering evidence delivered (both load
+observation pack).~~ **2026-10-08 correction**: the multi-page obs_recall
+header WAS captured in the same-day follow-up (`run/ht2i`:
+`2.3KB · 398 lines · start→+2.3KB · more ▸`) — only the economy downgrade
+row remains OPEN. XPKG-09-HOST ordering evidence delivered (both load
 orders, live widget updates; best-effort semantics described, not a general
 async guarantee).
+
+**2026-10-09 additions** (LEDGER "bare-MCP + widget-order correction"
+batch, core `c4dab5f`): H-T2j — the accurate bare-MCP acceptance (tool
+name exactly `mcp` with `args.tool` missing/empty/unparseable + the valid
+control) executed on the real host in BOTH takeover modes, all PASS;
+H-T5's macrotask causal narrative corrected against the host source (pi
+awaits session_start handlers strictly in load order — nothing registers
+"during" an await; widget stacking is insertion-order with re-set moving
+to the map tail); the economy downgrade row re-verified and kept OPEN
+with structurally-unreachable conditions spelled out.
 
 The pre-existing cross-module reload ownership observation for
 pi-proto-adapter is a separate investigation, not a completed fix or a reason

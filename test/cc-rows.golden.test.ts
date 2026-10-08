@@ -387,6 +387,16 @@ test("R-T4: proxy shape resolves via args.tool; bare mcp without a target is NOT
 	// The proxy target follows the same native/direct parsing rules.
 	assert.equal(mcpDisplayName("mcp", { tool: "mcp__exa__search" }), "exa - search");
 	assert.equal(mcpDisplayName("mcp", { tool: "read" }), null);
+	// 2026-10-09 bare-MCP acceptance (spec follow-up §4B): the degenerate
+	// proxy inputs — tool missing entirely, EMPTY string, null, an unparseable
+	// underscore string, and a near-miss bare prefix — must all fall back to
+	// the generic row (null: no badge, no mislabel, no info loss, no throw).
+	assert.equal(mcpDisplayName("mcp", { args: { q: "tool field absent" } }), null);
+	assert.equal(mcpDisplayName("mcp", { tool: "" }), null);
+	assert.equal(mcpDisplayName("mcp", { tool: null }), null);
+	assert.equal(mcpDisplayName("mcp", { tool: "not_a_valid mcp shape 123" }), null);
+	assert.equal(mcpDisplayName("mcp", { tool: "mcp_" }), null);
+	assert.equal(mcpDisplayName("mcp", { tool: "mcp_exa_search", args: { q: "x" } }), "exa - search", "the valid control keeps resolving");
 });
 
 test("R-T4: direct-named tools only with PI_CORE_MCP_DIRECT_SERVERS listing the server", () => {

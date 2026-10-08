@@ -277,3 +277,120 @@ Run dirs keep only `*.txt` snapshots + raw `*.log`; `run/*/home` joined
 were deleted after extraction (never committed; gitignore verified with
 check-ignore). Stale first-batch probe dirs (ht2c/ht2d/ht2e) were
 accidentally removed and restored from git.
+
+---
+
+# Bare-MCP + widget-order correction batch (2026-10-09) — core `c4dab5f` + TUI `eb3bb11`+evidence batch
+
+Same environment and driver as before (pi 1.0.2, isolated
+`PI_CODING_AGENT_DIR` + HOME + fresh git proj, PTY + pyte, credentials
+copied in only for the model turns and deleted after extraction). Fixed
+core snapshot: `run/core-snap-c4dab5f` (C5 encapsulation close-out). TUI
+production code is unchanged from `eb3bb11`; `probe-mcp-shapes.ts` was
+extended (see below) and is committed with this batch.
+
+## H-T2j — the ACCURATE bare-MCP acceptance — PASS (T level)
+
+The earlier `mcp_bareprobe` evidence pinned the no-separator `mcp_*` NAME
+shape, not the scenario this acceptance actually names: a tool named
+exactly `mcp` whose `args.tool` is missing / empty / unparseable. The
+probe's `mcp` tool now takes `tool` as OPTIONAL/unknown so the model can
+send those degenerate inputs through the REAL host render path (probe
+only; production tool schemas untouched). One turn, four calls, real
+model (glm-5.3-flash via CPA), `/claude-tools on` = force, default =
+auto:
+
+| input (name = `mcp`) | force row (`run/ht2j-force/160047ms-final.txt`) | verdict |
+|---|---|---|
+| `{}` — tool field absent | `⏺ mcp({})` + `⎿ probe proxy echo for {}` | generic JSON row, NO (MCP) badge, no mislabel, no throw |
+| `{"tool":""}` — empty | `⏺ mcp({"tool":""})` + echo row | same generic row, args visible (no info loss) |
+| `{"tool":"not_a_valid mcp shape 123"}` — unparseable | `⏺ mcp({"tool":"not_a_valid mcp shape 123"})` + echo row | same; the garbage target is displayed verbatim, never claimed |
+| `{"tool":"mcp__dummy__echo_search","args":{"note":"control"}}` — VALID control | `⏺ dummy - echo_search (MCP)(tool=mcp__dummy__echo_search args={"note":"control"})` | correctly identified: server-tool shape + badge + args summary |
+
+- **force** (`run/ht2j-force`, level T): table above; the turn completed
+  ("done" reply, exit 0) — no throw anywhere in the path.
+- **auto** (`run/ht2j-auto`, level T, default toggles): the bare `mcp`
+  NAME is not an official MCP shape at the resolver level (no args there,
+  R5), so the whole tool — degenerate AND valid inputs — auto-yields to
+  the host's stock rows (` mcp` + dim args + dim echo, zero `⏺`/`(MCP)`
+  glyphs in the raw log). That IS the documented takeover/fallback path:
+  auto-yield keeps the stock renderer, args stay visible, no MCP claim.
+- Unit level (U): `cc-rows.golden.test.ts` R-T4 gained the missing
+  degenerate inputs — `tool:""`, `tool:null`, unparseable string,
+  `"mcp_"` near-miss, tool-field-absent — all `null` (prior cases
+  `{}`/`undefined`/`{tool:42}`/array/`{tool:"read"}` were already pinned).
+  Core's authority (`lib/mcp-shape.ts` canonicalizeMcpShape) returns null
+  on the same degenerate inputs (proxy guard `typeof input.tool ===
+  "string"` + truthiness) — no badge AND no permission-side misclaim.
+- Implementation verdict: NO display defect found (reproduced first, then
+  left as-is) — this batch adds evidence + ledger only.
+
+## H-T5 causal correction (2026-10-09, host-source-verified)
+
+The follow-up batch above wrote both "pi awaits each session_start
+handler" and "the goal widget registers during the [probe's] await" — the
+second claim is WRONG. Verified against the pi 1.0.2 bundle
+(`chunk-ZSBPJAJ2.js`, `ExtensionRunner.emit` + `_InteractiveMode.setExtensionWidget`):
+
+1. `emit` iterates extensions in LOAD order, handlers in registration
+   order, `await`ing EACH before the next starts. No session_start
+   handler of a later extension can begin during an earlier handler's
+   macrotask await.
+2. `setWidget` stores into an insertion-ordered `Map`; re-setting an
+   existing key REMOVES then re-INSERTS (moves it to the tail).
+   `renderWidgetContainer` renders `widgets.values()` top→bottom, so the
+   LAST-inserted aboveEditor widget sits DIRECTLY above the editor.
+3. The goal extension REMOUNTS its widget unconditionally at every
+   session_start (`remountWidget`; renders zero lines with no goal, and
+   `registerWidget` during later turns/`/goal-set` is idempotent — no
+   re-insertion). The cc-status spinner registers via a deferred
+   macrotask callback at ITS session_start handler.
+
+Corrected reading of the ht5m screenshots:
+
+- **core-first** (`run/ht5m-core-first/19011ms-late-landed.txt`): goal
+  remount (sync, handler #1) → tui schedules its macrotask (handler #2)
+  → probe handler (#3) awaits 80 ms; DURING that await only the event
+  loop runs, so the tui's timer callback fires and the spinner slot
+  inserts BEFORE the probe's setWidget. Result: goal on top, spinner
+  slot, probe LAST — the probe sits BETWEEN the status area and the
+  editor, NOT "directly below the goal with nothing between" as the old
+  wording implied.
+- **probe-first** (`run/ht5m-probe-first/19048ms-late-landed.txt`): the
+  probe's handler runs FIRST and COMPLETES (82 ms) before the goal
+  extension's handler even STARTS (sequential await — nothing registered
+  "during" the await). Insertion: probe, then goal (sync remount), then
+  spinner (macrotask). Result: probe topmost, goal below it.
+- The load ORDER (handler execution order) — not the macrotask —
+  determines where the probe lands relative to the goal block. A
+  synchronous probe at the same handler position would stack identically.
+  What the macrotask await DOES change is the ordering against OTHER
+  extensions' timer-deferred registrations (cctui's spinner requeue): a
+  macrotask-crossing handler lands AFTER timer callbacks that fire during
+  its await.
+- The invariant that actually held in BOTH orders: goal block above the
+  cc-status spinner slot (goal's remount is synchronous inside its
+  session_start handler; the spinner's requeue is a macrotask — the goal
+  therefore always inserts first, independent of load order). That is the
+  documented best-effort ordering; no guarantee against arbitrary async
+  registrations outside session_start (the XPKG-09-HOST todo stays open).
+
+## Still OPEN — economy downgrade row (conditions re-verified 2026-10-09)
+
+Re-checked against core `c4dab5f`: `probePiCompat` gates on
+`version < 0.87.0` only (`lib/pi-compat.ts` MIN_PI_VERSION); the assembly
+(`extensions/index.ts` economy block) threads the compile-time
+`PI_VERSION` into the factories with no env/config override. The
+factory-level degrade wiring IS pinned in core
+(`extensions/observation-pack/tests/compat-degrade.test.ts`: version
+0.85.0 through the real factory → degraded footer line), and the row's
+CONSUMPTION/rendering is pinned by joint C6 + `composeFooterLines`
+tables. What remains open is the real-host ROW (T level) — structurally
+unreachable today: a TUI session needs the pi ≥0.99 renderer-resolver API
+(absent on any pi <0.87 host, so "TUI on an old host" is not a valid
+target), a core-only old-host session displays via core's own fallback
+(not the TUI row), and adding a core-side version override solely for
+this acceptance was already ruled out (product-switch-for-acceptance).
+Recovery conditions: (a) the user revisits that ruling and accepts a
+version-input seam, or (b) a future pi host where the degraded branch is
+genuinely reachable with a TUI-compatible API surface.
