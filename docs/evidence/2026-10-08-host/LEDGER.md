@@ -308,13 +308,15 @@ auto:
 | `{"tool":"mcp__dummy__echo_search","args":{"note":"control"}}` — VALID control | `⏺ dummy - echo_search (MCP)(tool=mcp__dummy__echo_search args={"note":"control"})` | correctly identified: server-tool shape + badge + args summary |
 
 - **force** (`run/ht2j-force`, level T): table above; the turn completed
-  ("done" reply, exit 0) — no throw anywhere in the path.
+  ("done" reply) and the driver recorded `<<<DRIVER exit=0 elapsed=166.3s>>>`
+  in the raw log tail — no throw anywhere in the path.
 - **auto** (`run/ht2j-auto`, level T, default toggles): the bare `mcp`
   NAME is not an official MCP shape at the resolver level (no args there,
   R5), so the whole tool — degenerate AND valid inputs — auto-yields to
   the host's stock rows (` mcp` + dim args + dim echo, zero `⏺`/`(MCP)`
-  glyphs in the raw log). That IS the documented takeover/fallback path:
-  auto-yield keeps the stock renderer, args stay visible, no MCP claim.
+  glyphs in the raw log; driver also `exit=0`). That IS the documented
+  takeover/fallback path: auto-yield keeps the stock renderer, args stay
+  visible, no MCP claim.
 - Unit level (U): `cc-rows.golden.test.ts` R-T4 gained the missing
   degenerate inputs — `tool:""`, `tool:null`, unparseable string,
   `"mcp_"` near-miss, tool-field-absent — all `null` (prior cases
