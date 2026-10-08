@@ -1,0 +1,40 @@
+ The hint is NOT fully self-explanatory — "review the objective wording" doesn't say what direction to take. I should
+ ask a focused question with numbered options. Let me use goal_question with clear options.
+
+ Options:
+ 1. Specify exact days (e.g., "every Monday and Friday")
+ 2. Reword as an agent-executable task (e.g., "Track fern watering schedule and log each watering in a file") — though
+    this changes scope, not just wording
+ 3. Keep the same meaning but structure it (add success criteria/boundaries blocks)
+ 4. Custom
+
+ Actually, a common rewording: "Water the office fern twice a week (e.g., every Monday and Thursday), logging each
+ watering with date." But logging is scope addition.
+
+ Let me ask one focused question. I'll offer a few candidate rewordings.
+
+⏺ goal_question(The current objective reads "Water the office fern twice a …)
+
+ Steering: IMPORTANT: before applying any tweak you must first call goal_question to ask me which wording I prefer, ...
+ ↳ Option+Up to edit all queued messages
+
+◐ Goal paused
+├─ ⟡ Water the office fern twice a week
+└─ .pi/goals/active_goal_2026100819465513_muzh1ee9-twq23l.md
+
+✻ Lollygagging… (1m 21s · esc to interrupt) ↑9k · ↓206 · R2k · ⚡13 tok/s    GLM 5.3 Flash·high│Ctx 1%(11k/1.0M)│$0.0007
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ The current objective reads "Water the office fern twice a week". You asked to review the wording — which direction
+ should the revision take?
+ "Twice a week" is vague (no specific days, no tracking), and as written it's a purely physical task an agent can't
+ execute directly. The right rewording depends on what you want this goal to actually drive.
+
+ ❯ 1. Pin specific days — e.g. "Water the office fern every Monday and Thursday"
+  2. Keep the meaning, add structure — same wording plus success criteria (logged waterings, 2/week verified)
+  3. Make it agent-executable — e.g. "Maintain a fern watering log and remind me twice a week to water the office fern"
+  4. Just polish the wording, keep it short and unchanged in meaning
+  5. Write your own answer...
+
+ ↑↓ navigate • Enter select • Esc cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

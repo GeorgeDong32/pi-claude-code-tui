@@ -1,0 +1,40 @@
+
+ Let me ask one focused question with concrete candidate wordings:
+ 1. "Water the office fern every Monday and Thursday" (as in their example)
+ 2. "Water the office fern twice a week — every Monday and Thursday"
+ 3. "Water the office fern every Wednesday and Saturday"
+ 4. Custom
+
+ I should mark the example they gave as recommended (option 0). Then after the answer, apply_goal_tweak with the full
+ revised objective formatted the same way as the original block.
+
+ Note the current objective is just a plain sentence "Water the office fern twice a week" — the drafting protocol says
+ newObjective should be "the FULL revised objective text, formatted the same way as the original === Goal === block
+ (Objective / Success criteria / Boundaries / Constraints / If blocked)". Hmm, the original file is "# Goal
+ Prompt\n\nWater the office fern twice a week". The protocol template mentions Objective / Success criteria /
+ Boundaries / Constraints / If blocked. Since the user only wants wording pinned to specific days, I should keep it
+ minimal and faithful — not add scope. I'll format it as a simple objective, perhaps with minimal structure matching
+ the original plain style. To be safe, keep it as a plain one-liner in the same style as the original: "Water the
+ office fern every Monday and Thursday." — only the wording change they approved.
+
+ First: call goal_question asking which exact wording they prefer, then wait.
+
+  goal_question(Which exact wording do you prefer for the revised objective?)
+
+◐ Goal paused
+├─ ⟡ Water the office fern twice a week
+└─ .pi/goals/active_goal_2026100819465513_muzh1ee9-twq23l.md
+
+✻ Lollygagging… (2m 31s · esc to interrupt) ↑18k · ↓885 · R2k · ⚡9 tok/s    GLM 5.3 Flash·high│Ctx 1%(10k/1.0M)│$0.0016
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Which exact wording do you prefer for the revised objective?
+
+ ❯ 1. Water the office fern every Monday and Thursday  ★
+  2. Water the office fern twice a week — every Monday and Thursday
+  3. Water the office fern every Wednesday and Saturday
+  4. Water the office fern once every Monday and once every Friday
+  5. Write your own answer...
+
+ ↑↓ navigate • Enter select • Esc cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

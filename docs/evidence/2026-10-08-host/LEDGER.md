@@ -144,3 +144,136 @@ evidence dir's `.gitignore` re-includes them against the root `*.log` rule).
 `.venv` (pyte) is gitignored and recreatable via `uv venv .venv && uv pip
 install pyte`. The H-T1a packed-entry check ran live on the session file
 before deletion (0 entries).
+
+
+---
+
+# Follow-up batch (same day, second session) — corrected pair: core `e98ce4a` + TUI `d846302`
+
+The user-directed follow-up re-verified the notification fix (core's effort
+dual-write, fixed at core `25c38b2`) and closed the first batch's gaps:
+the goal-family tool names it wrongly reported as nonexistent, the
+multi-page obs_recall header, three MCP display shapes beyond native, the
+statusline WAITING state, and the XPKG-09-HOST macrotask row. Environment
+unchanged (pi 1.0.2, same driver/isolation); the fixed core snapshot lives
+at `run/core-snap-e98ce4a` (git archive recipe as before). New probes:
+`probe-mcp-shapes.ts` (proxy `mcp` / direct `dummy_echo` / bare
+`mcp_bareprobe` — pure echo tools through the REAL pi factory render path;
+pi 1.0.2 exposes only codemode/deferred/direct/hidden, so the proxy form
+has no bare-host producer without pi-subagents) and `probe-late-widget.ts`
+(aboveEditor widget registered AFTER a session_start macrotask await).
+
+## H-T4r — notification single-display re-verification after the core fix — PASS
+
+- Core-only (`run/ht4r-a`, level T): startup warning displays EXACTLY ONCE
+  (first batch: twice); after `/reload` the fresh warning displays once more
+  (screen total 2 = 1 persisted + 1 new; raw-log clusters confirm two
+  firings, never a doubled one).
+- Both TUI orders (`run/ht4r-b` core-first, `run/ht4r-c` tui-first, level
+  T): startup displays the warning exactly ONCE each; the post-reload
+  re-fire is visible in the raw log (late cluster) — the earlier row had
+  scrolled by snapshot time.
+- off/on handover (`run/ht4r-d`, level T): after `/claude-tui off` a NEW
+  goal-module warning ("No goal is set.") displays exactly once via core's
+  fallback; after `/claude-tui` re-enable a SECOND identical-text warning
+  displays exactly once via the TUI channel — no text-dedup masking, no
+  double display. (Note: `/claude-tui off` is a runtime toggle and does
+  not survive `/reload` — TUI semantics, recorded.)
+- The first batch's "warning displays twice" observations were the core
+  DC3 dual-write, now fixed at the core revision under test.
+
+## H-T2 follow-ups — PASS
+
+- **Correction of the first batch's error**: `goal_question` and
+  `apply_goal_tweak` DO exist in core (drafting/tweak-gated). Real-flow
+  rows captured (`run/ht2g`, level T, real model turns):
+  `⏺ goal_question(The current objective reads "Water the office fern twice a …)`
+  during a `/goal-tweak` interview, and
+  `⏺ apply_goal_tweak(Replaced the vague "twice a week" with fixed watering days:…)`
+  (also `⎿ Goal tweak applied. …`). The tools are schema-gated on the
+  drafting phase — asking outside it correctly reports them unavailable
+  (observed live).
+- **obs_recall multi-page + error original** (`run/ht2i`, level T): after a
+  real `seq 1 30000` turn, `⏺ Observation Packed(bash · 2.7k tokens
+  avoided)` + `⎿ obs_a0942d7fa719… · recall via obs_recall`; a bogus-id
+  recall keeps the raw error (`⎿ Unknown observation id: …`); the real-id
+  recall renders the pagination header
+  `⎿ 2.3KB · 398 lines · start→+2.3KB · more ▸` + content rows +
+  `+397 lines (ctrl+o to expand)` (next_offset=2388, eof=false — more pages
+  remain).
+- **MCP five-shape display, four newly on the real path** (`run/ht2h`,
+  `run/ht2h2`, level T):
+  - native: real stdio server (`dummy_mcp_server.py`, mcp.json exposure
+    "direct" so the tool is model-callable — default codemode exposure keeps
+    it code-only):
+    `⏺ dummy - echo_search (MCP)(query=native shape)` + `⎿ dummy echo: native
+    shape` (visible in the pyte replay of the raw log, `reply-screen.py`;
+    the snapshot missed it by seconds on a latency spike).
+  - proxy: `⏺ dummy - echo_search (MCP)(tool=mcp__dummy__echo_search
+    args={"query":"proxy shape"})` + `⎿ probe proxy echo …` — the
+    `mcp`-named tool with the real target in args.tool (probe-sourced; the
+    historically real producer is pi-subagents' codemode bridge).
+  - direct (env allowlisted): with PI_CORE_MCP_DIRECT_SERVERS=dummy,
+    `⏺ dummy - echo (MCP)(note=direct shape)` — the bare `dummy_echo` name
+    claimed through the same env var core's mcp-gov reads (probe-sourced).
+  - bare: `⏺ mcp_bareprobe({"note":"bare shape"})` — NO (MCP) badge, JSON
+    fallback row; the display does not claim un-split `mcp_*` names.
+  The first batch's `mcp__dummy__echo_search` native evidence stays valid
+  (same shape re-captured here on the corrected pair).
+
+## H-T3 follow-up — WAITING state stably captured — PASS
+
+- `run/ht3w` (level T): slow script `sleep 4; echo …` set via
+  `/claude-statusline set` (unquoted — a quoted set stores the quotes and
+  fails with exit 127, itself captured as the error state). Frames during
+  the post-turn in-flight window: NO script row, NO error row, and the
+  right group HOLDS the numbers (`GLM 5.3 Flash·high│Ctx 1%(7k/1.0M)│$0.0006`)
+  — the waiting state, previously "transient <300 ms, not deterministically
+  snapshottable", now held open for seconds by the controlled slow script.
+  sleep 4 exceeds the runner's script timeout → `<statusline> cmd failed
+  (timeout)` (bonus: the timeout flavor of the error state).
+- `run/ht3w2` (level T): with `sleep 1` the script row lands
+  (`SLOWSCRIPT-ROW-ACTIVE` + `● high · /effort` badge) and the completion
+  line's right group stays collapsed — script-valid state on the corrected
+  pair. Off/native-footer/error/true-zero cells stay covered by the first
+  batch (TUI unchanged since; core's usage channel untouched by its later
+  commits).
+
+## H-T5 follow-up — XPKG-09-HOST macrotask row — PASS (boundary described)
+
+- `run/ht5m-core-first` / `run/ht5m-probe-first` (level T): the probe's
+  session_start handler awaits an 80 ms macrotask before setWidget.
+  - core-first: goal block on top, late probe widget directly BELOW it,
+    above the editor.
+  - probe-first: the probe handler STARTS first but completes after its
+    await; pi runs session_start handlers sequentially, so the goal widget
+    registers during the await and the probe lands ABOVE the goal block.
+  In BOTH orders the goal block kept its position relative to the
+  status/spinner area directly above the editor. Honest semantics: pi
+  awaits each session_start handler in registration order; aboveEditor
+  widgets stack by REGISTRATION-COMPLETION order — a macrotask-crossing
+  handler therefore reorders itself after everything that registers during
+  its await. This is the documented best-effort ordering's boundary, NOT a
+  guarantee against arbitrary async extensions (matches the spec wording).
+
+## Still OPEN — economy downgrade row
+
+Unchanged from the first batch with refined conditions: `probePiCompat`
+gates on `pi < 0.87.0`; the assembly hard-wires the real compiled-in
+VERSION into the economy factories (`extensions/index.ts` economy block)
+with no env/config override, so no production wiring on pi 1.0.2 can take
+the degraded branch. Recovery: (a) a pi < 0.87 host running CORE-ONLY (the
+TUI peer requires pi ≥ 1.0.1, so a TUI session on such a host is not a
+valid target), or (b) a deliberate core-side test seam for the version
+input (adding one solely for this acceptance was ruled out as a
+product-switch-for-acceptance). Rendering itself stays covered by joint C6
++ composeFooterLines tables.
+
+## Cleanup (this batch)
+
+Run dirs keep only `*.txt` snapshots + raw `*.log`; `run/*/home` joined
+`run/*/agent` / `run/*/proj` in the evidence .gitignore; credential copies
+(auth.json/models.json) were present only inside the isolated run dirs and
+were deleted after extraction (never committed; gitignore verified with
+check-ignore). Stale first-batch probe dirs (ht2c/ht2d/ht2e) were
+accidentally removed and restored from git.

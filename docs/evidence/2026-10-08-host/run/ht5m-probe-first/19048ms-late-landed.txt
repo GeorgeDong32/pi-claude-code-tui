@@ -1,0 +1,40 @@
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+ Error: Unknown provider: unknown
+
+ Auto-compaction failed: Summarization failed: Unknown provider: unknown
+
+◇ late-probe widget (session_start handler awaited a macrotask: 82ms before setWidget)
+● Goal running · auto · 1s
+├─ ⟡ Verify widget ordering
+└─ .pi/goals/active_goal_2026100820382064_muzivj6v-1ap4s5.md
+
+                                                                                                             unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

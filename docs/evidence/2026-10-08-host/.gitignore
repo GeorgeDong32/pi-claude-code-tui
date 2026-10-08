@@ -1,5 +1,6 @@
 .venv/
 run/*/agent/
+run/*/home/
 run/*/proj/
 run/core-snap-*/
 !*.log

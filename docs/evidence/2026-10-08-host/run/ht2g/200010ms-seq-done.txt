@@ -1,0 +1,40 @@
+ 2. "Water the office fern twice a week — every Monday and Thursday"
+ 3. "Water the office fern every Wednesday and Saturday"
+ 4. Custom
+
+ I should mark the example they gave as recommended (option 0). Then after the answer, apply_goal_tweak with the full
+ revised objective formatted the same way as the original block.
+
+ Note the current objective is just a plain sentence "Water the office fern twice a week" — the drafting protocol says
+ newObjective should be "the FULL revised objective text, formatted the same way as the original === Goal === block
+ (Objective / Success criteria / Boundaries / Constraints / If blocked)". Hmm, the original file is "# Goal
+ Prompt\n\nWater the office fern twice a week". The protocol template mentions Objective / Success criteria /
+ Boundaries / Constraints / If blocked. Since the user only wants wording pinned to specific days, I should keep it
+ minimal and faithful — not add scope. I'll format it as a simple objective, perhaps with minimal structure matching
+ the original plain style. To be safe, keep it as a plain one-liner in the same style as the original: "Water the
+ office fern every Monday and Thursday." — only the wording change they approved.
+
+ First: call goal_question asking which exact wording they prefer, then wait.
+
+⏺ goal_question(Which exact wording do you prefer for the revised objective?)
+  ⎿  User answered: Water the office fern every Monday and Thursday
+
+ The user picked: "Water the office fern every Monday and Thursday". Now apply_goal_tweak with the full revised
+ objective, formatted the same way as the original. The original is a plain one-liner "Water the office fern twice a
+ week". Keep it minimal — just the wording change, no added scope.
+
+⏺ apply_goal_tweak(Replaced the vague "twice a week" with fixed watering days:…)
+  ⎿  Goal tweak applied. Replaced the vague "twice a week" with fixed watering days: every Monday and Thursday.
+     Stop now; the next continuation will arrive automatically if the goal is active.
+
+ Goal tweaked: Replaced the vague "twice a week" with fixed watering days: every Monday and Thursday.
+
+◐ Goal paused
+├─ ⟡ Water the office fern every Monday and Thursday
+└─ .pi/goals/active_goal_2026100819465513_muzh1ee9-twq23l.md
+
+✻ Cooked for 2m 42s · 19:49                                                  GLM 5.3 Flash·high│Ctx 1%(11k/1.0M)│$0.0022
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

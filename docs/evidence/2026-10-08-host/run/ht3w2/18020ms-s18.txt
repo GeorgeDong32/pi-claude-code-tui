@@ -1,0 +1,40 @@
+│                              Let's build something great                               │ /new                        │
+│                          CPA/glm/glm-5.3-flash · high effort                           │ /quit                       │
+│/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/h… │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[Extension issues]
+  path (temp)
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts conflicts with built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ fd installed to
+ /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht3w2/agent/bin/fd
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Statusline on — command: sleep 1; echo SLOWSCRIPT-ROW-ACTIVE
+
+ ❯ Reply with exactly: ok
+
+ ok
+
+✻ Worked for 4s · 20:35
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SLOWSCRIPT-ROW-ACTIVE                                                                                   ● high · /effort
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

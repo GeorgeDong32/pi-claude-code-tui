@@ -140,3 +140,61 @@ core 用户决策为 D3=A / D4=B / D6=B。TUI 当前不依赖 readCoreStatus；�
 - **H-T5 PASS（尽力语义如实描述）**：双顺序下 goal 块在上、cc-status spinner 紧贴编辑器；turn 中 goal 块实时更新（token 计数）而 spinner 保持相邻；晚挂载 widget（goal set 于启动后 ~10s）不破坏次序。不据此声称对任意异步扩展的排序保证。
 
 XPKG-09-HOST 证据由本仓产出（上表+台账），core 任务据此回填其契约/todo；本仓未跨仓改动。
+
+
+## 10. 同日跟进批执行记录（第二会话，core 固定联验 revision `e98ce4a` + TUI `d846302`）
+
+用户派发的收口批次：修复 core effort 通知双写（core `25c38b2`）、C5 全四步（core
+`828c5c6→4b0f8d9`）、H-Q 证据复审重跑（core `af924a6`）之后的 TUI 侧补验收。证据
+台账（含逐屏快照与 raw log）：[LEDGER 跟进批](../docs/evidence/2026-10-08-host/LEDGER.md)。
+
+### H-T1–H-T5 子场景定级（证据等级：T=真实终端 PTY；P=真实宿主非终端；F=factory fixture；U=纯函数）
+
+| 子场景 | 级别 | 结论 | 证据 |
+|---|---|---|---|
+| H-T1 print 无 tip/无 packed entry | P | PASS | run/ht1（首批） |
+| H-T1 /reload 往返（可重复告警） | T | PASS | run/ht1（首批）+ ht4r-a/b/c（跟进批：修复后恰一次） |
+| H-T1 off→on 生命周期 | T | PASS | run/ht1（首批） |
+| H-T1 退出终止 statusline 子进程 | T | PASS | run/ht1d（首批） |
+| H-T2 通用 schema 行 / get_goal JSON 回退 | T | PASS | run/ht2b（首批） |
+| H-T2 goal_question（/goal-tweak 访谈内） | T | **PASS（跟进批纠正）** | run/ht2g 95s 屏——首批「工具不存在」为错误结论 |
+| H-T2 apply_goal_tweak（tweak 应用） | T | **PASS（跟进批纠正）** | run/ht2g 245s 屏（⏺ 行 + ⎿ Goal tweak applied） |
+| H-T2 obs_recall 错误原文 | T | PASS | run/ht2（首批）+ ht2i（跟进批复验） |
+| H-T2 obs_recall 真实多页 + 分页头 | T | **PASS（跟进批补齐）** | run/ht2i：`⎿ 2.3KB · 398 lines · start→+2.3KB · more ▸`（next_offset/eof） |
+| H-T2 MCP 原生形态 | T | PASS | run/ht2f（首批）+ ht2h2（跟进批，pyte 重放屏） |
+| H-T2 MCP proxy `mcp{tool}` | T | **PASS（跟进批补齐）** | run/ht2h：`⏺ dummy - echo_search (MCP)(tool=… args=…)`（探针源,已注明） |
+| H-T2 MCP env allowlisted direct | T | **PASS（跟进批补齐）** | run/ht2h：`⏺ dummy - echo (MCP)`（PI_CORE_MCP_DIRECT_SERVERS） |
+| H-T2 MCP bare `mcp_*` 回退 | T | **PASS（跟进批补齐）** | run/ht2h：无 (MCP) 徽标的通用行 |
+| H-T3 脚本行持数/右组塌缩 | T | PASS | run/ht1（首批）+ ht3w2（跟进批） |
+| H-T3 off 右组持有 / native footer 无重复 | T | PASS | run/ht3/ht4a（首批） |
+| H-T3 等待态（in-flight） | T | **PASS（跟进批补齐）** | run/ht3w：慢脚本窗口内右组持有、无脚本行/错误行 |
+| H-T3 持久错误行 + 自愈（含 timeout 变体） | T | PASS | run/ht3c（首批）+ ht3w（timeout）、ht3w 首跑（127 引号坑） |
+| H-T3 真实零 | T | PASS | run/ht1（首批） |
+| H-T4 双顺序/reload 告警（修复后） | T | **PASS（跟进批复验）** | run/ht4r-a/b/c：每 session_start 恰一次 |
+| H-T4 off/on 新告警交接 | T | **PASS（跟进批复验）** | run/ht4r-d：off 态 core fallback 恰一次、on 后再发再显一次 |
+| H-T4 reload 后 TUI 载入失败 core 接管 | T | PASS | run/ht4e（首批） |
+| H-T4 经济模块降级行 | — | **OPEN** | 见下「仍 OPEN」 |
+| H-T5 双加载序 goal 块/spinner 相邻 | T | PASS | run/ht4a/ht4b（首批） |
+| H-T5 晚挂载 widget（启动后 10s） | T | PASS | run/ht4a（首批） |
+| H-T5 turn 中 goal 块实时更新 | T | PASS | run/ht4a（首批） |
+| H-T5 后挂 session_start 跨 macrotask await | T | **PASS（跟进批补齐）** | run/ht5m-*：handlers 顺序执行、widget 按注册完成序；goal/spinner 相邻性双序保持——边界如实描述,非任意异步保证 |
+
+### 仍 OPEN
+
+- **经济模块降级行（H-T4）**：`probePiCompat` 仅按 `pi<0.87.0` 门控；装配层
+  （core `extensions/index.ts` economy 块）把真实编译期 VERSION 硬穿进工厂，无
+  env/config 覆盖——pi 1.0.2 上无任何生产路径可走降级分支。已尝试：源码核查
+  （probe 输入与装配穿线）、宿主能力面（pi 1.0.2 无 exposure=proxy 等 producer）。
+  恢复条件（精确）：① 任意 pi<0.87 宿主上的 **core-only** 会话（TUI peer 要求
+  pi≥1.0.1,该宿主上 TUI 会话不是有效目标）；② 或 core 侧为 version 输入加测试
+  seam（仅为验收加产品开关已被裁定为反模式,未做）。渲染路径由 joint C6 +
+  composeFooterLines 表测覆盖（U/F 级）。
+
+### 其他勘误（本批固化）
+
+- 首批 LEDGER/manual 的「goal_question/apply_goal_tweak 在 core 不存在」为错误
+  结论（工具为 drafting/tweak 门控）——manual §12 已改写并保留纠正记录。
+- 首批「通知一次/两次」矛盾（H-T1b 双显 vs 契约单显）系 core DC3 双写所致,
+  core `25c38b2` 修复后本批复验单显——manual §13 已更新。
+- macOS `/tmp`→`/private/tmp` 与「mcp.json exposure 默认 codemode 不进模型工具表」
+  两个宿主事实已入 LEDGER。

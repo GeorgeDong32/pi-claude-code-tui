@@ -1,0 +1,40 @@
+ fd not found. Downloading...
+ Warning: Failed to download fd: fetch failed: Client network socket disconnected before secure TLS connection was
+ established
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Run exactly this bash command now: seq 1 30000
+
+ The user wants me to run seq 1 30000 exactly. This is a simple command that outputs numbers 1 to 30000. Let me run it.
+ The output will be truncated to last 2000 lines or 50KB, whichever first. But the user asked to run exactly this
+ command. Let me just run it.
+
+⏺ bash(seq 1 30000)
+  ⎿  28001
+     28002
+     ... +2001 lines (ctrl+o to expand)
+
+ The command ran successfully. The output shows the last 2000 lines (28001-30000) of the 30000 lines, with the full
+ output saved to a log file. I should report this concisely.
+
+ Command executed: seq 1 30000
+
+ Output was 30,000 lines (1 through 30000). The tool result shown is truncated — you're seeing the tail (lines
+ 28001–30000). Full output saved to:
+
+ /var/folders/4b/y3m5bqfd1clfbbjjjvflqtcr0000gn/T/pi-bash-a4dea68820222083.log
+
+✻ Sautéed for 12s · 19:55                                                    GLM 5.3 Flash·high│Ctx 2%(15k/1.0M)│$0.0016
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

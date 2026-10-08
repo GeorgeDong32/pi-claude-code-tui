@@ -172,25 +172,41 @@ These are the host-timing/visual counterparts of the automated
 
 - [x] **Force mode goal rows**: with `toolRows: true` (or `/claude-tools on`),
       the core goal-family tools render one-line CC rows —
-      `⏺ propose_goal_draft(verify goal row rendering end to end)`
-      (spec-era names `goal_question`/`apply_goal_tweak` do not exist in
-      core; its actual family is `propose_goal_draft`/`get_goal`/`plan_ready`),
-      and `⏺ get_goal({})` shows the bounded JSON fallback. *Evidence:
-      run/ht2b.*
+      `⏺ propose_goal_draft(verify goal row rendering end to end)` and
+      `⏺ get_goal({})` (bounded JSON fallback). **Correction (follow-up
+      batch)**: `goal_question` and `apply_goal_tweak` DO exist in core —
+      they are drafting/tweak-phase-gated (active only during `/goals`·
+      `/sisyphus` drafting and `/goal-tweak` flows); real-flow rows
+      verified: `⏺ goal_question(The current objective reads …)` during a
+      `/goal-tweak` interview and `⏺ apply_goal_tweak(…)` + `⎿ Goal tweak
+      applied. …` (asking for them OUTSIDE the phase correctly reports them
+      unavailable). *Evidence: run/ht2b (first batch) + run/ht2g
+      (follow-up, core e98ce4a).*
 - [x] **Generic schema rows**: any newly registered core tool with a
       recognizable top-level string param summarizes without a per-name
       branch; tools with no schema window render the bounded JSON fallback.
       *Evidence: run/ht2b (schema summary + `{}` fallback).*
 - [x] **obs_recall**: an error recall keeps its raw text —
       `⏺ Recall Observation(obs_nonexistent1 · start)` +
-      `⎿ Unknown observation id: obs_nonexistent123` (multi-page header
-      needs a populated pack; error path exercised live). *Evidence: run/ht2.*
-- [x] **Proxy / direct MCP rows**: a direct-named MCP tool
+      `⎿ Unknown observation id: obs_nonexistent123`; the multi-page header
+      is now verified against a populated pack — after a real large tool
+      result, `⏺ Observation Packed(bash · 2.7k tokens avoided)` and the
+      real-id recall renders `⎿ 2.3KB · 398 lines · start→+2.3KB · more ▸`
+      (next_offset=2388, eof=false). *Evidence: run/ht2 (first batch) +
+      run/ht2i (follow-up).*
+- [x] **Proxy / direct MCP rows**: a native MCP tool
       (`mcp__dummy__echo_search`, local stdio server) renders
-      `⏺ dummy - echo_search (MCP)(query=mcp row)` + `⎿ dummy echo: mcp row`.
-      Host fact: `--no-extensions` also disables MCP registration. *Evidence:
-      run/ht2f (bare `mcp` proxy shape covered by the unit mirror +
-      `run/ht2d` probe).*
+      `⏺ dummy - echo_search (MCP)(query=…)` + `⎿ dummy echo: …`.
+      The follow-up batch exercised the remaining shapes on the real
+      render path (probe-sourced tools, source documented in the ledger):
+      proxy `mcp` → `⏺ dummy - echo_search (MCP)(tool=… args=…)`;
+      env-allowlisted direct `dummy_echo` (PI_CORE_MCP_DIRECT_SERVERS=dummy)
+      → `⏺ dummy - echo (MCP)(note=…)`; bare `mcp_bareprobe` → generic row
+      WITHOUT the (MCP) badge. Host facts: `--no-extensions` also disables
+      MCP registration; mcp.json default (codemode) exposure keeps MCP
+      tools code-only — use exposure "direct" for model-callable tools.
+      *Evidence: run/ht2f + run/ht2d (first batch); run/ht2h/ht2h2
+      (follow-up).*
 
 ## 12.5 Usage numbers shown once (spec 2026-10-07 P1-2) — executed 2026-10-08 (see the [evidence ledger](evidence/2026-10-08-host/LEDGER.md))
 
@@ -204,8 +220,13 @@ These are the host-timing/visual counterparts of the automated
       *Evidence: run/ht1 (script row `Ctx 0% (0/1M)`, right collapsed),
       run/ht3 (off → right group `Ctx 1%(10k/1.0M)│$0.0008`; native footer →
       pi stock line only), run/ht4a (mid-run `↑3k · ↓64 · ⚡10 tok/s` +
-      right group), run/ht3c (persistent error row + self-heal). Waiting
-      state is transient (<300 ms) — holder matrix table-tested. NOTE: the
+      right group), run/ht3c (persistent error row + self-heal). The
+      WAITING state (script in flight after a refresh) is now stably
+      captured with a controlled slow script (follow-up batch,
+      run/ht3w/ht3w2): during the in-flight window no script row exists
+      and the right group holds the numbers; a script slower than the
+      runner timeout lands in the error state (`cmd failed (timeout)`);
+      `sleep 1` shows the script row + collapsed right group. NOTE: the
       "set false-cmd three times" recipe below cannot reach the 3-failure
       threshold (each `set` recreates the runner and resets the counter) —
       use `set` once plus real turns (message_end refreshes).*
@@ -225,9 +246,12 @@ daily settings. Record host version, both repo revisions, launch args, result.
       first. Do not assume a CLI flag name — use whatever the isolated config
       can trigger deterministically.
       *Evidence: run/ht1 (core-first) + run/ht4a (tui-first) — `--effort
-      ultra` warns per session_start in both. Per-item display is doubled by
-      core's own DC3 dual-write (see ledger H-T1b); cctui's channel shows
-      each item once (joint C1–C3 fixtures).*
+      ultra` warns per session_start in both. Follow-up re-verification on
+      the FIXED core (e98ce4a, run/ht4r-*): the warning now displays
+      exactly once per session_start in core-only and both TUI orders,
+      re-fires once after /reload, and each NEW warning displays once
+      across the off/on handover (the first batch's doubled display was
+      core's DC3 dual-write, fixed at core 25c38b2).*
 - [x] **`/claude-tui off → on` + native footer toggle**: notifications, packed
       rows and the footer show no unexpected duplicates; after off the footer
       slot is the host stock footer (no cc-footer widget, no downgrade row);
@@ -251,9 +275,11 @@ daily settings. Record host version, both repo revisions, launch args, result.
 
 ## 14. 2026-10-08 follow-up evidence ledger — terminal items executed; economy row OPEN
 
-Current implementation baseline: TUI `1bf9b7f` + the 2026-10-08 follow-up
-commits (U-F1 basis fix, J-USAGE joint suite, H-T evidence), core `ff81050`
-(fixed snapshot; D4 reader withdrawal included), pi host 1.0.2. Automated
+Current implementation baseline: TUI `d846302` + the 2026-10-08 follow-up
+batches (U-F1 basis fix, J-USAGE joint suite, H-T evidence + the same-day
+follow-up: notify re-verification, goal/obs/MCP/waiting/macrotask rows),
+core `e98ce4a` (fixed snapshot: D4 withdrawal + C5 lifecycle + effort
+notify fix), pi host 1.0.2. Automated
 status: 278 passing / 0 skipped tests + clean typecheck;
 `test/modes-producer.joint.test.ts` drives the REAL core modes producer
 through the real bus into this package's real entry wiring (status row +

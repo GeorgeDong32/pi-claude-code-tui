@@ -1,0 +1,40 @@
+╭─── Pi v1.0.2 ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                        │                             │
+│                                                                                        │ Getting started             │
+│                                     █████████                                          │ Ask Pi to build it          │
+│                                     ███   ███                                          │ ──────────────────────      │
+│                                     ██████   ███                                       │ Commands                    │
+│                                     ███      ███                                       │ /claude-tui                 │
+│                                                                                        │ /login                      │
+│                              Let's build something great                               │ /goal-abort                 │
+│                             unknown/unknown · off effort                               │ /memory-import-claude       │
+│/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/h… │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[Extension issues]
+  path (temp)
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts conflicts with built-in shortcut. Skipping.
+
+
+ Warning: --effort ultra: unknown effort level
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Reloading keybindings, extensions, skills, prompts, themes, and context files...
+                                                                                                             unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

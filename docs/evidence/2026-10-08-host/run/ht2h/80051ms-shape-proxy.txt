@@ -1,0 +1,40 @@
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts conflicts with built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ fd installed to /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht2h/agent/bin/fd
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Make ONE direct tool call now (no codemode): the tool named mcp with tool='mcp__dummy__echo_search' and
+ args={"query":"proxy shape"}. Then stop.
+
+ The user wants me to make one direct tool call: the mcp tool with tool='mcp__dummy__echo_search' and
+ args={"query":"proxy shape"}. Then stop.
+
+⏺ dummy - echo_search (MCP)(tool=mcp__dummy__echo_search args={"query":"proxy shape"})
+  ⎿  probe proxy echo for mcp__dummy__echo_search
+
+ The call succeeded, echoing the probe. Now stop.
+
+ Call completed: mcp with tool='mcp__dummy__echo_search', args={"query":"proxy shape"} — echoed back: probe proxy echo
+ for mcp__dummy__echo_search.
+
+✻ Crunched for 11s · 20:16                                                    GLM 5.3 Flash·high│Ctx 1%(8k/1.0M)│$0.0012
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

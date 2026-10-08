@@ -1,0 +1,40 @@
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts conflicts with built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ fd installed to
+ /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/ht2h2/agent/bin/fd
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ CC tool rows on — every new tool call renders as CC rows (other renderers yield; execute untouched)
+
+ ❯ Make ONE direct tool call now (no codemode): mcp__dummy__echo_search with query 'native shape'. Then stop.
+
+ The user wants me to make one direct tool call: mcp__dummy__echo_search with query 'native shape'. Then stop.
+
+⏺ dummy - echo_search (MCP)(query=native shape)
+  ⎿  dummy echo: native shape
+
+ The tool returned. The user asked me to stop after the single call.
+
+ Done. mcp__dummy__echo_search returned: dummy echo: native shape
+
+✻ Crunched for 10s · 20:25                                                    GLM 5.3 Flash·high│Ctx 1%(8k/1.0M)│$0.0003
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⚡ bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools
+To resume this session: pi --session 01a11b79-388b-77f2-9ed9-8950e1a1831f
+
+<<<DRIVER exit=0 elapsed=216.3s>>>

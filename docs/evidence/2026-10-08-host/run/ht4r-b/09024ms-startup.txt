@@ -1,0 +1,40 @@
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[Extension issues]
+  path (temp)
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts
+    Extension shortcut 'shift+tab' from
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host/run/core-snap-e98ce4a/extensions/index.
+ts conflicts with built-in shortcut. Skipping.
+
+
+ Error: Failed to load theme "claude-code": Theme not found: claude-code
+ Fell back to the system theme.
+
+ fd not found. Downloading...
+ Warning: Failed to download fd: fetch failed: Client network socket disconnected before secure TLS connection was
+ established
+
+ Warning: --effort ultra: unknown effort level
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See:
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.0.2_@aws-sdk+credential-provider-node@3.972.
+ 84_@model_ae64a9f4dfdf964183d3018f08099fc7/node_modules/@earendil-works/pi-coding-agent/docs/providers.md
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.0.2_@aws-sdk+credential-provider-node@3.972.
+ 84_@model_ae64a9f4dfdf964183d3018f08099fc7/node_modules/@earendil-works/pi-coding-agent/docs/models.md
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                                                                             unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● ask mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools
