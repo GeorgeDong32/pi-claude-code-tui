@@ -14,6 +14,14 @@
  *   只换渲染器，execute 与参数从不触碰；旧机制（registerTool 重注册
  *   内置七件 + ToolExecutionComponent 原型补丁）已删，spec
  *   2026-10-03-pi-1.0-tool-renderer-migration
+ * - pi 1.1.0 适配（outputPad）：ToolRenderContext 新增必填 durationMs /
+ *   outputPad（上下文由 pi 传入，本包不镜像该类型，无需改动）；
+ *   outputPad 不影响 self 壳 —— updateDisplay 的 setPaddingX 只打在
+ *   instanceof Box 的默认壳 contentBox 上，self 壳是 plain Container，
+ *   1.0.1/1.1.0 均零 padding、render(width) 原样透传全宽，官方类型注释
+ *   明示 self 壳渲染器自行决定是否消费 outputPad。CC 工具行保持 CC
+ *   原生第 0 列顶格，故不消费 outputPad，宽度数学与 golden 字节不变
+ *   （详见 CHANGELOG Unreleased 的 1.1.0 条目）
  * - Thinking 折叠：折叠开关本身是 pi 原生设置（hideThinkingBlock / ctrl+t），
  *   本扩展只把折叠标签换成 CC 风格 `✻ Thinking… (ctrl+t to expand)`，
  *   并在用户未做过选择时一次性提示快捷键
