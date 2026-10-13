@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1 (2026-10-13)
+
+### Fixed (pi-tui 1.2 compatibility, editor cursor)
+- pi-tui 1.2.0 把编辑器光标从裸反显序列改为 APC fake-cursor 标记（合成阶段才转反显，且硬件光标可见时 `CURSOR_MARKER` 相邻的 fake cursor 会被丢弃）——原 `restyleEditorCursor` 在 1.2.0 下失配，accent 块状光标与闪烁会退化。现在双形态兼容：≥1.2 的 fake-cursor 对（含 END 被行截断丢掉的变体，按 pi 自己的 resolver 语义取到行尾）与 1.1 的反显序列都改写为 accent bar；改写成普通 SGR 后该单元不再进入 1.2 的丢弃路径，行为与 1.1.0 一致。devDeps 同步升 `@earendil-works/*` ^1.2.0，全套测试（含真组件与 joint 用例）跑在 1.2.0 上验证。
+
 ## 1.10.0 (2026-10-13)
 
 ### Added (cc-notices, spec 2026-10-13-cc-notices)
