@@ -28,6 +28,7 @@ extensions/
   lib/                      # 纯模块（无 pi 运行时依赖，可单测）
     cc-rows.ts              #   CC 工具行渲染器（call/result 行、diff、折叠、component memo、gutter-wrap）
     cc-compaction-row.ts    #   压缩行 prototype patch + 原生压缩指示器静音
+    cc-notices.ts           #   cc-notices（spec 2026-10-13）：NoticeCenter / compact 改写 / notices entry 行 / chip / showError+showWarning 两 tap / 致命退出 stderr 兑底
     cc-skill-row.ts         #   skill 调用行 prototype patch（CC 式 ⏺ Skill(name)，保留点击展开）
     cc-subagent-rows.ts     #   CC 风 fleet/async roster 绘制（drawCcFleetFrame / drawCcAsyncFrame，纯函数）
     subagent-presentation.ts #  SubagentPresentationBridge：pi-subagents 展示 seam 的探测/注册/撤回桥
@@ -80,7 +81,7 @@ src/                        # 空目录残留（无文件，勿引用）
 1. **`render()` / `updateDisplay()` 里绝不能抛异常**。渲染回调在 pi 无法捕获的调用栈里执行，抛了整个 pi 直接挂。所有容错（prefs 读失败、脚本失败、主题缺失）都吞掉并降级。
 2. **渲染热路径上不要 spawn、不要全量重扫**。每帧被调用的 render 只读缓存：会话用量靠 `UsageTracker`（`message_end` 时重算一次），statusline 是事件驱动 + 250ms debounce + in-flight 合并，每帧最多触发一次宽度变化检测。
 3. **`ctx` / `ctx.ui.theme` 会过期**。session 替换或 `/reload` 后旧 ctx 失效。不要在 enable 时捕获 theme 存闭包长期用；要么每帧从当前 ctx 取，要么像 `cc-compaction-row.ts` 那样传 `getFg()` 惰性读取。启动头（`pi-startup-header.ts`）也不例外：render 只能读入口注入的 getter 和 `setHeader` 工厂参数里的 theme，不能访问 ctx。
-4. **prototype patch 必须幂等**。用 `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。现存的 patch 只剩压缩行 / skill 行 / 用户消息条——工具行已改走官方 `pi.registerToolRenderer` 通道（1.8.0 起），不再依赖 patch。
+4. **prototype patch 必须幂等**。用 `__ccCompact` 这类标记防重复 patch；jiti `moduleCache: false` 会造成同一类有多个模块实例，深路径 import 补丁可能打在没人用的实例上（压缩指示器因此改成实例级 render 覆盖 + 组件树搜索）。现存的 patch：压缩行 / skill 行 / 用户消息条 + `InteractiveMode` 的 showError/showWarning 两个 notice tap（`cc-notices.ts`）——工具行已改走官方 `pi.registerToolRenderer` 通道（1.8.0 起），不再依赖 patch。
 5. **工具行走官方渲染器通道（pi ≥ 1.0.1）**：`pi.registerToolRenderer` 的 resolver 只能在加载段注册、逐组件构造求值；让路必须原样返回 `next()`（吞掉会剥夺内置/他人渲染器）。头图、编辑器仍是单占位槽、后写者胜。与其他 TUI 扩展共存的策略是 auto 让路（`pi.getAllTools()` 源元数据探测——`next()` 无法区分内置渲染器与他人注册）+ `/claude-tools on` 强制接管 + `FORCE_RESULT_EXEMPT`（pi-subagents 的 live 卡等不折叠）。
 6. **加载顺序不可假设**。本包可能在 core / 其他扩展之前或之后加载（两种顺序都会在实际配置中出现），`enable` 时可能探测不到后加载者。所有探测点都要有重试；**订阅统一走 `lib/core-bus.ts`**（在场带所有权、交接基线、bus 更换检测、generation 失效旧回调），重试点是 session_start 与 cc-status / cc-footer 的 render（O(1) 快路径）；`readPmStatus()` 保持纯读、永不订阅。
 7. **运行时没有文件锚点**。jiti 以 data: URL 求值扩展文件，`import.meta.url` 不指向安装目录。需要文件内容的东西（默认 statusline 脚本）必须内联成 TS 字符串，且与 `scripts/statusline-default.sh` **字节级同步**（`test/statusline.test.ts` 校验）——改脚本两处一起改，或跑同步测试看红。
@@ -88,7 +89,8 @@ src/                        # 空目录残留（无文件，勿引用）
 9. **prefs 是共享文件**：`~/.pi/agent/claude-tui.json` 同时存 `toolRows` 和 `statusLine`。写入必须走 `savePrefs()` 的 read-modify-write + tmp/rename 原子替换，禁止整文件覆盖（历史上互相清过对方的键）。
 10. **裸 ANSI 处理**：涉及宽度计算时用 `visibleWidth` / `truncateToWidth`（pi-tui），自己写正则剥 ANSI 时记得 APC 序列（`stripAnsi` 的第二个 replace）。
 11. **定时器都要 `unref()`**，blink 定时器只在编辑器 focused 时翻转，非强制 `requestRender()`（保住 pi 的行 diff 缓存）。
-12. **环境开关**：`CC_TUI_TOOL_ROWS=0`（强制关工具行）、`PERMISSION_MODES_INHERITED_MODE`（旧模式通道 fallback）、statusline 子进程环境里的 `OVERRIDE_TERM_WIDTH`。不要挪用这些名字。
+12. **notice tap 的 body 必须把 original 调用放在最后一步**（DEC-N4：降级路径会再调一次 original，先调后抛会双份 append）；tap 只重写传给宿主的显示字符串或安静跳过，不改宿主任何字段；本包内部反馈只用 info 级 `notify`，否则自己的输出会再次进入 tap。
+13. **环境开关**：`CC_TUI_TOOL_ROWS=0`（强制关工具行）、`PERMISSION_MODES_INHERITED_MODE`（旧模式通道 fallback）、statusline 子进程环境里的 `OVERRIDE_TERM_WIDTH`。不要挪用这些名字。
 
 ## 文档地图
 

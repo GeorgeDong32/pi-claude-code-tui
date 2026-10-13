@@ -309,3 +309,14 @@ with structurally-unreachable conditions spelled out.
 The pre-existing cross-module reload ownership observation for
 pi-proto-adapter is a separate investigation, not a completed fix or a reason
 to silently skip an affected terminal scenario.
+
+## 15. cc-notices (spec 2026-10-13) — executed 2026-10-13 (verification record: `~/Coding/Pi-Extension/specs/design/VERIFY-2026-10-13-cc-notices.md`)
+
+- [x] **Compact boot**: with a broken `models.json`, the two startup notices above the input are each a single line ending `· /claude-notices` (baseline was a 4-line Error block + a 7-line Warning block).
+- [x] **Short single-line passthrough**: `/thinking foo` renders the identical one-liner as bare pi (no pointer appended).
+- [x] **`/claude-notices` + ctrl+o**: appends `⏺ Notices(N · x errors · y warnings) · latest… (ctrl+o to expand)`; ctrl+o expands every notice in full (long paths intact, dim HH:MM:SS, `×N` on repeats). A second ctrl+o collapses everything.
+- [x] **Quiet mode**: `/claude-notices mode quiet` → new notices render zero transcript rows and the footer hint row gains a right-pinned `⚠ N notices · /claude-notices` chip that updates immediately (no key press); `/claude-footer on` keeps the chip visible.
+- [x] **On/off contrast**: `/thinking <200-char garbage>` compacts while enabled; after `/claude-tui` (off) the same command renders the native multi-line block. The off feedback mentions unread notices when any exist.
+- [x] **Narrow terminal (quiet)**: the chip stays whole; the hint side truncates first.
+- [ ] **Click-to-expand (fullscreen only)**: clicking the `⏺ Notices` row toggles it — pty-level click could not reach transcript entries (overlay clicks verified working; see the verification record), so this needs a real-terminal click. Override logic is unit-pinned (N-T6).
+- [x] **Persistence**: `notices.mode` survives restart via `claude-tui.json` (sibling keys intact); notices themselves are process-scoped by design (no log file).
