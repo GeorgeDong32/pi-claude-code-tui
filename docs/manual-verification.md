@@ -320,3 +320,12 @@ to silently skip an affected terminal scenario.
 - [x] **Narrow terminal (quiet)**: the chip stays whole; the hint side truncates first.
 - [ ] **Click-to-expand (fullscreen only)**: clicking the `⏺ Notices` row toggles it — pty-level click could not reach transcript entries (overlay clicks verified working; see the verification record), so this needs a real-terminal click. Override logic is unit-pinned (N-T6).
 - [x] **Persistence**: `notices.mode` survives restart via `claude-tui.json` (sibling keys intact); notices themselves are process-scoped by design (no log file).
+
+## 16. API error rows (spec 2026-10-13) — executed 2026-10-13 (verification record: `~/Coding/Pi-Extension/specs/design/VERIFY-2026-10-13-cc-api-error-row.md`)
+
+- [x] **Per-attempt rows**: a dead-endpoint model renders each failed attempt as `  ⎿  API Error: Connection error.` (baseline was bare `Error: Connection error.`).
+- [x] **Long error fold**: a 400 with a long JSON body folds to `⎿  API Error: 400` + `... +19 lines (ctrl+o to expand)`; ctrl+o reveals the full wrapped body under the gutter.
+- [x] **Off contrast**: after `/claude-tui` (off), new errors render the native bare red lines again.
+- [x] **Resume replay**: `pi --session <id>` replays an old errored session with the CC rows.
+- [x] **Interrupted / truncated**: dim `⎿  Interrupted · …` and the red truncated row are covered by the real-component matrix (A-T3) — the probe env has no working streaming model, per spec fallback.
+- [ ] **Click-to-expand (fullscreen only)**: same pty limitation as cc-notices §15 — needs a real-terminal click on the `⎿  API Error:` row; the MouseRegion toggle is unit-pinned (A-T5).
