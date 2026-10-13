@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.0 (2026-10-13)
+
+### Added (cc-notices, spec 2026-10-13-cc-notices)
+- **Pi 原生 Error/Warning 通知的紧凑化与全文查看。** pi 的 `showError` / `showWarning`（坏 `models.json`、No models available、重试耗尽、扩展 `notify(error/warning)` 等）原本以多行块糊在输入框上方；现在被两个 prototype tap 接管：**默认 compact**（DEC-N2）— 多行/超长通知压成一行摘要 + `· /claude-notices` 指针（首非空行、空白折叠、截断，budget = max(40, 列宽 − 内边距 − 前缀 − 指针)；捕获后 resize 不重排，已披露）；短单行原样透传。
+- `/claude-notices`：把缓冲快照（含未读已读全部历史，×N 合并计数，16k 截断）追加为一条 `⏺ Notices(N · x errors · y warnings)` CustomEntry，ctrl+o（或 fullscreen 下点击）展开逐条全文（dim 时间戳 + 级别色）；`clear` 清空；`mode compact|quiet|off` 切换并经 `savePrefs` 持久化（兄弟键不丢）。notices 本身进程级存活，不落盘。
+- **quiet 模式**：原生行完全静音，cc-footer 提示行右侧常驻 `⚠ N notices · /claude-notices` chip（新增 `pinnedRightLayout`：右侧优先，窄终端下 chip 完整、左侧截断；两种 footer 模式都可见，打字时也保留）；查看后清零。pi 非零退出且有未读时，全文（剥 ANSI）同步写入 stderr（`fs.writeSync(2)`，失败吞掉）——致命错误不再随进程消失。
+- **覆盖边界（DEC-N12）**：只接管这两个通道；`showStatus`（命令反馈/Tip）、assistant API 错误行（见下个特性）、更新提示块、计费提示等仍为原生。tap 版本门控：宿主方法缺失时一次 `console.warn` 并保持原生（fail-open）；body 异常降级为原参数调用原方法。
+
+### Added (API error rows, spec 2026-10-13-cc-api-error-row)
+- **assistant 终态行 CC 化**：`stopReason` 为 error/aborted/length 时，pi 原生的裸红字末行替换为 CC 风 gutter 行——error → `⎿  API Error: …`（复用 ccResult 折叠：最多 3 行 + `... +N lines` 提示；ctrl+o 或点击展开全文）；aborted → dim `⎿  Interrupted · What should Pi do instead?`（自定义中断原因完整换行不截断）；length → 红 `⎿  Response was truncated…`。文案统一为 `API Error:` 前缀（原有 `Error:` / `API Error:` 前缀去重，裸前缀归为 Unknown error）。
+- 展开通过实例级 `setExpanded` 接入全局 ctrl+o（不覆盖非本包实现）；新出现的 error 行初始为折叠态（宿主不推送全局展开态，已披露）。resume 回放同样 CC 化；`/export` HTML 不受影响。
+- 识别为 fail-open：pi 原生分支条件 + 末尾文案 ANSI 剥除后精确匹配，任一不符即保持原生行——pi 文案/结构变化自动降级。`/claude-tui off` 后：新渲染与重渲染恢复原生，已渲染的行等下一次 `updateContent` 才回退（已披露）。
+
 ## Unreleased
 
 ### Changed (pi devDeps 1.0.1 → 1.1.0, outputPad accepted as-is, 2026-10-09)
