@@ -1,0 +1,30 @@
+╭─── Pi v1.1.0 ────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                     │                            │
+│                                                                     │ Getting started            │
+│                            █████████                                │ Ask Pi to build it         │
+│                            ███   ███                                │ ──────────────────────     │
+│                            ██████   ███                             │ Commands                   │
+│                            ███      ███                             │ /claude-tui                │
+│                                                                     │ /quit                      │
+│                    Let's build something great                      │ /reload                    │
+│                    CPA/test-flash · off effort                      │ /compact                   │
+│/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/20… │                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+                                                                                      Test Flash·off
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ hi
+────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle)

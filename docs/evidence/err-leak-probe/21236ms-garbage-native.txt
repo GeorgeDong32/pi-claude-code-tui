@@ -1,0 +1,40 @@
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+ Error: models.json error: Failed to parse models.json: Expected double-quoted property name in JSON… · /claude-notices
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See: · /claude-notices
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Error: Unknown thinking level "foo". Available levels: off.
+
+⏺ Notices(3 · 2 errors · 1 warning) · Unknown thinking level "foo". Available levels: off. (ctrl+o to expand)
+
+ Tool output: collapsed
+
+ Error: Unknown thinking level "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa… · /claude-notices
+
+ Claude Code TUI replica disabled — 1 unread notices: /claude-notices
+
+ Error: Unknown thinking level
+ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa". Available levels: off.
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host (main)
+0.0%/0 (auto)                                                                                                    unknown

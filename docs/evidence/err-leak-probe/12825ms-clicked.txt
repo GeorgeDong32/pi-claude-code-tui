@@ -1,0 +1,40 @@
+│                             unknown/unknown · off effort                               │ /claude-footer              │
+│   /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host     │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+ Error: models.json error: Failed to parse models.json: Expected double-quoted property name in JSON… · /claude-notices
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See: · /claude-notices
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Error: Unknown thinking level "zzz". Available levels: off.
+
+⏺ Notices(3 · 2 errors · 1 warning)
+  ⎿  [23:47:01] error
+     models.json error: Failed to parse models.json: Expected double-quoted property name in JSON at position 88 (line 1
+     column 89)
+
+     File: /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/err-leak-probe/agent/models.json
+  ⎿  [23:47:01] warning
+     No models available. Use /login to log into a provider via OAuth or API key. See:
+
+     /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.9
+     72.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-coding-agent/docs/providers.md
+
+     /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-provider-node@3.9
+     72.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-coding-agent/docs/models.md
+  ⎿  [23:47:07] error
+     Unknown thinking level "zzz". Available levels: off.
+
+                                                                                                             unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

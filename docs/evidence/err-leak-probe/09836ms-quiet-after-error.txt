@@ -1,0 +1,40 @@
+╭─── Pi v1.1.0 ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                        │                             │
+│                                                                                        │ Getting started             │
+│                                     █████████                                          │ Ask Pi to build it          │
+│                                     ███   ███                                          │ ──────────────────────      │
+│                                     ██████   ███                                       │ Commands                    │
+│                                     ███      ███                                       │ /claude-tui                 │
+│                                                                                        │ /reload                     │
+│                              Let's build something great                               │ /claude-footer              │
+│                             unknown/unknown · off effort                               │ /settings                   │
+│   /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host     │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Native footer on — CC status widget hidden
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools      ⚠ 3 notices · /claude-notices
+/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host (main)
+0.0%/0 (auto)                                                                                                    unknown

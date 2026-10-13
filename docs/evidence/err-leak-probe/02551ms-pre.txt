@@ -1,0 +1,30 @@
+│                            ███      ███                             │ /claude-tui                │
+│                                                                     │ /settings                  │
+│                    Let's build something great                      │ /claude-statusline         │
+│                    unknown/unknown · off effort                     │ /copy                      │
+│/Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/20… │                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See:
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/providers.md
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/models.md
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                                                         unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ▏
+────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools

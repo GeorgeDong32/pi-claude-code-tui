@@ -1,0 +1,30 @@
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/providers.md
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/models.md
+
+ Error: No API key found for the selected model.
+
+ Use /login to log into a provider via OAuth or API key. See:
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/providers.md
+
+ /Users/gd32/Library/pnpm/global/5/.pnpm/@earendil-works+pi-coding-agent@1.1.0_@aws-sdk+credential-
+ provider-node@3.972.84_@model_e9839b9f1b98abc8882fe3ff324a7141/node_modules/@earendil-works/pi-cod
+ ing-agent/docs/models.md
+
+                                                                                         unknown·off
+→ settings           Open settings menu
+  model              <provider/model> — Select model (opens selector UI)
+  tree               Navigate session tree (switch branches)
+  thinking           <level> — Set thinking level
+  scoped-models      Enable/disable models for Ctrl+P cycling
+  (1/30)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle)

@@ -1,0 +1,40 @@
+╭─── Pi v1.1.0 ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                        │                             │
+│                                                                                        │ Getting started             │
+│                                     █████████                                          │ Ask Pi to build it          │
+│                                     ███   ███                                          │ ──────────────────────      │
+│                                     ██████   ███                                       │ Commands                    │
+│                                     ███      ███                                       │ /claude-tui                 │
+│                                                                                        │ /trust                      │
+│                              Let's build something great                               │ /model                      │
+│                             unknown/unknown · off effort                               │ /skill:testy                │
+│   /Users/gd32/Coding/Pi-Extension/pi-claude-code-tui/docs/evidence/2026-10-08-host     │                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Tip: ctrl+t toggles collapsed thinking blocks (saved to settings.json)
+
+ Error: models.json error: Failed to parse models.json: Expected double-quoted property name in JSON… · /claude-notices
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See: · /claude-notices
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 1.2.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Error: Unknown thinking level "foo". Available levels: off.
+
+
+
+
+
+
+
+
+
+                                                                                                             unknown·off
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● bypass mode on (shift+tab to cycle) · ! for bash mode · ctrl+p model · ctrl+o tools
