@@ -162,3 +162,22 @@ test("cursor restyle: unfocused line without marker keeps the first-reverse-span
 	// reverse span IS the cursor and gets the bar.
 	assert.equal(restyleEditorCursor(`text ${REVERSED("y")} more`, BAR, true), `text ${BAR} more`);
 });
+
+test("cursor restyle 1.2 adversarial: fake inner bearing ESC is preserved verbatim on blink-off", () => {
+	const inner = "\x1b[1mx\x1b[0m";
+	const line = `${CURSOR_MARKER}${FAKE_START}${inner}${FAKE_END} tail`;
+	assert.equal(restyleEditorCursor(line, BAR, false), `${CURSOR_MARKER}${inner} tail`);
+	// showCursor replaces the WHOLE cell (inner included) with the bar.
+	assert.equal(restyleEditorCursor(line, BAR, true), `${CURSOR_MARKER}${BAR} tail`);
+});
+
+test("cursor restyle 1.2 adversarial: only the FIRST fake pair is the cursor; later pairs untouched", () => {
+	const second = `${FAKE_START}z${FAKE_END}`;
+	const line = `${CURSOR_MARKER}${FAKE_START}x${FAKE_END} mid ${second}`;
+	assert.equal(restyleEditorCursor(line, BAR, true), `${CURSOR_MARKER}${BAR} mid ${second}`);
+	assert.equal(restyleEditorCursor(line, BAR, false), `${CURSOR_MARKER}x mid ${second}`);
+});
+
+test("cursor restyle 1.2: unfocused blink-off phase restores the plain character", () => {
+	assert.equal(restyleEditorCursor(`out ${FAKE_START}y${FAKE_END}`, BAR, false), "out y");
+});

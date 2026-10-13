@@ -68,7 +68,7 @@ src/                        # 空目录残留（无文件，勿引用）
 - **纯模块优先**：凡是可以脱离 pi 运行时测的逻辑（渲染器、格式化、JSON 合成、prefs IO），都放 `lib/` 并保持可注入依赖（theme 鸭子类型、注入 RNG/path）。入口文件只做接线。
 - **渲染器字节级稳定**：`lib/cc-rows.ts` 的输出被 `test/cc-rows.golden.test.ts` 逐字节钉死。改渲染输出必须显式更新 golden 文件并在提交信息里说明视觉差异。
 - **鸭子类型镜像 pi 内部类型**：不要 import pi 未导出的类型；按本仓库惯例在 `lib/` 里写 `XxxLike` 镜像接口 + 版本号门控（参考 `pm-capability.ts`）。
-- 依赖版本：devDependencies 钉在当前 pi 版本（`1.0.x`），peerDependency 是 `>=1.0.1`（工具行依赖 `pi.registerToolRenderer`，1.0.1 才有）。pi 升级带来的适配改动用 scope `1.0-adapt` 之类标注。
+- 依赖版本：devDependencies 钉在当前 pi 版本（`^1.2.0`），peerDependency 是 `>=1.0.1`（工具行依赖 `pi.registerToolRenderer`，1.0.1 才有）。pi 升级带来的适配改动用 scope `1.2-adapt` 之类标注。
 
 ## 提交与发布
 

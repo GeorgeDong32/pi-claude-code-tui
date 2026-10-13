@@ -68,7 +68,7 @@ src/                        # Empty leftover directories (no files — do not re
 - **Pure modules first**: anything testable without the pi runtime (renderers, formatters, JSON synthesis, prefs IO) goes in `lib/` with injectable dependencies (duck-typed theme, injected RNG/path). The entry file only wires things up.
 - **Byte-stable renderers**: output of `lib/cc-rows.ts` is pinned byte-for-byte by `test/cc-rows.golden.test.ts`. Changing rendered output requires explicitly updating the golden files and explaining the visual diff in the commit message.
 - **Duck-typed mirrors of pi internals**: do not import types pi doesn't export; follow this repo's convention of `XxxLike` mirror interfaces + version gating in `lib/` (see `pm-capability.ts`).
-- Dependency versions: devDependencies are pinned to the current pi version (`1.0.x`); the peerDependency is `>=1.0.1` (tool rows need `pi.registerToolRenderer`, added in 1.0.1). Adaptation work for pi upgrades gets a scope like `1.0-adapt`.
+- Dependency versions: devDependencies are pinned to the current pi version (`^1.2.0`); the peerDependency is `>=1.0.1` (tool rows need `pi.registerToolRenderer`, added in 1.0.1). Adaptation work for pi upgrades gets a scope like `1.2-adapt`.
 
 ## Commits & releases
 
