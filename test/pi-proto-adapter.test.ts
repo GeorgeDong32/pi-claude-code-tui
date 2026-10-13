@@ -239,3 +239,106 @@ test("adapter: wrapper-style bodies run the saved original first (user-message b
 	assert.equal(host.ran, "original");
 	adapter.restore();
 });
+
+// ── N-T1 (DEC-N4): call-argument forwarding ─────────────────────────────
+
+test("adapter: body receives the live call arguments (DEC-N4)", () => {
+	const cls = makeClass();
+	let seen: readonly unknown[] | null = null;
+	const adapter = new PrototypeMethodAdapter({
+		proto: cls.prototype,
+		method: "updateDisplay",
+		marker: "__ccTest",
+		hostMatches: () => true,
+		body: (_host, _fg, _original, args) => {
+			seen = args;
+		},
+	});
+	adapter.apply(() => plain);
+	const host = new cls() as unknown as { updateDisplay(a: string, b: number): void };
+	host.updateDisplay("boom", 42);
+	assert.deepEqual(seen, ["boom", 42]);
+	adapter.restore();
+});
+
+test("adapter: body throw degrades with the ORIGINAL arguments replayed (DEC-N4)", () => {
+	const cls = makeClass();
+	const received: unknown[][] = [];
+	(cls.prototype as unknown as Record<string, unknown>).updateDisplay = function (
+		this: TestHost,
+		...args: unknown[]
+	): void {
+		received.push(args);
+		this.ran = "original";
+	};
+	const adapter = new PrototypeMethodAdapter({
+		proto: cls.prototype,
+		method: "updateDisplay",
+		marker: "__ccTest",
+		hostMatches: () => true,
+		body: () => {
+			throw new Error("body explodes");
+		},
+	});
+	adapter.apply(() => plain);
+	const host = new cls() as unknown as { updateDisplay(m: string): void };
+	host.updateDisplay("Error: keep me");
+	assert.equal(received.length, 1, "degrade path replays the call exactly once");
+	assert.deepEqual(received[0], ["Error: keep me"], "original gets the live args, not undefined");
+	adapter.restore();
+});
+
+test("adapter: host-shape mismatch degrade also replays args (DEC-N4)", () => {
+	const cls = makeClass();
+	const received: unknown[][] = [];
+	(cls.prototype as unknown as Record<string, unknown>).updateDisplay = function (
+		this: TestHost,
+		...args: unknown[]
+	): void {
+		received.push(args);
+		this.ran = "original";
+	};
+	const adapter = new PrototypeMethodAdapter({
+		proto: cls.prototype,
+		method: "updateDisplay",
+		marker: "__ccTest",
+		hostMatches: () => false, // every call degrades
+		body: () => {
+			throw new Error("unreachable");
+		},
+	});
+	adapter.apply(() => plain);
+	const host = new cls() as unknown as { updateDisplay(m: string): void };
+	host.updateDisplay("w=120");
+	assert.deepEqual(received, [["w=120"]]);
+	adapter.restore();
+});
+
+test("adapter: no-arg originals stay equivalent under apply(this, []) (DEC-N4 back-compat)", () => {
+	const cls = makeClass();
+	let originalArgs: readonly unknown[] = [];
+	(cls.prototype as unknown as Record<string, unknown>).updateDisplay = function (
+		this: TestHost,
+		...args: unknown[]
+	): void {
+		originalArgs = args;
+		this.ran = "original";
+	};
+	const adapter = new PrototypeMethodAdapter({
+		proto: cls.prototype,
+		method: "updateDisplay",
+		marker: "__ccTest",
+		hostMatches: (host) => typeof (host as TestHost)?.value === "string",
+		body: (host, _fg, original) => {
+			// Wrapper style with no args of its own — the pre-N4 shape.
+			original?.call(host);
+			(host as unknown as TestHost).ran = "cc-wrap";
+		},
+	});
+	adapter.apply(() => plain);
+	const host = new cls();
+	host.updateDisplay(); // zero live args
+	assert.equal(host.ran, "cc-wrap");
+	assert.equal(originalArgs.length, 0, "original saw zero args — apply(this,[]) ≡ call(this)");
+	adapter.restore();
+});

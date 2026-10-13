@@ -18,6 +18,13 @@
  * - The replacement never throws: render paths are uncatchable upstream, so
  *   any failure falls back to the original method (or a no-op when there is
  *   none), never a crash.
+ *
+ * Call arguments are forwarded: the wrapper is variadic and passes the full
+ * `args` through to body, and the degrade path replays them onto the saved
+ * original (`apply(this, args)`). Constraint for wrapper-style bodies: any
+ * original call with side effects must be the LAST step of the body — the
+ * degrade path calls original again, so calling it earlier and then failing
+ * would duplicate the side effect (e.g. a double chat append).
  */
 
 export type ThemeFg = (color: string, text: string) => string;
@@ -33,15 +40,23 @@ export interface PrototypeMethodAdapterOptions {
 	hostMatches: (host: unknown) => boolean;
 	/** The CC rendering body. Replacement-style bodies reimplement fully;
 	 * wrapper-style bodies call `original` first (user-message bar). The
-	 * saved original is undefined when the host had no such method. */
-	body: (host: Record<string, unknown>, fg: ThemeFg, original: (() => void) | undefined) => void;
+	 * saved original is undefined when the host had no such method.
+	 * `args` are the live call arguments (DEC-N4): wrapper-side variadic
+	 * capture, replayed on degrade — bodies that call the original must do
+	 * so as their LAST side effect (see module comment). */
+	body: (
+		host: Record<string, unknown>,
+		fg: ThemeFg,
+		original: ((...args: unknown[]) => unknown) | undefined,
+		args: readonly unknown[],
+	) => void;
 }
 
 export class PrototypeMethodAdapter {
 	private readonly options: PrototypeMethodAdapterOptions;
 	private currentFg: (() => ThemeFg | null) | null = null;
-	private wrapper: ((this: never) => void) | undefined;
-	private original: (() => void) | undefined;
+	private wrapper: ((this: never, ...args: unknown[]) => void) | undefined;
+	private original: ((...args: unknown[]) => unknown) | undefined;
 
 	constructor(options: PrototypeMethodAdapterOptions) {
 		this.options = options;
@@ -61,21 +76,23 @@ export class PrototypeMethodAdapter {
 			}
 			if (incumbent !== undefined && incumbent !== false) return; // foreign marker value: stay off
 			const original = proto[this.options.method];
-			this.original = typeof original === "function" ? (original as () => void) : undefined;
+			this.original =
+				typeof original === "function" ? (original as (...args: unknown[]) => unknown) : undefined;
 			const adapter = this;
-			const wrapper = function (this: unknown): void {
+			const wrapper = function (this: unknown, ...args: unknown[]): void {
 				const fg = (color: string, text: string): string => {
-				const paint = adapter.currentFg !== null ? adapter.currentFg() : null;
-				return paint !== null && paint !== undefined ? paint(color, text) : text;
-			};
+					const paint = adapter.currentFg !== null ? adapter.currentFg() : null;
+					return paint !== null && paint !== undefined ? paint(color, text) : text;
+				};
 				try {
 					if (!adapter.options.hostMatches(this)) throw new Error("host shape mismatch");
-					adapter.options.body(this as Record<string, unknown>, fg, adapter.original);
+					adapter.options.body(this as Record<string, unknown>, fg, adapter.original, args);
 				} catch {
-					// Degrade, never throw inside a render path.
-					adapter.original?.call(this);
+					// Degrade, never throw inside a render path. Replay the live
+					// arguments — `call(this)` would drop them (render(width) etc.).
+					adapter.original?.apply(this, args);
 				}
-			} as (this: never) => void;
+			} as (this: never, ...args: unknown[]) => void;
 			this.wrapper = wrapper;
 			proto[this.options.method] = wrapper;
 			proto[this.options.marker] = (next: () => ThemeFg | null) => {
