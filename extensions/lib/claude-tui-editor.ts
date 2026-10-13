@@ -58,23 +58,65 @@ export function roundedBorderLine(
 }
 
 /**
- * Restyle only the editor fake cursor (reverse-video span), not other reverse video.
- * Prefer the focused form with CURSOR_MARKER; fall back to the first short reverse span.
+ * pi-tui >=1.2 fake-cursor APC markers (tui.js `FAKE_CURSOR_START`/`END`;
+ * defined locally because 1.1.0 does not export them and must keep working).
+ */
+const FAKE_CURSOR_START = "\x1b_pi:fc\x07";
+const FAKE_CURSOR_END = "\x1b_pi:/fc\x07";
+
+/** Split the first fake-cursor cell out of the line; null when absent. A
+ * missing END (the line was truncated right at the cursor cell) treats EOL
+ * as the cell end, matching pi-tui's own resolver pattern. */
+function splitFakeCursorCell(line: string): { before: string; inner: string; after: string } | null {
+	const start = line.indexOf(FAKE_CURSOR_START);
+	if (start === -1) return null;
+	const bodyStart = start + FAKE_CURSOR_START.length;
+	const end = line.indexOf(FAKE_CURSOR_END, bodyStart);
+	if (end === -1) {
+		return { before: line.slice(0, start), inner: line.slice(bodyStart), after: "" };
+	}
+	return {
+		before: line.slice(0, start),
+		inner: line.slice(bodyStart, end),
+		after: line.slice(end + FAKE_CURSOR_END.length),
+	};
+}
+
+/**
+ * Restyle only the editor cursor cell — never other reverse video. Two wire
+ * forms by pi-tui version, both supported:
+ * - >=1.2: fake-cursor APC pair `START char END` right after CURSOR_MARKER
+ *   when focused (the END may be lost to line truncation — pi's own
+ *   resolver treats EOL as the cell end).
+ * - 1.1: a reverse-video span, after the marker when focused, else the
+ *   first short span on the line.
+ * Converting the 1.2 pair to plain SGR here also takes the cell out of the
+ * composite-stage resolver (which drops a marker-adjacent fake cursor when
+ * the hardware cursor is shown). The accent bar takes over the cell like
+ * CC's bar cursor; blink-off restores the plain character.
  */
 export function restyleEditorCursor(line: string, openStyle: string, showCursor = true): string {
 	// Blink-off phase: restore the plain character (cursor invisible).
 	const replacement = showCursor ? openStyle : "$1";
 	const markerIdx = line.indexOf(CURSOR_MARKER);
 	if (markerIdx !== -1) {
-		// Focused editor: replace the reverse-video span after the marker with
-		// the bar style (the bar takes over the cell, like CC's bar cursor).
 		const afterMarker = markerIdx + CURSOR_MARKER.length;
 		const tail = line.slice(afterMarker);
-		const replacedTail = tail.replace(/\x1b\[7m([^\x1b]*)\x1b\[0m/, replacement);
-		return line.slice(0, afterMarker) + replacedTail;
+		// pi-tui >=1.2: fake-cursor APC pair right after the marker.
+		const fake = splitFakeCursorCell(tail);
+		if (fake) {
+			return line.slice(0, afterMarker) + fake.before + (showCursor ? openStyle : fake.inner) + fake.after;
+		}
+		// pi-tui 1.1: reverse-video span right after the marker.
+		return line.slice(0, afterMarker) + tail.replace(/\x1b\[7m([^\x1b]*)\x1b\[0m/, replacement);
 	}
 
-	// Unfocused: restyle only the first reverse-video span with no nested escapes.
+	// Unfocused: first cursor cell on the line (fake pair on >=1.2, short
+	// reverse span on 1.1) with no nested escapes.
+	const fake = splitFakeCursorCell(line);
+	if (fake) {
+		return fake.before + (showCursor ? openStyle : fake.inner) + fake.after;
+	}
 	return line.replace(/\x1b\[7m([^\x1b]*)\x1b\[0m/, replacement);
 }
 

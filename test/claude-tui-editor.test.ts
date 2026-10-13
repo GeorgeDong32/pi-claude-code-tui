@@ -122,3 +122,43 @@ test("editor blink timer: ticks while unfocused never request renders", () => {
 		});
 	});
 });
+
+// ── restyleEditorCursor: dual wire forms (pi-tui 1.1 reverse / 1.2 fake) ──
+
+import { CURSOR_MARKER } from "@earendil-works/pi-tui";
+import { restyleEditorCursor } from "../extensions/lib/claude-tui-editor.ts";
+
+const FAKE_START = "\x1b_pi:fc\x07";
+const FAKE_END = "\x1b_pi:/fc\x07";
+const BAR = "\x1b[48;2;1;2;3m▏\x1b[39m\x1b[49m"; // stand-in accent bar
+const REVERSED = (ch: string) => `\x1b[7m${ch}\x1b[0m`;
+
+test("cursor restyle 1.2: focused fake-cursor pair → accent bar; blink-off → plain char", () => {
+	const line = `prompt ${CURSOR_MARKER}${FAKE_START}x${FAKE_END} tail`;
+	assert.equal(restyleEditorCursor(line, BAR, true), `prompt ${CURSOR_MARKER}${BAR} tail`);
+	assert.equal(restyleEditorCursor(line, BAR, false), `prompt ${CURSOR_MARKER}x tail`);
+});
+
+test("cursor restyle 1.2: END lost to truncation → cell runs to EOL (pi's own resolver pattern)", () => {
+	const line = `prompt ${CURSOR_MARKER}${FAKE_START}x`;
+	assert.equal(restyleEditorCursor(line, BAR, true), `prompt ${CURSOR_MARKER}${BAR}`);
+	assert.equal(restyleEditorCursor(line, BAR, false), `prompt ${CURSOR_MARKER}x`);
+});
+
+test("cursor restyle 1.2: unfocused fake pair (no marker) is still restyled", () => {
+	const line = `out ${FAKE_START}y${FAKE_END}`;
+	assert.equal(restyleEditorCursor(line, BAR, true), `out ${BAR}`);
+});
+
+test("cursor restyle 1.1: reverse span after marker / unfocused first span (behavior unchanged)", () => {
+	const focused = `prompt ${CURSOR_MARKER}${REVERSED("x")} tail`;
+	assert.equal(restyleEditorCursor(focused, BAR, true), `prompt ${CURSOR_MARKER}${BAR} tail`);
+	assert.equal(restyleEditorCursor(focused, BAR, false), `prompt ${CURSOR_MARKER}x tail`);
+	assert.equal(restyleEditorCursor(`pre ${REVERSED("y")} tail`, BAR, true), `pre ${BAR} tail`);
+});
+
+test("cursor restyle: unfocused line without marker keeps the first-reverse-span semantics (1.1)", () => {
+	// Documented pre-existing behavior: an unfocused editor's first short
+	// reverse span IS the cursor and gets the bar.
+	assert.equal(restyleEditorCursor(`text ${REVERSED("y")} more`, BAR, true), `text ${BAR} more`);
+});
