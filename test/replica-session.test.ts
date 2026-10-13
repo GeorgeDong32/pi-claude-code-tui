@@ -520,3 +520,73 @@ test("U-T2/core: right group and statusline JSON use core numbers; publish-after
 		h.dispose();
 	}
 });
+
+// ── N-T9 (spec 2026-10-13-cc-notices): quiet-mode chip on the cc-footer ──
+
+test("N-T9 footer: no noticeChip dep → hint row byte-identical to pre-notices", () => {
+	const h = setupSession();
+	try {
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const before = h.session.renderFooterRows(100, plain as never, true);
+		assert.ok(before.length >= 1);
+		assert.ok(
+			before[before.length - 1]!.includes("! for bash mode · ctrl+p model · ctrl+o tools"),
+			`hint row present: ${before[before.length - 1]}`,
+		);
+		assert.ok(!before[before.length - 1]!.includes("⚠"), "no chip characters");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("N-T9 footer: chip dep → right-pinned on the hint row; survives narrow widths", () => {
+	const h = setupSession();
+	try {
+		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
+			"⚠ 2 notices · /claude-notices";
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const rows = h.session.renderFooterRows(90, plain as never, true);
+		const last = rows[rows.length - 1]!;
+		assert.ok(last.includes("⚠ 2 notices · /claude-notices"), last);
+		assert.ok(last.trimEnd().endsWith("⚠ 2 notices · /claude-notices"), "chip is the row's right edge");
+
+		// Narrow: the chip must stay whole; the hints side truncates first.
+		const narrow = h.session.renderFooterRows(34, plain as never, true);
+		const narrowLast = narrow[narrow.length - 1]!;
+		assert.ok(narrowLast.includes("⚠ 2 notices · /claude-notices"), `chip survives: ${narrowLast}`);
+	} finally {
+		h.dispose();
+	}
+});
+
+test("N-T9 footer: editor text → mode label + chip (chip kept)", () => {
+	const h = setupSession();
+	try {
+		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
+			"⚠ 1 notice · /claude-notices";
+		(h.session as unknown as { activeEditor: { getText(): string } | null }).activeEditor = {
+			getText: () => "user is typing",
+		};
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const rows = h.session.renderFooterRows(90, plain as never, true);
+		const last = rows[rows.length - 1]!;
+		assert.ok(!last.includes("! for bash mode"), "hints hidden while typing");
+		assert.ok(last.includes("⚠ 1 notice · /claude-notices"), "chip kept while typing");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("N-T9 footer: native-footer mode keeps the chip (cc-footer stays mounted)", () => {
+	const h = setupSession();
+	try {
+		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
+			"⚠ 1 notice · /claude-notices";
+		(h.session as unknown as { showNativeFooter: boolean }).showNativeFooter = true;
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const rows = h.session.renderFooterRows(90, plain as never, true);
+		assert.ok(rows[rows.length - 1]!.includes("⚠ 1 notice · /claude-notices"));
+	} finally {
+		h.dispose();
+	}
+});

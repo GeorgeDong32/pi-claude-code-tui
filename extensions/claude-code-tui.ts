@@ -72,6 +72,7 @@ import {
 	buildNoticeSnapshot,
 	createNoticeTaps,
 	installFatalExitDump,
+	noticeChip as noticeChipText,
 	noticeEntryRows,
 	sharedNoticeCenter,
 	type NoticeMode,
@@ -226,6 +227,7 @@ export default function (pi: ExtensionAPI) {
 			},
 		},
 		prefsPath,
+		noticeChip: (theme) => noticeChipText(theme as never, noticeCenter.mode() === "quiet" ? noticeCenter.unread() : { errors: 0, warnings: 0 }),
 		readPmStatus,
 		readCoreUsage,
 		thinkingPrefExplicit,
@@ -396,7 +398,15 @@ export default function (pi: ExtensionAPI) {
 		description: "Toggle the Claude Code TUI replica (header / editor / spinner / status line)",
 		handler: async (_args, ctx) => {
 			const enabled = session.toggle(ctx);
-			ctx.ui.notify(`Claude Code TUI replica ${enabled ? "enabled" : "disabled"}`, "info");
+			// DEC-N7/N11: off removes the cc-footer (and the quiet chip with
+			// it) — unread notices must not vanish silently.
+			let unreadHint = "";
+			if (!enabled) {
+				const un = noticeCenter.unread();
+				const n = un.errors + un.warnings;
+				if (n > 0) unreadHint = ` — ${n} unread notices: /claude-notices`;
+			}
+			ctx.ui.notify(`Claude Code TUI replica ${enabled ? "enabled" : "disabled"}${unreadHint}`, "info");
 		},
 	});
 

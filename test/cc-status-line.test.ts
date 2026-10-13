@@ -5,10 +5,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 import {
 	buildStatusRightGroup,
 	permissionModeLabel,
+	pinnedRightLayout,
 	statusRowLayout,
 } from "../extensions/lib/cc-status-line.ts";
 
@@ -96,4 +98,23 @@ test("U-T1: decimals match; loose look-alikes and unknown text survive", () => {
 test("U-T1: only-cost or only-ctx shapes", () => {
 	assert.equal(stripDuplicateStats("↑1.2k · $0.012"), "↑1.2k");
 	assert.equal(stripDuplicateStats("↑1.2k · 3% ctx"), "↑1.2k");
+});
+
+// ── N-T9b (spec 2026-10-13-cc-notices): pinnedRightLayout ─────────────────
+
+test("N-T9b pinnedRightLayout: right side always survives", () => {
+	// Fits: right-aligned with >= 2 spaces between.
+	assert.equal(pinnedRightLayout("left", "right", 20), "left           right");
+	// Left overflows: left truncated with ellipsis, right whole.
+	const row = pinnedRightLayout("a".repeat(60), "right", 20);
+	assert.ok(row.includes("right") && visibleWidth(row) === 20, row);
+	// Row narrower than the right side: the right side is truncated (only
+	// possible case), left dropped entirely.
+	const tiny = pinnedRightLayout("left", "a-very-long-right-side", 10);
+	assert.equal(visibleWidth(tiny), 10);
+	assert.ok(!tiny.includes("left"));
+	// Empty right → plain truncated left (same as statusRowLayout, no padding).
+	assert.equal(pinnedRightLayout("left", "", 10), "left");
+	// Exact fit boundary: width == leftW + rightW + 2.
+	assert.equal(pinnedRightLayout("abc", "xy", 7), "abc  xy");
 });

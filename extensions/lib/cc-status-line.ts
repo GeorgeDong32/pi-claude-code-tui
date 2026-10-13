@@ -67,6 +67,24 @@ export const statusRowLayout = (left: string, right: string, width: number): str
 	return [truncateToWidth(`${left}  ${right}`, width)];
 };
 
+/**
+ * Right-pinned one-row join (spec 2026-10-13-cc-notices DEC-N7/S2): the
+ * RIGHT side wins — unlike statusRowLayout, an overflowing left side is
+ * truncated to `width − right − 2` while the right side stays whole. The
+ * right side is only touched when the row cannot even fit it alone. This
+ * is the layout for the quiet-mode notices chip: the fallback signal must
+ * survive narrow terminals, so it can never be the truncated side.
+ */
+export const pinnedRightLayout = (left: string, right: string, width: number): string => {
+	const rightW = visibleWidth(right);
+	if (right === "") return truncateToWidth(left, width);
+	if (width < rightW) return truncateToWidth(right, width);
+	const leftBudget = width - rightW - 2;
+	const leftOut = leftBudget > 0 ? truncateToWidth(left, leftBudget, "…") : "";
+	const pad = leftOut === "" ? "" : " ".repeat(width - visibleWidth(leftOut) - rightW);
+	return truncateToWidth(`${leftOut}${pad}${right}`, width);
+};
+
 export interface PmModeMetaLike {
 	icon: string;
 	label: string;

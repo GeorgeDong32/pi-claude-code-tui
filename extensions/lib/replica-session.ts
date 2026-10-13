@@ -33,7 +33,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { BUILTIN_SEVEN } from "./takeover-rules.ts";
 import { thinkingToggleHint } from "./cc-rows.ts";
-import { buildStatusRightGroup, permissionModeLabel, statusRowLayout, stripDuplicateStats } from "./cc-status-line.ts";
+import { buildStatusRightGroup, permissionModeLabel, pinnedRightLayout, statusRowLayout, stripDuplicateStats } from "./cc-status-line.ts";
 import type { PmStatus } from "./pm-capability.ts";
 import { readEffortLevel } from "./host-status.ts";
 import { RunStateMachine } from "./run-state.ts";
@@ -86,7 +86,8 @@ export interface SessionBridge {
 }
 
 export interface SessionPatches {
-	/** Apply the three prototype patches (compaction / skill / user-bar). */
+	/** Apply the prototype patches (compaction / skill / user-bar + the two
+	 * InteractiveMode notice taps; the API-error spec adds one more). */
 	applyAll(getFg: () => ThemeFg | null): void;
 	restoreAll(): void;
 }
@@ -102,6 +103,10 @@ export interface ReplicaSessionDeps {
 	patches: SessionPatches;
 	/** prefs file path (read-modify-write store, lib/prefs.ts). */
 	prefsPath: string;
+	/** Quiet-mode notices chip on the cc-footer hint row (spec 2026-10-13
+	 * DEC-N7): returns "" when nothing is unread; absent dep = no chip, the
+	 * footer path stays byte-identical. */
+	noticeChip?: (theme: { fg(c: string, s: string): string; bold(s: string): string }) => string;
 	/** Statusline runner factory (tests inject a fake; default spawns bash). */
 	statuslineFactory?: (command: string) => StatuslineRunner;
 	/** Pure read of the pm status chain (injectable; default = readPmStatus). */
@@ -806,7 +811,7 @@ export class ReplicaSession {
 				return effort && effort !== "off" ? `${effortBadgeSymbol(effort)} ${effort} · /effort` : "";
 			})(),
 			badgePaint: (s) => theme.fg("muted", s),
-			hints: includeHints ? this.footerLineText((s) => theme.fg("dim", s), width) : "",
+			hints: includeHints ? this.footerLineText(theme as never, width) : "",
 			width,
 		});
 	}
@@ -821,7 +826,10 @@ export class ReplicaSession {
 		}));
 	}
 
-	private footerLineText(fgDim: (s: string) => string, width: number): string {
+	private footerLineText(theme: { fg(c: string, s: string): string }, width: number): string {
+		// Quiet-mode notices chip (spec 2026-10-13 DEC-N7): "" unless quiet
+		// mode has unread notices — the no-chip path must stay byte-identical.
+		const chip = this.deps.noticeChip?.(theme as never) ?? "";
 		// pi-permission-modes publishes its live mode into this env var on
 		// every setMode, so reading it at render time always reflects the
 		// current mode, styled with that extension's own icon/label
@@ -833,10 +841,19 @@ export class ReplicaSession {
 			(mode) => PM_MODE_PAINT[mode] ?? gray,
 			gray,
 		);
-		// CC behavior: while the input holds text, only the mode label shows.
-		if (this.editorHasText()) return truncateToWidth(label, width, "");
-		const hints = fgDim("· ! for bash mode · ctrl+p model · ctrl+o tools");
-		return truncateToWidth(`${label} ${hints}`, width);
+		if (chip === "") {
+			// CC behavior: while the input holds text, only the mode label shows.
+			if (this.editorHasText()) return truncateToWidth(label, width, "");
+			const hints = theme.fg("dim", "· ! for bash mode · ctrl+p model · ctrl+o tools");
+			return truncateToWidth(`${label} ${hints}`, width);
+		}
+		// Chip present: right-pinned, left truncated first (S2 — the chip is
+		// the fallback signal and must survive narrow rows). While the editor
+		// holds text the left side degrades to the mode label only.
+		const left = this.editorHasText()
+			? label
+			: `${label} ${theme.fg("dim", "· ! for bash mode · ctrl+p model · ctrl+o tools")}`;
+		return pinnedRightLayout(left, chip, width);
 	}
 
 	private editorHasText(): boolean {
