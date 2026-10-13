@@ -305,6 +305,35 @@ export function noticeChip(theme: CCTheme, unread: NoticeUnread): string {
 	);
 }
 
+// ── DEC-N6/S6: local click-to-expand override tracker ──────────────────
+
+/** The global ctrl+o is the primary expansion channel; clicking (fullscreen
+ * only) flips a LOCAL override keyed by the stable entry object. When the
+ * global state later diverges from the state the override was recorded at,
+ * the override voids (S6 — never fight the global toggle). */
+export interface NoticeExpansionTracker {
+	/** Current effective expansion for an entry at the given global state. */
+	effective(entry: object, atGlobal: boolean): boolean;
+	/** Flip the local override; returns the new effective value. */
+	toggle(entry: object, atGlobal: boolean): boolean;
+}
+
+export function createNoticeExpansionTracker(): NoticeExpansionTracker {
+	const overrides = new WeakMap<object, { value: boolean; atGlobal: boolean }>();
+	const effective = (entry: object, atGlobal: boolean): boolean => {
+		const local = overrides.get(entry);
+		return local !== undefined && local.atGlobal === atGlobal ? local.value : atGlobal;
+	};
+	return {
+		effective,
+		toggle(entry, atGlobal) {
+			const next = !effective(entry, atGlobal);
+			overrides.set(entry, { value: next, atGlobal });
+			return next;
+		},
+	};
+}
+
 // ── Taps (DEC-N10/N11 wiring lives in the entry) ─────────────────────────
 
 export interface NoticeTapDeps {

@@ -14,6 +14,7 @@ import {
 	buildNoticeSnapshot,
 	compactNotice,
 	createNoticeCenter,
+	createNoticeExpansionTracker,
 	createNoticeTaps,
 	installFatalExitDump,
 	noticeChip,
@@ -523,4 +524,19 @@ test("N-T8 fatal dump: repeat install registers exactly one listener; write fail
 	assert.ok(true);
 
 	if (prev !== undefined) (globalThis as Record<symbol, unknown>)[dumpSlot] = prev;
+});
+
+test("N-T6 tracker: local click override applies per-render and voids on global change (S6)", () => {
+	const tracker = createNoticeExpansionTracker();
+	const entry = { some: "entry" };
+	assert.equal(tracker.effective(entry, false), false, "defaults to global");
+	assert.equal(tracker.toggle(entry, false), true, "click expands");
+	assert.equal(tracker.effective(entry, false), true, "override applies without a rebuild");
+	assert.equal(tracker.toggle(entry, false), false, "second click collapses");
+	assert.equal(tracker.effective(entry, false), false);
+	// A local override recorded at global=false must void once the user
+	// presses the global ctrl+o (atGlobal mismatch → global wins).
+	tracker.toggle(entry, false); // local true at global false
+	assert.equal(tracker.effective(entry, true), true, "global true wins over stale override");
+	assert.equal(tracker.effective(entry, false), true, "still honored at its recorded state");
 });
