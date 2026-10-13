@@ -63,6 +63,7 @@ import {
 import { isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { patchCompactionRow, restoreCompactionRow } from "./lib/cc-compaction-row.ts";
+import { patchApiErrorRow, restoreApiErrorRow } from "./lib/cc-api-error-row.ts";
 import { patchSkillRow, restoreSkillRow } from "./lib/cc-skill-row.ts";
 import { weightedVerbSample } from "./lib/spinner-verbs.ts";
 import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
@@ -70,6 +71,7 @@ import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
 import { defaultPrefsPath, loadPrefs, resolveNoticeMode, savePrefs } from "./lib/prefs.ts";
 import {
 	buildNoticeSnapshot,
+	createNoticeExpansionTracker,
 	createNoticeTaps,
 	installFatalExitDump,
 	noticeChip as noticeChipText,
@@ -216,12 +218,14 @@ export default function (pi: ExtensionAPI) {
 			applyAll: (getFg) => {
 				patchCompactionRow(getFg);
 				patchSkillRow(getFg);
+				patchApiErrorRow(getFg);
 				userBarAdapter.apply(() => null);
 				noticeTaps?.apply();
 			},
 			restoreAll: () => {
 				restoreCompactionRow();
 				restoreSkillRow();
+				restoreApiErrorRow();
 				userBarAdapter.restore();
 				noticeTaps?.restore();
 			},
@@ -347,15 +351,12 @@ export default function (pi: ExtensionAPI) {
 	// host rebuilds this renderer with a new `expanded`); clicking is a
 	// fullscreen-only auxiliary that flips a local override keyed by the
 	// stable entry object — a later global toggle (atGlobal mismatch)
-	// invalidates it (DEC-N6 / S6). Render never throws (AGENTS trap 1).
-	const noticeExpanded = new WeakMap<object, { value: boolean; atGlobal: boolean }>();
-	const noticeEffectiveExpanded = (entry: object, atGlobal: boolean): boolean => {
-		const local = noticeExpanded.get(entry);
-		return local !== undefined && local.atGlobal === atGlobal ? local.value : atGlobal;
-	};
+	// invalidates it (DEC-N6 / S6). `expanded` is resolved PER RENDER (the
+	// override must survive a repaint without a rebuild), so the click also
+	// clears the width cache. Render never throws (AGENTS trap 1).
+	const noticeExpansion = createNoticeExpansionTracker();
 	pi.registerEntryRenderer<{ v: 1 }>("cc-tui/notices", (entry, options, theme) => {
 		const globalExpanded = options.expanded === true;
-		const expanded = noticeEffectiveExpanded(entry as object, globalExpanded);
 		const cache = createWidthCache();
 		const rows = {
 			invalidate() {
@@ -363,6 +364,7 @@ export default function (pi: ExtensionAPI) {
 			},
 			render(width: number): string[] {
 				try {
+					const expanded = noticeExpansion.effective(entry as object, globalExpanded);
 					return cache.serve(width, (w) => noticeEntryRows(theme as unknown as CCTheme, entry.data, w, expanded));
 				} catch {
 					return []; // red line 1: render must never throw
@@ -371,7 +373,8 @@ export default function (pi: ExtensionAPI) {
 		};
 		return new MouseRegion(rows, (event) => {
 			if (event.type !== "click" || event.button !== "left") return undefined;
-			noticeExpanded.set(entry as object, { value: !expanded, atGlobal: globalExpanded });
+			noticeExpansion.toggle(entry as object, globalExpanded);
+			cache.clear(); // a repaint alone must show the flipped state
 			return { handled: true };
 		});
 	});
