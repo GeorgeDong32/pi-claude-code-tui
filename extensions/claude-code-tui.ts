@@ -43,14 +43,16 @@
  *   /claude-footer — 开/关原生底栏（开：兼容其它扩展 footer；关：CC 极简风）
  */
 
-import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
+import { InteractiveMode, UserMessageComponent } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { MouseRegion } from "@earendil-works/pi-tui";
 import {
 	ccCall,
 	ccThenRunCall,
 	mcpArgsSummary,
 	mcpDisplayName,
 	callArgsFor,
+	createWidthCache,
 	dotStatus,
 	type CCTheme,
 	ccResult,
@@ -65,7 +67,15 @@ import { patchSkillRow, restoreSkillRow } from "./lib/cc-skill-row.ts";
 import { weightedVerbSample } from "./lib/spinner-verbs.ts";
 import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
 import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
-import { defaultPrefsPath } from "./lib/prefs.ts";
+import { defaultPrefsPath, loadPrefs, resolveNoticeMode, savePrefs } from "./lib/prefs.ts";
+import {
+	buildNoticeSnapshot,
+	createNoticeTaps,
+	installFatalExitDump,
+	noticeEntryRows,
+	sharedNoticeCenter,
+	type NoticeMode,
+} from "./lib/cc-notices.ts";
 import { createNotificationAdapter, readPmStatus } from "./lib/pm-capability.ts";
 import { createObsAdapter, type ObsSavingsSite } from "./lib/obs-savings.ts";
 import { createCoreBusClient, createFooterChannel, readCoreUsage } from "./lib/core-bus.ts";
@@ -79,6 +89,29 @@ const gray = (s: string) => `\x1b[38;2;153;153;153m${s}\x1b[39m`;
 
 export default function (pi: ExtensionAPI) {
 	const prefsPath = defaultPrefsPath();
+
+	// --- cc-notices (spec 2026-10-13): process-wide center + DEC-N11 guard ---
+	// Mode loads once; afterwards only /claude-notices mode … changes it. The
+	// fatal-exit dump is registered once per process (DEC-N9).
+	const noticeCenter = sharedNoticeCenter();
+	noticeCenter.setMode(resolveNoticeMode(loadPrefs(prefsPath).notices?.mode));
+	installFatalExitDump(() => noticeCenter);
+	// `repaint` is bound to the session's requestRender right after the
+	// session exists; before that the taps' quiet fallback is a no-op —
+	// harmless: startup notices repaint via the host's own ui anyway (S1).
+	const noticeTaps =
+		typeof InteractiveMode?.prototype?.showError === "function"
+			&& typeof InteractiveMode?.prototype?.showWarning === "function"
+			? createNoticeTaps(InteractiveMode.prototype, {
+				center: () => noticeCenter,
+				repaint: () => repaint(),
+			})
+			: null;
+	if (noticeTaps === null) {
+		console.warn(
+			"[claude-tui] InteractiveMode.showError/showWarning missing — cc-notices disabled, notices stay native",
+		);
+	}
 
 	// --- Thinking-block preference probe (tip gate; session owns the tip) ---
 	const settingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json");
@@ -183,11 +216,13 @@ export default function (pi: ExtensionAPI) {
 				patchCompactionRow(getFg);
 				patchSkillRow(getFg);
 				userBarAdapter.apply(() => null);
+				noticeTaps?.apply();
 			},
 			restoreAll: () => {
 				restoreCompactionRow();
 				restoreSkillRow();
 				userBarAdapter.restore();
+				noticeTaps?.restore();
 			},
 		},
 		prefsPath,
@@ -305,6 +340,39 @@ export default function (pi: ExtensionAPI) {
 		},
 	}));
 
+	// cc-tui/notices snapshots (spec 2026-10-13 DEC-N6): one-row collapse,
+	// guttered full-text expansion. Global ctrl+o is the main channel (the
+	// host rebuilds this renderer with a new `expanded`); clicking is a
+	// fullscreen-only auxiliary that flips a local override keyed by the
+	// stable entry object — a later global toggle (atGlobal mismatch)
+	// invalidates it (DEC-N6 / S6). Render never throws (AGENTS trap 1).
+	const noticeExpanded = new WeakMap<object, { value: boolean; atGlobal: boolean }>();
+	const noticeEffectiveExpanded = (entry: object, atGlobal: boolean): boolean => {
+		const local = noticeExpanded.get(entry);
+		return local !== undefined && local.atGlobal === atGlobal ? local.value : atGlobal;
+	};
+	pi.registerEntryRenderer<{ v: 1 }>("cc-tui/notices", (entry, options, theme) => {
+		const globalExpanded = options.expanded === true;
+		const expanded = noticeEffectiveExpanded(entry as object, globalExpanded);
+		const cache = createWidthCache();
+		const rows = {
+			invalidate() {
+				cache.clear();
+			},
+			render(width: number): string[] {
+				try {
+					return cache.serve(width, (w) => noticeEntryRows(theme as unknown as CCTheme, entry.data, w, expanded));
+				} catch {
+					return []; // red line 1: render must never throw
+				}
+			},
+		};
+		return new MouseRegion(rows, (event) => {
+			if (event.type !== "click" || event.button !== "left") return undefined;
+			noticeExpanded.set(entry as object, { value: !expanded, atGlobal: globalExpanded });
+			return { handled: true };
+		});
+	});
 	// --- Event routing (handlers stay thin; the session owns behavior) ---
 	pi.on("session_start", async (_event, ctx) => {
 		session.onSessionStart(ctx);
@@ -354,6 +422,39 @@ export default function (pi: ExtensionAPI) {
 				`Native footer ${native ? "on — CC status widget hidden" : "off — CC status widget shown"}`,
 				"info",
 			);
+		},
+	});
+
+	// cc-notices viewer (spec 2026-10-13 §2.2-5): snapshot → CustomEntry;
+	// mode persists via savePrefs (read-modify-write, sibling keys kept).
+	pi.registerCommand("claude-notices", {
+		description: "Notices log: view captured errors/warnings | clear | mode compact|quiet|off",
+		handler: async (args, ctx) => {
+			const cmd = args.trim();
+			if (cmd === "clear") {
+				noticeCenter.clear();
+				ctx.ui.notify("Notices buffer cleared", "info");
+				return;
+			}
+			if (cmd === "mode compact" || cmd === "mode quiet" || cmd === "mode off") {
+				const mode = cmd.slice(5) as NoticeMode;
+				savePrefs({ notices: { mode } }, prefsPath);
+				noticeCenter.setMode(mode);
+				ctx.ui.notify(`Notices mode: ${mode}`, "info");
+				return;
+			}
+			if (cmd !== "") {
+				ctx.ui.notify("Usage: /claude-notices [clear | mode compact|quiet|off]", "info");
+				return;
+			}
+			if (noticeCenter.snapshot().length === 0) {
+				ctx.ui.notify("No notices captured in this pi process", "info");
+				return;
+			}
+			// Non-empty even when everything is already read: the user asked.
+			pi.appendEntry("cc-tui/notices", buildNoticeSnapshot(noticeCenter, Date.now()));
+			noticeCenter.markRead();
+			repaint();
 		},
 	});
 

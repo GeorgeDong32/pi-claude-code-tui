@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadPrefs, resolveStatusLinePrefs, savePrefs } from "../extensions/lib/prefs.ts";
+import { loadPrefs, resolveNoticeMode, resolveStatusLinePrefs, savePrefs } from "../extensions/lib/prefs.ts";
 
 const withTempFile = (): string => {
 	const dir = mkdtempSync(join(tmpdir(), "cctui-prefs-"));
@@ -77,4 +77,30 @@ test("unknown keys on disk survive round-trips", () => {
 	const onDisk = JSON.parse(readFileSync(path, "utf8"));
 	assert.deepEqual(onDisk.futureKey, [1, 2]);
 	assert.equal(onDisk.toolRows, true);
+});
+
+// ── N-T10 (spec 2026-10-13-cc-notices): notices.mode ──────────────────────
+
+test("N-T10 resolveNoticeMode: quiet/off pass through; absent/illegal → compact", () => {
+	assert.equal(resolveNoticeMode(undefined), "compact");
+	assert.equal(resolveNoticeMode("compact"), "compact");
+	assert.equal(resolveNoticeMode("quiet"), "quiet");
+	assert.equal(resolveNoticeMode("off"), "off");
+	// Illegal values (corrupt file, future modes) stay on the safe default.
+	assert.equal(resolveNoticeMode("loud" as never), "compact");
+	assert.equal(resolveNoticeMode(null as never), "compact");
+});
+
+test("N-T10 notices pref round-trips and keeps sibling keys", () => {
+	const path = withTempFile();
+	savePrefs({ toolRows: true }, path);
+	savePrefs({ notices: { mode: "quiet" } }, path);
+	const loaded = loadPrefs(path);
+	assert.equal(loaded.toolRows, true, "sibling toolRows survived");
+	assert.equal(loaded.notices?.mode, "quiet");
+	assert.equal(resolveNoticeMode(loadPrefs(path).notices?.mode), "quiet");
+
+	// A corrupt mode value resolves to compact without touching the file.
+	writeFileSync(path, JSON.stringify({ notices: { mode: 42 }, toolRows: false }));
+	assert.equal(resolveNoticeMode(loadPrefs(path).notices?.mode), "compact");
 });

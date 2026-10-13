@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { NoticeMode } from "./cc-notices.ts";
 
 export interface StatusLinePrefs {
 	/** Statusline row rendered at all (default false). */
@@ -23,6 +24,9 @@ export interface StatusLinePrefs {
 export interface ClaudeTuiPrefs {
 	toolRows?: boolean;
 	statusLine?: Partial<StatusLinePrefs>;
+	/** cc-notices (spec 2026-10-13 DEC-N8): display mode for pi's native
+	 * showError/showWarning channels. Absent/illegal → compact. */
+	notices?: { mode?: NoticeMode };
 }
 
 export const defaultPrefsPath = (): string =>
@@ -65,4 +69,10 @@ export function resolveStatusLinePrefs(raw: Partial<StatusLinePrefs> | undefined
 		command: typeof raw?.command === "string" ? raw.command : "",
 		badge: raw?.badge !== false,
 	};
+}
+
+/** cc-notices mode: only "quiet" and "off" are recognized; anything else
+ * (absent, corrupt, future values) resolves to the compact default. */
+export function resolveNoticeMode(raw: NoticeMode | undefined): NoticeMode {
+	return raw === "quiet" || raw === "off" ? raw : "compact";
 }
