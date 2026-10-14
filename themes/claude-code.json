@@ -1,5 +1,5 @@
 {
-	"$schema": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+	"$schema": "https://pi.dev/schemas/theme.schema.json",
 	"name": "claude-code",
 	"vars": {
 		"claude": "#8ABEB7",
@@ -74,9 +74,7 @@
 		"thinkingHigh": "#72B5D0",
 		"thinkingXhigh": "#88BEDD",
 		"thinkingMax": "#9CCDEA",
-		"bashMode": "bashBorder",
-		"diffAdded": "#0077B3",
-		"diffRemoved": "#B30000"
+		"bashMode": "bashBorder"
 	},
 	"export": {
 		"pageBg": "#1A1A1A",
