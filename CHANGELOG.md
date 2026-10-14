@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.4 (2026-10-14)
+
+### Changed (notices: /notice rename + action-pointer routing)
+- **`/claude-notices` 更名 `/notice`**：命令名、compact 尾指针、quiet chip（`⚠ N notices · /notice`）、`/claude-tui off` 的未读提示、Usage 文案全部随改；无 alias（一次性切换）。README 同步。
+- **action 指针路由（对齐 CC 的「指针长在消息里」形态）**：pi 的 MCP 警告原文末行自带 `Run /mcp to fix.`，但 compact 只取首行 + 自家通用指针，把可执行指到 fixer 的线索截掉了（呈现为 `MCP servers need attention: · /claude-notices`，不如 CC 的 `Use /mcp to authenticate.` 直接）。现在 `extractActionPointer()` 从消息文本提取最后一个 `Run /xxx` / `Use /xxx`（大小写不敏感，`/notice` 自身不作路由目标），提取到就替换尾指针：MCP 警告呈现为 `MCP servers need attention: · /mcp`——用户直接奔修复入口，通用 `/notice` 只兜底没有自带指针的通知。budget 计算按实际指针宽度；展开态（/notice 全文）不受影响。
+
 ## 1.10.3 (2026-10-14)
 
 ### Fixed (api-error-row spacer parity, DEC-A4 layout follow-up)
