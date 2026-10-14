@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2 (2026-10-14)
+
+### Fixed (pi 1.2.0 compatibility, claude-code theme silent fallback)
+- pi 1.2.0 的 theme token 表移除了裸 `diffAdded`/`diffRemoved`（只剩 `toolDiff*`），而 `splitThemeColors()` 对 colors 里的未知 key 取 `THEME_TOKENS[key].slot` 直接抛 `Cannot read properties of undefined (reading 'slot')` → `loadThemeFromPath` 失败 → `initTheme` 静默回退 system 主题——所有走 theme 的表面（markdown 标题/链接/内联代码等）配色整体漂移（实测标题金 `#C59D4A`、链接钢蓝、代码紫，均为内置主题色族；应为 teal `#8ABEB7` 系）。修复：从 colors 删除这两个已不存在的 key（`vars` 里同名变量保留，`toolDiffAdded/Removed` 仍引用它们），纯删 key 对旧版 pi 向后兼容；`$schema` 同步换成 1.2.0 官方发布的 `https://pi.dev/schemas/theme.schema.json`。用 pi 1.2.0 自带加载器验证 `LOADED OK`。
+
 ## 1.10.1 (2026-10-13)
 
 ### Fixed (pi-tui 1.2 compatibility, editor cursor)
