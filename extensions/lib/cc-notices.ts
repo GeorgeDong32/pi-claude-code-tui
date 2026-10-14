@@ -1,7 +1,7 @@
 /**
  * cc-notices (spec 2026-10-13-cc-notices): compact pi's native
  * showError/showWarning notice blocks into one-liners and keep the full
- * text retrievable via the /claude-notices CustomEntry snapshot.
+ * text retrievable via the /notice CustomEntry snapshot.
  *
  * Deep module: the tap side only depends on `intercept` — everything else
  * (budget math, merging, modes, snapshot shaping) lives behind it. All
@@ -57,7 +57,20 @@ export interface NoticeCenterDeps {
 
 // ── DEC-N3: compaction ───────────────────────────────────────────────────
 
-const POINTER = " · /claude-notices";
+/** Routed pointer: when the raw message carries its own actionable command
+ * (pi's MCP warning ends with `Run /mcp to fix.`), route the tail pointer
+ * there instead of the generic /notice — CC embeds such pointers in the
+ * message text (`Use /mcp to authenticate.`, MCPReconnect.tsx) so the
+ * suggested next step is the fixer, not the log. Last match wins; /notice
+ * itself is never a routing target. */
+export function extractActionPointer(message: string): string | null {
+	let found: string | null = null;
+	for (const m of message.matchAll(/\b(?:run|use)\s+(\/[a-zA-Z][\w:-]*)/gi)) {
+		if (m[1]!.toLowerCase() !== "/notice") found = m[1]!;
+	}
+	return found;
+}
+
 const BUDGET_FLOOR = 40;
 /** DEC-N6: cap a snapshot message so session files cannot grow unbounded. */
 export const SNAPSHOT_MESSAGE_LIMIT = 16_000;
@@ -66,10 +79,13 @@ const levelPrefix = (level: NoticeLevel): string => (level === "error" ? "Error:
 
 /** Pure compaction (DEC-N3). `null` = passthrough: single physical line
  * that fits the budget (empty/whitespace included). Otherwise the first
- * non-empty line, whitespace-collapsed, truncated with an ellipsis and the
- * /claude-notices pointer appended. Widths via pi-tui (CJK + ANSI safe). */
-export function compactNotice(message: string, budget: number): string | null {
+ * non-empty line, whitespace-collapsed, truncated with an ellipsis and a
+ * tail pointer appended — the message's own action command when it has
+ * one (`extractActionPointer`), else the generic /notice. Widths via
+ * pi-tui (CJK + ANSI safe). */
+export function compactNotice(message: string, budget: number, pointer: string = "/notice"): string | null {
 	const b = Math.max(BUDGET_FLOOR, budget);
+	const ptr = ` · ${pointer}`;
 	if (!message.includes("\n") && visibleWidth(message) <= b) return null;
 	const firstLine =
 		message
@@ -78,7 +94,7 @@ export function compactNotice(message: string, budget: number): string | null {
 			.find((l) => l.length > 0) ?? "";
 	if (firstLine === "") return null;
 	const collapsed = firstLine.replace(/\s+/g, " ");
-	return `${truncateToWidth(collapsed, b, "…")}${POINTER}`;
+	return `${truncateToWidth(collapsed, Math.max(1, b - visibleWidth(ptr)), "…")}${ptr}`;
 }
 
 // ── DEC-N5: center + process-wide singleton ──────────────────────────────
@@ -99,10 +115,10 @@ export function createNoticeCenter(deps: NoticeCenterDeps): NoticeCenter {
 	const records: MutableNoticeRecord[] = [];
 	let currentMode: NoticeMode = "compact";
 
-	const budgetFor = (level: NoticeLevel, padX: number): number =>
+	const budgetFor = (level: NoticeLevel, padX: number, pointer: string): number =>
 		Math.max(
 			BUDGET_FLOOR,
-			deps.columns() - 2 * padX - visibleWidth(levelPrefix(level)) - visibleWidth(POINTER),
+			deps.columns() - 2 * padX - visibleWidth(levelPrefix(level)) - visibleWidth(` · ${pointer}`),
 		);
 
 	const toRecord = (r: MutableNoticeRecord): NoticeRecord => ({ ...r });
@@ -127,7 +143,8 @@ export function createNoticeCenter(deps: NoticeCenterDeps): NoticeCenter {
 					occurrenceAltered = true;
 					display = null;
 				} else if (currentMode === "compact") {
-					const one = compactNotice(message, budgetFor(level, padX));
+					const ptr = extractActionPointer(message) ?? "/notice";
+					const one = compactNotice(message, budgetFor(level, padX, ptr), ptr);
 					if (one !== null) {
 						occurrenceAltered = true;
 						display = one;
@@ -301,7 +318,7 @@ export function noticeChip(theme: CCTheme, unread: NoticeUnread): string {
 	if (total <= 0) return "";
 	return theme.fg(
 		unread.errors > 0 ? "error" : "warning",
-		`⚠ ${total} notice${total === 1 ? "" : "s"} · /claude-notices`,
+		`⚠ ${total} notice${total === 1 ? "" : "s"} · /notice`,
 	);
 }
 

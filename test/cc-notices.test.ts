@@ -16,6 +16,7 @@ import {
 	createNoticeCenter,
 	createNoticeExpansionTracker,
 	createNoticeTaps,
+	extractActionPointer,
 	installFatalExitDump,
 	noticeChip,
 	noticeEntryRows,
@@ -41,7 +42,7 @@ test("N-T2 compactNotice: short single line → null (passthrough)", () => {
 test("N-T2 compactNotice: multi-line → first non-empty line + pointer", () => {
 	const out = compactNotice("\n\n  models.json error: boom  \nFile:\n/some/path", 80);
 	assert.ok(out !== null);
-	assert.ok(out.startsWith("models.json error: boom · /claude-notices"), `got ${JSON.stringify(out)}`);
+	assert.ok(out.startsWith("models.json error: boom · /notice"), `got ${JSON.stringify(out)}`);
 	assert.ok(!out.includes("\n"), "one physical line");
 });
 
@@ -49,7 +50,7 @@ test("N-T2 compactNotice: long single line → truncated + pointer", () => {
 	const long = "x".repeat(200);
 	const out = compactNotice(long, 40);
 	assert.ok(out !== null);
-	assert.ok(out!.endsWith(" · /claude-notices"));
+	assert.ok(out!.endsWith(" · /notice"));
 	assert.ok(out!.includes("…"), "ellipsis marker");
 });
 
@@ -73,13 +74,42 @@ test("N-T2 compactNotice: budget floor 40", () => {
 	assert.ok(compactNotice("a".repeat(50), 10) !== null);
 });
 
+test("N-T2 extractActionPointer: last Run/Use command wins; /notice never routes to itself", () => {
+	assert.equal(extractActionPointer("MCP servers need attention:\n  foo: needs sign-in\nRun /mcp to fix."), "/mcp");
+	assert.equal(extractActionPointer("Use /mcp to authenticate."), "/mcp");
+	assert.equal(extractActionPointer("run /reload now"), "/reload");
+	assert.equal(extractActionPointer("nothing here"), null);
+	assert.equal(extractActionPointer("Run /notice to view"), null);
+	assert.equal(extractActionPointer("see https://example.com/x"), null);
+	assert.equal(extractActionPointer("Run /a first\nRun /b last"), "/b");
+});
+
+test("N-T2 compactNotice: routed pointer replaces the generic one; the pointer never truncates", () => {
+	const msg = "MCP servers need attention:\n  foo: needs sign-in\nRun /mcp to fix.";
+	const out = compactNotice(msg, 200, extractActionPointer(msg) ?? "/notice");
+	assert.ok(out !== null);
+	assert.ok(out.startsWith("MCP servers need attention:"), JSON.stringify(out));
+	assert.ok(out.endsWith(" · /mcp"), JSON.stringify(out));
+	const tightMsg = "MCP servers need attention:\nRun /verylongcommandname to fix.";
+	const tight = compactNotice(tightMsg, 40, extractActionPointer(tightMsg) ?? "/notice");
+	assert.ok(tight !== null && tight.endsWith(" · /verylongcommandname"), JSON.stringify(tight));
+});
+
 // ── N-T3: center ─────────────────────────────────────────────────────────
+
+test("N-T3 center: compact routes the message's own action pointer (MCP → /mcp)", () => {
+	const c = makeCenter(200);
+	const msg = "MCP servers need attention:\n  foo: needs sign-in\nRun /mcp to fix.";
+	const out = c.intercept("warning", msg, 1);
+	assert.ok(out !== null && out.endsWith(" · /mcp"), JSON.stringify(out));
+	assert.equal(c.snapshot()[0]!.altered, true);
+});
 
 test("N-T3 center: compact rewrites long messages, passthrough returns the SAME string", () => {
 	const c = makeCenter(100);
 	const msg = ["first line of a very long error", "File:", "/deep/path"].join("\n");
 	const out = c.intercept("error", msg, 1);
-	assert.ok(out !== null && out !== msg && out.includes("· /claude-notices"));
+	assert.ok(out !== null && out !== msg && out.includes("· /notice"));
 	assert.equal(c.intercept("error", "short one", 1), "short one");
 	const rec = c.snapshot()[0]!;
 	assert.equal(rec.altered, true, "compacted occurrence is altered");
@@ -140,7 +170,7 @@ test("N-T3 center: passthrough records exist but never count unread; markRead/cl
 });
 
 test("N-T3 center: error budget honors padX, warning is fixed at 1 (S8)", () => {
-	// budget = columns − 2·padX − len("Error: ") − len(" · /claude-notices")
+	// budget = columns − 2·padX − len("Error: ") − len(" · /notice")
 	//        = 100 − 2·padX − 7 − 18
 	const a = makeCenter(100);
 	assert.ok(a.intercept("error", "m".repeat(95), 3) !== null, "padX 3 → budget 69 < 95 → compacted");
@@ -198,7 +228,7 @@ test("N-T5 tap: compact rewrites the argument, passthrough keeps it identical", 
 		const host = makeFakeHost();
 		host.showError(multiLine());
 		assert.equal(host.shown.length, 1);
-		assert.ok(host.shown[0]!.startsWith("E:boom top line · /claude-notices"), `got ${host.shown[0]}`);
+		assert.ok(host.shown[0]!.startsWith("E:boom top line · /notice"), `got ${host.shown[0]}`);
 		const same = "identical";
 		host.showWarning(same);
 		assert.equal(host.shown[1], `W:${same}`);
@@ -273,7 +303,7 @@ test("N-T5 tap: error padX reads host.outputPad; warning fixed at 1", () => {
 		host.showError("z".repeat(60)); // error budget = 100-4-7-18 = 71 → passthrough too
 		assert.equal(host.shown[1], `E:${"z".repeat(60)}`);
 		host.showError("q".repeat(95)); // error budget 71 < 95 → compacted, reads outputPad=2
-		assert.ok(host.shown[2]!.includes("· /claude-notices"));
+		assert.ok(host.shown[2]!.includes("· /notice"));
 	} finally {
 		taps.restore();
 	}
@@ -366,7 +396,7 @@ test("N-T5b real prototype: taps render a one-line summary into a real Container
 		(InteractiveMode.prototype.showError as (this: never, m: string) => void).call(host, multiLine("real"));
 		const lines = (host as never as { chatContainer: Container }).chatContainer.render(120);
 		const text = lines.join("\n");
-		assert.ok(text.includes("boom top line · /claude-notices"), `summary rendered: ${JSON.stringify(lines)}`);
+		assert.ok(text.includes("boom top line · /notice"), `summary rendered: ${JSON.stringify(lines)}`);
 		assert.ok(!text.includes("real"), "detail lines are gone in compact mode");
 		assert.equal(center.snapshot().length, 1);
 	} finally {
@@ -458,9 +488,9 @@ test("N-T6 snapshot builder: 16k truncation marker (DEC-N6)", () => {
 
 test("N-T7 chip: empty when nothing unread; warning color; error wins", () => {
 	assert.equal(noticeChip(theme as never, { errors: 0, warnings: 0 }), "");
-	assert.equal(noticeChip(theme as never, { errors: 0, warnings: 2 }), "[warning]⚠ 2 notices · /claude-notices[/warning]");
-	assert.equal(noticeChip(theme as never, { errors: 1, warnings: 2 }), "[error]⚠ 3 notices · /claude-notices[/error]");
-	assert.equal(noticeChip(theme as never, { errors: 1, warnings: 0 }), "[error]⚠ 1 notice · /claude-notices[/error]");
+	assert.equal(noticeChip(theme as never, { errors: 0, warnings: 2 }), "[warning]⚠ 2 notices · /notice[/warning]");
+	assert.equal(noticeChip(theme as never, { errors: 1, warnings: 2 }), "[error]⚠ 3 notices · /notice[/error]");
+	assert.equal(noticeChip(theme as never, { errors: 1, warnings: 0 }), "[error]⚠ 1 notice · /notice[/error]");
 });
 
 // ── N-T8: fatal exit dump ────────────────────────────────────────────────

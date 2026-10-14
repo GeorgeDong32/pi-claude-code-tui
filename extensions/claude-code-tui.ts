@@ -94,7 +94,7 @@ export default function (pi: ExtensionAPI) {
 	const prefsPath = defaultPrefsPath();
 
 	// --- cc-notices (spec 2026-10-13): process-wide center + DEC-N11 guard ---
-	// Mode loads once; afterwards only /claude-notices mode … changes it. The
+	// Mode loads once; afterwards only /notice mode … changes it. The
 	// fatal-exit dump is registered once per process (DEC-N9).
 	const noticeCenter = sharedNoticeCenter();
 	noticeCenter.setMode(resolveNoticeMode(loadPrefs(prefsPath).notices?.mode));
@@ -407,7 +407,7 @@ export default function (pi: ExtensionAPI) {
 			if (!enabled) {
 				const un = noticeCenter.unread();
 				const n = un.errors + un.warnings;
-				if (n > 0) unreadHint = ` — ${n} unread notices: /claude-notices`;
+				if (n > 0) unreadHint = ` — ${n} unread notices: /notice`;
 			}
 			ctx.ui.notify(`Claude Code TUI replica ${enabled ? "enabled" : "disabled"}${unreadHint}`, "info");
 		},
@@ -440,7 +440,7 @@ export default function (pi: ExtensionAPI) {
 
 	// cc-notices viewer (spec 2026-10-13 §2.2-5): snapshot → CustomEntry;
 	// mode persists via savePrefs (read-modify-write, sibling keys kept).
-	pi.registerCommand("claude-notices", {
+	pi.registerCommand("notice", {
 		description: "Notices log: view captured errors/warnings | clear | mode compact|quiet|off",
 		handler: async (args, ctx) => {
 			const cmd = args.trim();
@@ -457,7 +457,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (cmd !== "") {
-				ctx.ui.notify("Usage: /claude-notices [clear | mode compact|quiet|off]", "info");
+				ctx.ui.notify("Usage: /notice [clear | mode compact|quiet|off]", "info");
 				return;
 			}
 			if (noticeCenter.snapshot().length === 0) {

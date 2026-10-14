@@ -543,17 +543,17 @@ test("N-T9 footer: chip dep → right-pinned on the hint row; survives narrow wi
 	const h = setupSession();
 	try {
 		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
-			"⚠ 2 notices · /claude-notices";
+			"⚠ 2 notices · /notice";
 		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
 		const rows = h.session.renderFooterRows(90, plain as never, true);
 		const last = rows[rows.length - 1]!;
-		assert.ok(last.includes("⚠ 2 notices · /claude-notices"), last);
-		assert.ok(last.trimEnd().endsWith("⚠ 2 notices · /claude-notices"), "chip is the row's right edge");
+		assert.ok(last.includes("⚠ 2 notices · /notice"), last);
+		assert.ok(last.trimEnd().endsWith("⚠ 2 notices · /notice"), "chip is the row's right edge");
 
 		// Narrow: the chip must stay whole; the hints side truncates first.
 		const narrow = h.session.renderFooterRows(34, plain as never, true);
 		const narrowLast = narrow[narrow.length - 1]!;
-		assert.ok(narrowLast.includes("⚠ 2 notices · /claude-notices"), `chip survives: ${narrowLast}`);
+		assert.ok(narrowLast.includes("⚠ 2 notices · /notice"), `chip survives: ${narrowLast}`);
 	} finally {
 		h.dispose();
 	}
@@ -563,7 +563,7 @@ test("N-T9 footer: editor text → mode label + chip (chip kept)", () => {
 	const h = setupSession();
 	try {
 		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
-			"⚠ 1 notice · /claude-notices";
+			"⚠ 1 notice · /notice";
 		(h.session as unknown as { activeEditor: { getText(): string } | null }).activeEditor = {
 			getText: () => "user is typing",
 		};
@@ -571,7 +571,7 @@ test("N-T9 footer: editor text → mode label + chip (chip kept)", () => {
 		const rows = h.session.renderFooterRows(90, plain as never, true);
 		const last = rows[rows.length - 1]!;
 		assert.ok(!last.includes("! for bash mode"), "hints hidden while typing");
-		assert.ok(last.includes("⚠ 1 notice · /claude-notices"), "chip kept while typing");
+		assert.ok(last.includes("⚠ 1 notice · /notice"), "chip kept while typing");
 	} finally {
 		h.dispose();
 	}
@@ -581,11 +581,11 @@ test("N-T9 footer: native-footer mode keeps the chip (cc-footer stays mounted)",
 	const h = setupSession();
 	try {
 		(h.session as unknown as { deps: { noticeChip?: (t: unknown) => string } }).deps.noticeChip = () =>
-			"⚠ 1 notice · /claude-notices";
+			"⚠ 1 notice · /notice";
 		(h.session as unknown as { showNativeFooter: boolean }).showNativeFooter = true;
 		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
 		const rows = h.session.renderFooterRows(90, plain as never, true);
-		assert.ok(rows[rows.length - 1]!.includes("⚠ 1 notice · /claude-notices"));
+		assert.ok(rows[rows.length - 1]!.includes("⚠ 1 notice · /notice"));
 	} finally {
 		h.dispose();
 	}

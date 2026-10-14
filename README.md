@@ -57,7 +57,7 @@ The default status display shows the model, thinking effort, context usage, and 
 
 ### Compact notices with a full-text viewer
 
-Pi prints native `Error:` / `Warning:` notices (a broken `models.json`, "No models available", retry-exhausted failures, extension `notify(error/warning)`) as multi-line blocks right above the input. This package taps those two channels and **compacts them to one-line summaries** (`… · /claude-notices`) by default; `/claude-notices` appends a snapshot entry to the transcript — ctrl+o (or clicking, in fullscreen) expands every captured notice in full, with timestamps and ×N counts. `mode quiet` suppresses the native rows entirely and shows a `⚠ N notices · /claude-notices` chip on the footer's hint row instead (kept whole even in narrow terminals); if pi exits non-zero with unread notices, their full text is dumped to stderr. **Coverage boundary:** only pi's `showError`/`showWarning` channels are tapped — assistant API-error rows (handled below), tool errors (already CC rows), `showStatus` info lines, update banners, and billing hints stay native.
+Pi prints native `Error:` / `Warning:` notices (a broken `models.json`, "No models available", retry-exhausted failures, extension `notify(error/warning)`) as multi-line blocks right above the input. This package taps those two channels and **compacts them to one-line summaries** (`… · /notice`) by default; `/notice` appends a snapshot entry to the transcript — ctrl+o (or clicking, in fullscreen) expands every captured notice in full, with timestamps and ×N counts. `mode quiet` suppresses the native rows entirely and shows a `⚠ N notices · /notice` chip on the footer's hint row instead (kept whole even in narrow terminals); if pi exits non-zero with unread notices, their full text is dumped to stderr. **Coverage boundary:** only pi's `showError`/`showWarning` channels are tapped — assistant API-error rows (handled below), tool errors (already CC rows), `showStatus` info lines, update banners, and billing hints stay native.
 
 ### CC-style API error rows
 
@@ -75,9 +75,9 @@ Run these inside Pi:
 | `/claude-tools off` | Disable this package's tool-row overrides. |
 | `/claude-footer [on\|off]` | `on` restores Pi's native footer and hides the default CC status widget; `off` uses the compact layout. No argument toggles. |
 | `/claude-verb` | Reroll the working verb. |
-| `/claude-notices` | Append a notices snapshot entry to the transcript (ctrl+o or click to expand every captured error/warning in full). |
-| `/claude-notices clear` | Drop the captured notices buffer. |
-| `/claude-notices mode compact\|quiet\|off` | How native Error/Warning notices render: `compact` one-liners (**default**), `quiet` footer chip only, `off` fully native. Persisted in `claude-tui.json`. |
+| `/notice` | Append a notices snapshot entry to the transcript (ctrl+o or click to expand every captured error/warning in full). |
+| `/notice clear` | Drop the captured notices buffer. |
+| `/notice mode compact\|quiet\|off` | How native Error/Warning notices render: `compact` one-liners (**default**), `quiet` footer chip only, `off` fully native. Persisted in `claude-tui.json`. |
 | `/claude-statusline [on\|off]` | Enable or disable the script-based statusline. No argument toggles. **Off by default.** |
 | `/claude-statusline set <command>` | Set a custom statusline command and enable it. |
 | `/claude-statusline badge on\|off` | Show or hide the right-aligned effort badge. **On by default.** |
