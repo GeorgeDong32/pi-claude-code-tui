@@ -63,6 +63,16 @@ export const classifyTerminal = (
 
 const GUTTER = "  ⎿  ";
 
+/** pi-tui Spacer duck type (`{ lines: number, render() }`, no `text`).
+ * Instanceof is unsafe across jiti module instances (AGENTS.md #4). */
+const isSpacerLike = (child: unknown): boolean => {
+	const c = child as { lines?: unknown; render?: unknown; text?: unknown } | undefined;
+	return c !== undefined
+		&& typeof c.lines === "number"
+		&& typeof c.render === "function"
+		&& c.text === undefined;
+};
+
 /** Pure renderer: error folds via the ccResult family; aborted / length
  * wrap fully under the gutter (no fold, no truncation — S4). */
 export function ccTerminalRows(
@@ -187,6 +197,15 @@ const adapter = new PrototypeMethodAdapter({
 		}
 		try {
 			container.removeChild!(last);
+			// CC parity: pi nests `Spacer(1)` before the native terminal text
+			// (assistant-message.js:139/147/152), but CC's MessageResponse rows
+			// carry no top margin — the interrupt/error row hugs the preceding
+			// content (AssistantTextMessage returns MessageResponse before the
+			// addMargin path; UserPromptMessage has no bottom margin). Drop the
+			// dead separator(s) the native branch left behind.
+			while (children.length > 0 && isSpacerLike(children[children.length - 1])) {
+				container.removeChild!(children[children.length - 1]);
+			}
 			container.addChild!(component);
 		} catch {
 			// failed swap → the native row may be gone; the next updateContent rebuilds

@@ -147,6 +147,33 @@ test("A-T3 real component: error/aborted/length get CC rows; stop and tool-call 
 	}
 });
 
+test("A-T6 spacer parity: pi's Spacer(1) before the terminal text is dropped — CC rows hug the content", () => {
+	try {
+		initTheme("default", false);
+	} catch { /* already initialized */ }
+	const fg = (c: string, s: string) => s;
+	patchApiErrorRow(() => fg);
+	try {
+		// aborted with partial content → no blank row between content and the gutter row
+		const ab = new AssistantMessageComponent(makeMessage("aborted"), {} as never);
+		const rows = rowsOf(ab).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+		const idx = rows.findIndex((l) => l.includes("Interrupted · What should Pi do instead?"));
+		assert.ok(idx > 0, rows.join("\n"));
+		assert.notEqual(rows[idx - 1].trim(), '', `blank row above the gutter row: ${JSON.stringify(rows)}`);
+
+		// aborted with NO visible content → the gutter row is the very first row
+		const empty = new AssistantMessageComponent(
+			{ role: "assistant", content: [{ type: "text", text: "" }], stopReason: "aborted" } as never,
+			{} as never,
+		);
+		const emptyRows = rowsOf(empty).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+		assert.equal(emptyRows.length, 1, JSON.stringify(emptyRows));
+		assert.ok(emptyRows[0]?.includes("Interrupted · What should Pi do instead?"), JSON.stringify(emptyRows));
+	} finally {
+		restoreApiErrorRow();
+	}
+});
+
 test("A-T4 fail-open: mismatched native text stays native; ANSI-bearing errorMessage still matches; degrade never doubles", () => {
 	try {
 		initTheme("default", false);
