@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.3 (2026-10-14)
+
+### Fixed (api-error-row spacer parity, DEC-A4 layout follow-up)
+- Interrupted / API Error / truncation 行与上方内容之间多出一个空行：pi 原生在终态 Text 前固定嵌 `Spacer(1)`（assistant-message.js:139/147/152），终态行替换时只换 Text 留下了空行。而 CC 原生零空行——`AssistantTextMessage` 终态路径在 `addMargin` 之前就返回 `MessageResponse`（无 margin），`UserPromptMessage` 无下边距、列表层无 gap，`⎿ Interrupted` 直接贴着 user 条/部分文本。修复：换行时顺带弹出尾部相邻的 Spacer（鸭子类型识别 `lines: number + render + 无 text`，避开 jiti 多实例 instanceof 坑）；`vars` 无涉，三种终态（error/aborted/length）统一。真组件回归测试 A-T6 钉住「部分文本后无空行 + 空内容时 ⎿ 行为首行」。
+
 ## 1.10.2 (2026-10-14)
 
 ### Fixed (pi 1.2.0 compatibility, claude-code theme silent fallback)
