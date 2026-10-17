@@ -13,12 +13,12 @@ For AI coding agents (and human newcomers) working in this repository. This one 
 ## Common commands
 
 ```bash
-npm test            # node --test test/*.test.ts — no build step, TS runs directly (type stripping)
-npm run typecheck   # tsc --noEmit
+pnpm test            # node --test test/*.test.ts — no build step, TS runs directly (type stripping)
+pnpm typecheck      # tsc --noEmit
 node scripts/bench-statusline.mjs   # statusline default-script benchmark (run after statusline changes)
 ```
 
-There is no build step and no lint config. A green `npm test` + `npm run typecheck` is the baseline for every commit.
+There is no build step and no lint config. Development uses pnpm (the `packageManager` field pins 10.x; CorePack picks it up — do not move to 12, global-layout migration trap). A green `pnpm test` + `pnpm typecheck` is the baseline for every commit.
 
 ## Repository layout
 
@@ -73,7 +73,7 @@ src/                        # Empty leftover directories (no files — do not re
 ## Commits & releases
 
 - Conventional Commits: `feat(rows): …`, `fix(status): …`, `chore(release): 1.5.0`. Common scopes: `rows`, `tui`, `status`, `statusline`, `1.0-adapt`.
-- Release flow (git-first): bump the `package.json` version → update `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push. The local install is pi's git-install form (`git:github.com/GeorgeDong32/pi-claude-code-tui`) — `git pull` in the install dir + `/reload` picks it up. **npm publishing is retired (2026-10)**: package.json no longer keeps npm packaging fields (`publishConfig`/`files`); install and release go through git only (the README's install guide is `pi install git:…`; `npm install`/`npm test` remain local dev commands — only the publish channel is retired). `package-lock.json` and `AGENTS.md` used to be gitignored; AGENTS.md is now tracked and the lockfile stays gitignored as a guard.
+- Release flow (git-first): bump the `package.json` version → update `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push. The local install is pi's git-install form (`git:github.com/GeorgeDong32/pi-claude-code-tui`) — `git pull` in the install dir + `/reload` picks it up. **npm publishing is retired (2026-10)**: package.json no longer keeps npm packaging fields (`publishConfig`/`files`); install and release go through git only (the README's install guide is `pi install git:…`). The dev toolchain has moved to pnpm: `packageManager` pins 10.x and `pnpm-lock.yaml` is committed to pin devDeps — only the npm publish channel is retired. `package-lock.json` and `AGENTS.md` used to be gitignored; AGENTS.md is now tracked and the npm lockfile stays gitignored as a guard.
 
 ## Pitfalls when writing / modifying the extension
 

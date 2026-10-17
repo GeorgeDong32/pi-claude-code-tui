@@ -207,10 +207,12 @@ If the issue persists, [open an issue](https://github.com/GeorgeDong32/pi-claude
 
 The package loads TypeScript directly; there is no build step.
 
+Development uses pnpm; the `packageManager` field in `package.json` pins the version and CorePack picks it up automatically.
+
 ```sh
-npm install
-npm test
-npm run typecheck
+pnpm install
+pnpm test
+pnpm typecheck
 ```
 
 When changing the statusline, also run `node scripts/bench-statusline.mjs`. Tool rendering is covered by byte-level golden tests; terminal behavior also needs visual verification.

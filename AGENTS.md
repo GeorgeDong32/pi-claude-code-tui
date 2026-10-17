@@ -13,12 +13,12 @@
 ## 常用命令
 
 ```bash
-npm test            # node --test test/*.test.ts —— 无需构建，TS 直接跑（type stripping）
-npm run typecheck   # tsc --noEmit
+pnpm test            # node --test test/*.test.ts —— 无需构建，TS 直接跑（type stripping）
+pnpm typecheck      # tsc --noEmit
 node scripts/bench-statusline.mjs   # statusline 默认脚本性能基准（改动 statusline 后建议跑）
 ```
 
-没有构建步骤、没有 lint 配置。`npm test` + `npm run typecheck` 双绿是每次提交的底线。
+没有构建步骤、没有 lint 配置。开发用 pnpm（`packageManager` 字段钉 10.x，corepack 自动就位，勿切 12——全局布局迁移坑）。`pnpm test` + `pnpm typecheck` 双绿是每次提交的底线。
 
 ## 目录结构
 
@@ -73,7 +73,7 @@ src/                        # 空目录残留（无文件，勿引用）
 ## 提交与发布
 
 - Conventional Commits：`feat(rows): …`、`fix(status): …`、`chore(release): 1.5.0`。scope 常用：`rows`、`tui`、`status`、`statusline`、`1.0-adapt`。
-- 发布流程（git-first）：改 `package.json` version → 更新 `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push。本机安装为 pi 的 git 安装形态（`git:github.com:GeorgeDong32/pi-claude-code-tui`），安装目录 `git pull` 后 `/reload` 即生效。**npm publish 已退役（2026-10）**：package.json 不再保留 `publishConfig`/`files` 等 npm 打包字段，安装与发版只走 git（README 安装引导即 `pi install git:…`；`npm install`/`npm test` 仍是本地开发命令，退役的只是发布通道）。`package-lock.json` 与 `AGENTS.md` 曾在 .gitignore；AGENTS.md 现已入库，lockfile 留在 .gitignore 挡防复发。
+- 发布流程（git-first）：改 `package.json` version → 更新 `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push。本机安装为 pi 的 git 安装形态（`git:github.com:GeorgeDong32/pi-claude-code-tui`），安装目录 `git pull` 后 `/reload` 即生效。**npm publish 已退役（2026-10）**：package.json 不再保留 `publishConfig`/`files` 等 npm 打包字段，安装与发版只走 git（README 安装引导即 `pi install git:…`）。开发工具链已切 pnpm：`packageManager` 钉 10.x、`pnpm-lock.yaml` 入库钉 devDeps 版本，退役的只是 npm 发布通道。`package-lock.json` 与 `AGENTS.md` 曾在 .gitignore；AGENTS.md 现已入库，npm lockfile 留在 .gitignore 挡防复发。
 
 ## 编写 / 修改扩展时的注意事项（踩过的坑）
 
