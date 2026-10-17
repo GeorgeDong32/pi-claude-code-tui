@@ -73,7 +73,7 @@ src/                        # Empty leftover directories (no files — do not re
 ## Commits & releases
 
 - Conventional Commits: `feat(rows): …`, `fix(status): …`, `chore(release): 1.5.0`. Common scopes: `rows`, `tui`, `status`, `statusline`, `1.0-adapt`.
-- Release flow (git-first): bump the `package.json` version → update `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push. The local install is pi's git-install form (`git:github.com/GeorgeDong32/pi-claude-code-tui`) — `git pull` in the install dir + `/reload` picks it up, so **npm publish is not a required step** (the README's install guide is `pi install git:…` too; if an npm release is wanted, this machine has no official-registry credentials — the user must `npm login` and publish personally). `package-lock.json` and `AGENTS.md` used to be gitignored; AGENTS.md is now tracked.
+- Release flow (git-first): bump the `package.json` version → update `CHANGELOG.md` → `chore(release): vX.Y.Z` → `git tag vX.Y.Z` → push. The local install is pi's git-install form (`git:github.com/GeorgeDong32/pi-claude-code-tui`) — `git pull` in the install dir + `/reload` picks it up. **npm publishing is retired (2026-10)**: package.json no longer keeps npm packaging fields (`publishConfig`/`files`); install and release go through git only (the README's install guide is `pi install git:…`; `npm install`/`npm test` remain local dev commands — only the publish channel is retired). `package-lock.json` and `AGENTS.md` used to be gitignored; AGENTS.md is now tracked and the lockfile stays gitignored as a guard.
 
 ## Pitfalls when writing / modifying the extension
 

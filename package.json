@@ -13,9 +13,6 @@
   ],
   "license": "MIT",
   "author": "GeorgeDong32",
-  "publishConfig": {
-    "access": "public"
-  },
   "homepage": "https://github.com/GeorgeDong32/pi-claude-code-tui#readme",
   "repository": {
     "type": "git",
@@ -32,14 +29,6 @@
       "./themes"
     ]
   },
-  "files": [
-    "scripts",
-    "extensions",
-    "themes",
-    "CHANGELOG.md",
-    "LICENSE",
-    "README.md"
-  ],
   "devDependencies": {
     "@earendil-works/pi-ai": "^1.2.0",
     "@earendil-works/pi-coding-agent": "^1.2.0",
