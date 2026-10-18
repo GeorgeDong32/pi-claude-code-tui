@@ -845,9 +845,14 @@ export class ReplicaSession {
 			gray,
 		);
 		// CC footer pill parity (pillLabel local_bash): `1 shell` / `N shells`
-		// after the mode label when bg-shell tasks run; nothing at zero.
+		// after the mode label when bg-shell tasks run; nothing at zero. The
+		// pill carries the accent color (CC's SummaryPill is a highlighted
+		// chip, not dim text).
 		const bgCount = this.deps.readBgShells();
-		const bgPill = bgCount > 0 ? ` ${theme.fg("dim", `· ${bgCount === 1 ? "1 shell" : `${bgCount} shells`}`)}` : "";
+		const bgPill =
+			bgCount > 0
+				? ` ${theme.fg("accent", `· ${bgCount === 1 ? "1 shell" : `${bgCount} shells`}`)}`
+				: "";
 		if (chip === "") {
 			// CC behavior: while the input holds text, only the mode label shows.
 			if (this.editorHasText()) return truncateToWidth(label, width, "");
