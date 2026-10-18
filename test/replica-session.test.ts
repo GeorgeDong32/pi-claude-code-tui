@@ -521,6 +521,54 @@ test("U-T2/core: right group and statusline JSON use core numbers; publish-after
 	}
 });
 
+// ── BG pill (CC pillLabel parity): bg-shell running count on the hint row ──
+
+test("BG footer pill: 2 running shells -> '· 2 shells' before the hints", () => {
+	const h = setupSession();
+	try {
+		(h.session as unknown as { deps: { readBgShells?: () => number } }).deps.readBgShells = () => 2;
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const rows = h.session.renderFooterRows(100, plain as never, true);
+		const last = rows[rows.length - 1]!;
+		assert.ok(last.includes("· 2 shells"), last);
+		assert.ok(last.indexOf("2 shells") < last.indexOf("! for bash mode"), "pill sits before the hints");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("BG footer pill: 1 running shell -> singular; 0 -> row identical (no pill)", () => {
+	const h = setupSession();
+	try {
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		(h.session as unknown as { deps: { readBgShells?: () => number } }).deps.readBgShells = () => 1;
+		const one = h.session.renderFooterRows(100, plain as never, true);
+		assert.ok(one[one.length - 1]!.includes("· 1 shell"), one[one.length - 1]);
+
+		(h.session as unknown as { deps: { readBgShells?: () => number } }).deps.readBgShells = () => 0;
+		const zero = h.session.renderFooterRows(100, plain as never, true);
+		assert.ok(!zero[zero.length - 1]!.includes("shell"), "no pill at zero");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("BG footer pill: editor text -> pill hidden with the hints (label-only rule)", () => {
+	const h = setupSession();
+	try {
+		(h.session as unknown as { deps: { readBgShells?: () => number } }).deps.readBgShells = () => 3;
+		(h.session as unknown as { activeEditor: { getText(): string } | null }).activeEditor = {
+			getText: () => "user is typing",
+		};
+		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+		const rows = h.session.renderFooterRows(90, plain as never, true);
+		const last = rows[rows.length - 1]!;
+		assert.ok(!last.includes("shell"), `pill hidden while typing: ${last}`);
+	} finally {
+		h.dispose();
+	}
+});
+
 // ── N-T9 (spec 2026-10-13-cc-notices): quiet-mode chip on the cc-footer ──
 
 test("N-T9 footer: no noticeChip dep → hint row byte-identical to pre-notices", () => {

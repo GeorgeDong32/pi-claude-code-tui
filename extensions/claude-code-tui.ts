@@ -80,6 +80,7 @@ import {
 	type NoticeMode,
 } from "./lib/cc-notices.ts";
 import { createNotificationAdapter, readPmStatus } from "./lib/pm-capability.ts";
+import { runningBgShells } from "./lib/bg-tasks-capability.ts";
 import { createObsAdapter, type ObsSavingsSite } from "./lib/obs-savings.ts";
 import { createCoreBusClient, createFooterChannel, readCoreUsage } from "./lib/core-bus.ts";
 import { PrototypeMethodAdapter } from "./lib/pi-proto-adapter.ts";
@@ -233,6 +234,7 @@ export default function (pi: ExtensionAPI) {
 		prefsPath,
 		noticeChip: (theme) => noticeChipText(theme as never, noticeCenter.mode() === "quiet" ? noticeCenter.unread() : { errors: 0, warnings: 0 }),
 		readPmStatus,
+		readBgShells: runningBgShells,
 		readCoreUsage,
 		thinkingPrefExplicit,
 		pickRunVerb: weightedVerbSample,

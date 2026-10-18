@@ -111,6 +111,8 @@ export interface ReplicaSessionDeps {
 	statuslineFactory?: (command: string) => StatuslineRunner;
 	/** Pure read of the pm status chain (injectable; default = readPmStatus). */
 	readPmStatus?: () => PmStatus;
+	/** Pure read of bg-shell running tasks (injectable; default = 0 — CC footer pill parity). */
+	readBgShells?: () => number;
 	/** P1-2 step 2: validated read of the structured usage channel (core P2-4). */
 	readCoreUsage?: () => CoreUsageLike | null;
 	/** True when the user already picked a thinking-collapse preference (tip gate). */
@@ -189,12 +191,13 @@ export class ReplicaSession {
 
 	private readonly runState: RunStateMachine;
 	private readonly usageTracker = new UsageTracker();
-	private readonly deps: Required<Pick<ReplicaSessionDeps, "readPmStatus" | "silenceIndicator" | "readCoreUsage">> & ReplicaSessionDeps;
+	private readonly deps: Required<Pick<ReplicaSessionDeps, "readPmStatus" | "readBgShells" | "silenceIndicator" | "readCoreUsage">> & ReplicaSessionDeps;
 	private lastSeenCoreUsage: CoreUsageLike | null = null;
 
 	constructor(deps: ReplicaSessionDeps) {
 		this.deps = {
 			readPmStatus: () => ({ workingStats: "", mode: "" }),
+			readBgShells: () => 0,
 			silenceIndicator: silenceNativeCompactionIndicator,
 			readCoreUsage: () => null,
 			...deps,
@@ -841,18 +844,22 @@ export class ReplicaSession {
 			(mode) => PM_MODE_PAINT[mode] ?? gray,
 			gray,
 		);
+		// CC footer pill parity (pillLabel local_bash): `1 shell` / `N shells`
+		// after the mode label when bg-shell tasks run; nothing at zero.
+		const bgCount = this.deps.readBgShells();
+		const bgPill = bgCount > 0 ? ` ${theme.fg("dim", `· ${bgCount === 1 ? "1 shell" : `${bgCount} shells`}`)}` : "";
 		if (chip === "") {
 			// CC behavior: while the input holds text, only the mode label shows.
 			if (this.editorHasText()) return truncateToWidth(label, width, "");
 			const hints = theme.fg("dim", "· ! for bash mode · ctrl+p model · ctrl+o tools");
-			return truncateToWidth(`${label} ${hints}`, width);
+			return truncateToWidth(`${label}${bgPill} ${hints}`, width);
 		}
 		// Chip present: right-pinned, left truncated first (S2 — the chip is
 		// the fallback signal and must survive narrow rows). While the editor
 		// holds text the left side degrades to the mode label only.
 		const left = this.editorHasText()
 			? label
-			: `${label} ${theme.fg("dim", "· ! for bash mode · ctrl+p model · ctrl+o tools")}`;
+			: `${label}${bgPill} ${theme.fg("dim", "· ! for bash mode · ctrl+p model · ctrl+o tools")}`;
 		return pinnedRightLayout(left, chip, width);
 	}
 
