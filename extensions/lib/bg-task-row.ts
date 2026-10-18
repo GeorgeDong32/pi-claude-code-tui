@@ -52,7 +52,10 @@ export const bgTaskRows = (theme: CCTheme, data: BgTaskEventData, width: number)
 	// "running" is the CCDotStatus whose DOT_COLOR is dim — right for a stop —
 	// but it also blinks; pin `now` to an even phase so the dot stays solid.
 	const now = status === "running" ? 0 : undefined;
-	const args = data.description === undefined || data.description === "" ? data.id : `${data.id} · ${data.description}`;
+	// CC GenericTaskStatus shows ONLY the description ('Task "desc" completed')
+	// — the id lives model-side (the notification) and in /tasks. Bare id when
+	// the model gave no label.
+	const args = data.description === undefined || data.description === "" ? data.id : data.description;
 	const call = ccCall(theme, "Background Task", args, status, now).render(width)[0] ?? "";
 	const detail = `${theme.fg("dim", "  ⎿  ")}${theme.fg("toolOutput", `${wording(data)} · ran ${formatRuntime(data.runtimeMs)} · ${oneLine(data.command)}`)}`;
 	return [truncateToWidth(call, width, "…"), truncateToWidth(detail, width, "…")];

@@ -37,9 +37,10 @@ describe("bgTaskRows (BG-ENTRY-03 pseudo tool row)", () => {
 		assert.match(rows[1]!, /stopped · ran 8\.0s/);
 	});
 
-	it("shows the human label after the id when the model gave one", () => {
+	it("with a label the id disappears from the call row (CC GenericTaskStatus parity)", () => {
 		const rows = bgTaskRows(plain, { ...base, description: "build the frontend" }, 100).map(stripAnsi);
-		assert.match(rows[0]!, /^⏺ Background Task\(bg-10 · build the frontend\)$/);
+		assert.match(rows[0]!, /^⏺ Background Task\(build the frontend\)$/);
+		assert.ok(!rows[0]!.includes("bg-10"), "no id on the visible row");
 		assert.match(rows[1]!, /completed in background/); // gutter unchanged
 	});
 
