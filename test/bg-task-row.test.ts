@@ -22,11 +22,12 @@ const plain = {
 } as never;
 
 describe("bgTaskRows (BG-ENTRY-03 pseudo tool row)", () => {
-	it("renders the call row + ⎿ gutter, paired with TaskOutput rows", () => {
+	it("no label: the command is the call row (CC /tasks label split), gutter drops it", () => {
 		const rows = bgTaskRows(plain, base, 100).map(stripAnsi);
 		assert.equal(rows.length, 2);
-		assert.match(rows[0]!, /^⏺ Background Task\(bg-10\)$/);
-		assert.match(rows[1]!, /^ {2}⎿ {2}completed in background · ran 8\.0s · sleep 6 && echo "R4-1 done"$/);
+		assert.match(rows[0]!, /^⏺ Background Task\(sleep 6 && echo "R4-1 done"\)$/);
+		assert.ok(!rows[0]!.includes("bg-10"), "no id on the visible row");
+		assert.match(rows[1]!, /^ {2}⎿ {2}completed in background · ran 8\.0s$/); // command not repeated
 	});
 
 	it("success dot on exit 0, error dot on failure, running dot (dim) on stop", () => {
@@ -37,22 +38,24 @@ describe("bgTaskRows (BG-ENTRY-03 pseudo tool row)", () => {
 		assert.match(rows[1]!, /stopped · ran 8\.0s/);
 	});
 
-	it("with a label the id disappears from the call row (CC GenericTaskStatus parity)", () => {
+	it("with a label the id leaves the call row (CC GenericTaskStatus parity)", () => {
 		const rows = bgTaskRows(plain, { ...base, description: "build the frontend" }, 100).map(stripAnsi);
 		assert.match(rows[0]!, /^⏺ Background Task\(build the frontend\)$/);
 		assert.ok(!rows[0]!.includes("bg-10"), "no id on the visible row");
-		assert.match(rows[1]!, /completed in background/); // gutter unchanged
+		// gutter carries the command when the title is a label
+		assert.match(rows[1]!, /completed in background · ran 8\.0s · sleep 6 && echo "R4-1 done"$/);
 	});
 
 	it("failure names the exit code; multi-line commands fold to one line", () => {
 		const rows = bgTaskRows(plain, { ...base, exitCode: 3, command: "echo a\necho b" }, 100).map(stripAnsi);
 		assert.match(rows[1]!, /failed in background \(exit 3\)/);
-		assert.match(rows[1]!, /echo a ⏎ echo b/);
+		assert.match(rows[0]!, /echo a ⏎ echo b/); // folded command is the title
 	});
 
-	it("long commands truncate to the terminal width, never wrap", () => {
+	it("long commands truncate to the terminal width, never wrap (label-less title)", () => {
 		const rows = bgTaskRows(plain, { ...base, command: `echo ${"x".repeat(200)}` }, 60).map(stripAnsi);
 		assert.equal(rows.length, 2);
 		for (const row of rows) assert.ok(row.length <= 60, `row fits: ${row.length}`);
+		assert.ok(rows[0]!.endsWith("…)"), `title ellipsized: ${rows[0]}`);
 	});
 });

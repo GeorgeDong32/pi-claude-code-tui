@@ -55,8 +55,12 @@ export const bgTaskRows = (theme: CCTheme, data: BgTaskEventData, width: number)
 	// CC GenericTaskStatus shows ONLY the description ('Task "desc" completed')
 	// — the id lives model-side (the notification) and in /tasks. Bare id when
 	// the model gave no label.
-	const args = data.description === undefined || data.description === "" ? data.id : data.description;
+	// CC GenericTaskStatus shows ONLY the description; the /tasks panel falls
+	// back to the command for label-less bash tasks — same split here. The
+	// call row truncates to the terminal width itself (ccCall), never wraps.
+	const args = data.description === undefined || data.description === "" ? oneLine(data.command) : data.description;
 	const call = ccCall(theme, "Background Task", args, status, now).render(width)[0] ?? "";
-	const detail = `${theme.fg("dim", "  ⎿  ")}${theme.fg("toolOutput", `${wording(data)} · ran ${formatRuntime(data.runtimeMs)} · ${oneLine(data.command)}`)}`;
+	const tail = args === oneLine(data.command) ? "" : ` · ${oneLine(data.command)}`;
+	const detail = `${theme.fg("dim", "  ⎿  ")}${theme.fg("toolOutput", `${wording(data)} · ran ${formatRuntime(data.runtimeMs)}${tail}`)}`;
 	return [truncateToWidth(call, width, "…"), truncateToWidth(detail, width, "…")];
 };
