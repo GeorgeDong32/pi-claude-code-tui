@@ -37,6 +37,12 @@ describe("bgTaskRows (BG-ENTRY-03 pseudo tool row)", () => {
 		assert.match(rows[1]!, /stopped · ran 8\.0s/);
 	});
 
+	it("shows the human label after the id when the model gave one", () => {
+		const rows = bgTaskRows(plain, { ...base, description: "build the frontend" }, 100).map(stripAnsi);
+		assert.match(rows[0]!, /^⏺ Background Task\(bg-10 · build the frontend\)$/);
+		assert.match(rows[1]!, /completed in background/); // gutter unchanged
+	});
+
 	it("failure names the exit code; multi-line commands fold to one line", () => {
 		const rows = bgTaskRows(plain, { ...base, exitCode: 3, command: "echo a\necho b" }, 100).map(stripAnsi);
 		assert.match(rows[1]!, /failed in background \(exit 3\)/);
