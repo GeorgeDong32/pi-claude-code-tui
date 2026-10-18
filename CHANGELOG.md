@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added (bg-shell pseudo tool row — BG-ENTRY-03 rendering owner)
+- **后台任务状态行升级为伪工具行**：core bg-shell 只 append `cc-core-bg-shell-task` display-only entry（数据面），本包成为唯一渲染方（pi 的 entry renderer 查找是 first-wins，core 侧注册会永久遮蔽 TUI）——`⏺ Background Task(bg-N)` 调用行（状态色圆点：success 绿/error 红/停 dim 实心）+ `⎿ completed in background · ran 8.0s · 命令` 明细 gutter，与 agent 随后的 `TaskOutput(bg-N)` 行视觉成对（对齐 CC task_status attachment 形态）。无本包环境 entry 落盘不显示、装上即现。
+
+
 ### Added (bg-shell footer pill — CC parity)
 - **footer 任务指示（对齐 CC `pillLabel`）**：bg-shell 有任务在跑时，cc-footer 的 hint 行在权限模式 label 后多一枚 `· 1 shell` / `· N shells` pill；零任务时该行字节不变。实现为 render-time 纯拉取（`readBgShells` dep，默认 0）：直读 core bg-shell 挂在 `Symbol.for("cc-core.bg-shell.registry")` 的注册表数 running 任务，core 缺席 fail-open 返回 0——与 `readPmStatus` 同款消费端模式，不走 bus 订阅。打字时随 hints 一起隐藏（label-only 规则）。
 

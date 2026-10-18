@@ -47,6 +47,7 @@ import { InteractiveMode, UserMessageComponent } from "@earendil-works/pi-coding
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MouseRegion } from "@earendil-works/pi-tui";
 import {
+	
 	ccCall,
 	ccThenRunCall,
 	mcpArgsSummary,
@@ -60,6 +61,7 @@ import {
 	obsRecallDisplayView,
 	packedEventRows,
 } from "./lib/cc-rows.ts";
+import { bgTaskRows } from "./lib/bg-task-row.ts";
 import { isBuiltinToolName, planResolverTakeover } from "./lib/takeover-rules.ts";
 import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { patchCompactionRow, restoreCompactionRow } from "./lib/cc-compaction-row.ts";
@@ -332,6 +334,22 @@ export default function (pi: ExtensionAPI) {
 			};
 		});
 	}
+
+	// bg-shell task-status pseudo tool row (BG-ENTRY-03): core appends the
+	// display-only entry, THIS package renders it (core registers no renderer
+	// — first-wins lookup would shadow us). Renderers never throw.
+	pi.registerEntryRenderer<import("./lib/bg-task-row.ts").BgTaskEventData>("cc-core-bg-shell-task", (entry, _options, theme) => ({
+		invalidate() {},
+		render(width: number): string[] {
+			try {
+				const data = entry.data;
+				if (data === undefined || data === null || typeof data !== "object") return [];
+				return bgTaskRows(theme as unknown as CCTheme, data, width);
+			} catch {
+				return []; // red line 1: render must never throw
+			}
+		},
+	}));
 
 	// OBS-09-SITES packed entries: display-only CustomEntry rendered in the
 	// conversation flow (registered at load; renderers never throw).
