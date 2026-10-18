@@ -248,6 +248,33 @@ test("matrix: tool rows auto with an external owner — yields once with one not
 	}
 });
 
+test("oracle: externalToolOwner identification — our own renderer source never counts as an external owner", () => {
+	// The sourceInfo probe (replica-session.ts externalToolOwner) must not
+	// match OURSELVES: this package registers its renderers under a source
+	// containing "claude-code-tui" (real installs: git:…/pi-claude-code-tui or
+	// @georgedong32/pi-claude-code-tui). Matching it would make auto mode
+	// yield to itself and silently disable the CC rows.
+	const h = setupSession();
+	try {
+		(h.deps.tools as unknown[]).length = 0;
+		h.deps.tools.push(
+			{ name: "read", sourceInfo: { source: "git:github.com:GeorgeDong32/pi-claude-code-tui" } },
+			{ name: "edit", sourceInfo: { source: "@georgedong32/pi-claude-code-tui" } },
+			{ name: "grep", sourceInfo: { source: "builtin" } },
+			{ name: "ls" }, // tool with no sourceInfo at all — not an owner
+		);
+		h.session.enable(h.slots);
+		assert.deepEqual(h.session.toolRowsDecisionInput().toolRowsEnabled, true, "self + builtin + bare tools: keep the rows");
+		assert.equal(
+			h.rec.notified.filter((n) => n.msg.startsWith("CC tool rows auto-off")).length,
+			0,
+			"no self-yield notification",
+		);
+	} finally {
+		h.dispose();
+	}
+});
+
 test("matrix: model switch — status row and header use the new model", () => {
 	const h = setupSession();
 	try {

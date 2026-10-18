@@ -181,3 +181,56 @@ test("cursor restyle 1.2 adversarial: only the FIRST fake pair is the cursor; la
 test("cursor restyle 1.2: unfocused blink-off phase restores the plain character", () => {
 	assert.equal(restyleEditorCursor(`out ${FAKE_START}y${FAKE_END}`, BAR, false), "out y");
 });
+
+// ── Wire-format canary: the REAL pi-tui editor emits what the sniffer expects ──
+// The tests above hand-build the APC pair, so they stay green even if pi-tui
+// changes its cursor wire format and the restyle silently stops engaging.
+// These drive the real package: (1) the official renderFakeCursor builder
+// output must match our locally mirrored marker bytes, (2) a real focused
+// Editor must actually emit CURSOR_MARKER + the fake-cursor pair, and (3)
+// the full CodexStyleEditor stack must land the accent bar on that real
+// output with no APC bytes leaking through.
+import { Editor, renderFakeCursor } from "@earendil-works/pi-tui";
+// CURSOR_MARKER / restyleEditorCursor / CodexStyleEditor are imported above.
+
+const fakeCellOf = (ch: string): { start: string; end: string } => {
+	const wire = renderFakeCursor(ch);
+	const split = wire.indexOf(ch);
+	return { start: wire.slice(0, split), end: wire.slice(split + ch.length) };
+};
+
+test("wire canary: renderFakeCursor (public builder) matches the mirrored APC bytes", () => {
+	const { start, end } = fakeCellOf("x");
+	assert.equal(start, FAKE_START, "pi-tui's official fake-cursor open marker");
+	assert.equal(end, FAKE_END, "pi-tui's official fake-cursor close marker");
+});
+
+test("wire canary: a real focused Editor emits CURSOR_MARKER + the APC pair", () => {
+	const tui = { requestRender: () => {}, terminal: { rows: 40, columns: 100 } } as never;
+	const editor = new Editor(tui, { borderColor: (b: string) => b, selectList: {} as never }, {} as never);
+	editor.handleInput("abc");
+	editor.focused = true;
+	const lines = editor.render(80);
+	const hit = lines.find((l) => l.includes(FAKE_START));
+	assert.ok(hit, "focused editor output must carry the fake-cursor APC pair");
+	assert.ok(hit!.includes(`${CURSOR_MARKER}${FAKE_START}`), "the pair sits right after the cursor marker");
+	// Our sniffer, applied to this REAL line, engages both blink phases.
+	const before = hit!.slice(0, hit!.indexOf(FAKE_START));
+	assert.ok(restyleEditorCursor(hit!, BAR, true).startsWith(before + BAR), "show: the bar takes the cursor cell");
+	assert.ok(!restyleEditorCursor(hit!, BAR, false).includes(FAKE_START), "blink-off resolves the cell");
+});
+
+test("wire canary: end-to-end CodexStyleEditor restyles the real focused cursor into the bar", () => {
+	const tui = { requestRender: () => {}, terminal: { rows: 40, columns: 100 } } as never;
+	const keybindings = { matches: () => false } as never; // CustomEditor paste binding check
+	const editor = new CodexStyleEditor(tui, { borderColor: (b: string) => b, selectList: {} } as never, keybindings, () => BAR);
+	editor.handleInput("hello");
+	editor.focused = true;
+	try {
+		const lines = editor.render(80);
+		assert.ok(lines.some((l) => l.includes(BAR)), "accent bar engaged on real pi-tui output");
+		assert.ok(!lines.some((l) => l.includes(FAKE_START)), "no APC bytes leak into the terminal");
+	} finally {
+		editor.release();
+	}
+});

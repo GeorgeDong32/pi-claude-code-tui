@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added (host-oracle canaries — arch review C6 corrected)
+- **宿主识别 oracle 金丝雀补齐**：全仓盘点 19 处识别点，16 处已有测试钉住（7 处真包驱动）——外部评审「仅一处金丝雀」的声明核实失准。真实缺口 3 处补 7 测：`bg-tasks-capability` 的 registry 探测（footer pill 的 Symbol.for 探针，此前零测试——registry 缺席/畸形必须 fail-open 到 0）；editor APC 线格式 canary（原测试手搓字符串，pi-tui 换光标线格式会静默失配——现在真 `renderFakeCursor`/`Editor` 驱动对照镜像字节）；`externalToolOwner` 的 source 豁免半边。358/358 全绿。
+
 ### Added (bg-shell pseudo tool row — BG-ENTRY-03 rendering owner)
 - **伪工具行支持任务标签**：模型给 background 调用带 `description` 时，标题行显示 `⏺ Background Task(build the frontend)`——**对齐 CC GenericTaskStatus：有标签时 id 不出现在可见行**（id 活在模型侧通知与 /tasks 面板）；**无标签时标题行显示命令本身**（对齐 CC /tasks 面板 local_bash 的 label=command 分工），`ccCall` 按终端宽度截断永不换行，gutter 行相应去重不重复命令。
 - **后台任务状态行升级为伪工具行**：core bg-shell 只 append `cc-core-bg-shell-task` display-only entry（数据面），本包成为唯一渲染方（pi 的 entry renderer 查找是 first-wins，core 侧注册会永久遮蔽 TUI）——`⏺ Background Task(bg-N)` 调用行（状态色圆点：success 绿/error 红/停 dim 实心）+ `⎿ completed in background · ran 8.0s · 命令` 明细 gutter，与 agent 随后的 `TaskOutput(bg-N)` 行视觉成对（对齐 CC task_status attachment 形态）。无本包环境 entry 落盘不显示、装上即现。
