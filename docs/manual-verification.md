@@ -110,6 +110,16 @@ script renders `~dir │ ◆branch dirty │ model │ Ctx p% (u/w) │ $cost`.
       gutter on the first body row, continuations aligned with 5 spaces,
       same shape as tool-result blocks (now the shared gutter-wrap helper;
       byte-pinned by cc-skill-row tests).
+- [ ] Skill invocation ORDER: submit `/skill:name args` — the user bubble
+      comes FIRST and shows the full typed command (`❯ /skill:name args`,
+      normalized single space), the `⏺ Skill(name)` row follows, not the
+      reverse. No-args `/skill:name` also shows a `❯ /skill:name` bubble
+      (pi renders none). Resume a session with skill messages — same order
+      (initial history render rides the same patch). ctrl+o and click
+      expand still work; an interrupted run's terminal row still lands
+      after the block. Note: the synthesized no-args bubble emits OSC133
+      prompt-zone markers like every user bubble (visible only to
+      shell-integration-aware terminals; acceptable).
 - [ ] cc-status three states: while generating (spinner + verb + shimmer),
       during /compact ("Compacting context…" on the same line), idle after a
       ≥1s run (dim `✻ Verb for Xs · HH:MM`). Weird sequences worth one pass:

@@ -6,7 +6,7 @@ This document describes the internal architecture of `@georgedong32/pi-claude-co
 
 ## 1. Overview
 
-This package is a pi extension + theme that runs entirely inside pi's TUI process and **touches only the display layer**: rendering takeover happens through pi's public extension API (tool rows via the official `pi.registerToolRenderer` renderer channel, `ctx.ui.setHeader/setEditorComponent/setWidget`, `registerMarkdownTransformer`) plus a small number of prototype patches (compaction row / skill row / user message bar). Tool `execute` and everything sent to the model are never modified.
+This package is a pi extension + theme that runs entirely inside pi's TUI process and **touches only the display layer**: rendering takeover happens through pi's public extension API (tool rows via the official `pi.registerToolRenderer` renderer channel, `ctx.ui.setHeader/setEditorComponent/setWidget`, `registerMarkdownTransformer`) plus a small number of prototype patches (compaction row / skill row and order / user message bar / the two InteractiveMode notice taps / assistant terminal row). Tool `execute` and everything sent to the model are never modified.
 
 ```
 package.json ("pi": { extensions, themes })
@@ -32,6 +32,7 @@ themes/claude-code.json         ← theme (pi theme system)
 | `lib/host-status.ts` | Host volatile-state read seam (effort/thinking level, never throws — render-stack safety) | `readEffortLevel` | `host-status.test.ts` |
 | `lib/cc-compaction-row.ts` | Patches the native `[compaction]` box into a CC-style row; silences the native "Compacting…" indicator inside the component tree | `patchCompactionRow`, `silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
 | `lib/cc-skill-row.ts` | Patches the native `[skill]` box into the CC-style `⏺ Skill(name)` row; the expanded body reuses cc-rows' gutter-wrap (byte-pinned), native click-to-expand kept | `patchSkillRow` | `cc-skill-row.test.ts` (incl. byte-level expansion assertions) |
+| `lib/cc-skill-order.ts` | Skill invocation order (spec 2026-10-22): wrapper patch over `InteractiveMode.addMessageToChat` reorders each call's appended slice to "user bubble (normalized `/skill:name args` reconstruction) first, ⏺ row after" and synthesizes the bubble for no-args invocations; DEC-N4 exemption shape (self-swallowed original + total post-steps) | `createSkillOrderPatch`, `reorderAppendedSkillBlock` | `cc-skill-order.test.ts` (slice table tests + adapter-level invariants) |
 | `lib/cc-notices.ts` | cc-notices (spec 2026-10-13): process-wide NoticeCenter (compact/quiet/off modes, ×N merging, capacity-50 ring), the DEC-N3 compact rewrite, `cc-tui/notices` CustomEntry rows, quiet chip, the two InteractiveMode showError/showWarning taps (riding the patches lifecycle), and the fatal-exit stderr dump | `createNoticeCenter`, `sharedNoticeCenter`, `compactNotice`, `noticeEntryRows`, `noticeChip`, `createNoticeTaps`, `installFatalExitDump` | `cc-notices.test.ts` (incl. N-T5b real prototype + canary) |
 | `lib/cc-api-error-row.ts` | assistant terminal rows (spec 2026-10-13): wrapper patch over `AssistantMessageComponent.updateContent` swapping only the trailing Text; identification = pi's native branch conditions + an ANSI-stripped exact oracle match (fail-open); error → ccResult fold (`API Error:` prefix de-dup), aborted → dim Interrupted, length → red; instance-level setExpanded joins the global ctrl+o | `nativeTerminalText`, `ccTerminalText`, `ccTerminalRows`, `classifyTerminal`, `patchApiErrorRow`, `restoreApiErrorRow` | `cc-api-error-row.test.ts` (real-component matrix + click expand) |
 | `lib/claude-tui-editor.ts` | CC-style editor: flat rules, gold `❯`, themed bar cursor (530 ms blink, focused only), autocomplete lifted above the box | `CodexStyleEditor`, `stripAnsi`, … | (visual behavior via manual verification) |
@@ -78,6 +79,7 @@ session_start → enable(ctx)
   ├─ ctx.ui.setWidget("cc-footer")    ← statusline + mode/hints rows
   ├─ patchCompactionRow(getFg)        ← CC-style compaction row
   ├─ patchSkillRow / applyUserBarPatch (the UserMessageComponent.rebuild patch is applied at enable, NOT at load)
+  ├─ skillOrderPatch.apply()          ← addMessageToChat wrapper: CC-style skill order (rides the patches lifecycle)
   ├─ publishCcTuiCapability()         ← tell pm this package exists (mutual suppression)
   └─ coreBusClient.activate()  ← P0-2: handoff baseline + presence declaration + three-channel subscription (retry points: session_start / cc-status / cc-footer render)
 

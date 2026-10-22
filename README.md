@@ -39,6 +39,7 @@ Tool calls use Claude Code-style `⏺ Tool(args)` rows, with results under a mut
 - Gives third-party tools without custom renderers the same compact layout.
 - Displays MCP calls as `server - tool (MCP)`.
 - Renders skill invocations as `⏺ Skill(name)`, preserving click-to-expand.
+- Keeps Claude Code's skill layout: the user bubble (with the full typed `/skill:name args`) comes first, the `⏺ Skill(name)` row after.
 - Shows context compaction as `⏺ Context compacted from N tokens`, with an expandable summary.
 
 ### A consistent conversation and editor

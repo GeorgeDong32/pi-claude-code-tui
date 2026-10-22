@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed (skill invocation order — CC parity)
+- **skill 调用顺序与用户条恢复（spec 2026-10-22）**：`/skill:name args` 展开后 pi 原生渲染为「⏺ Skill 行在前、只剩 args 的用户条在后」（无 args 时连用户条都不出）。新增 `cc-skill-order.ts` wrapper patch `InteractiveMode.addMessageToChat`，把本次 append 切片重排为 CC 形态：**用户条在前且显示完整敲入命令**（`❯ /skill:diagnosing-bugs 测试`，归一化单空格重建），⏺ 行在后；无 args 时补一个合成用户条 `❯ /skill:name`。纯显示层：transcript 与模型上下文不变。DEC-N4 豁免形态（original 自吞失败 + 后置步骤全 swallow，豁免条款同步 `pi-proto-adapter.ts` 头注释与 AGENTS 踩坑 12）；降级 = 原生顺序，永不崩。多条消息多 skill 仍是 pi 核心语义（一条消息只展开行首 `/skill:`），不在本包范围。
+
 ### Added (host-oracle canaries — arch review C6 corrected)
 - **宿主识别 oracle 金丝雀补齐**：全仓盘点 19 处识别点，16 处已有测试钉住（7 处真包驱动）——外部评审「仅一处金丝雀」的声明核实失准。真实缺口 3 处补 7 测：`bg-tasks-capability` 的 registry 探测（footer pill 的 Symbol.for 探针，此前零测试——registry 缺席/畸形必须 fail-open 到 0）；editor APC 线格式 canary（原测试手搓字符串，pi-tui 换光标线格式会静默失配——现在真 `renderFakeCursor`/`Editor` 驱动对照镜像字节）；`externalToolOwner` 的 source 豁免半边。358/358 全绿。
 

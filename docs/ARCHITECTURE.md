@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-本包是一个 pi 扩展 + 主题包，全部代码运行在 pi 的 TUI 进程内，**只改显示层**：渲染接管通过 pi 公开的扩展 API（工具行走官方 `pi.registerToolRenderer` 渲染器通道、`ctx.ui.setHeader/setEditorComponent/setWidget`、`registerMarkdownTransformer`）和有限的原型补丁（prototype patch：压缩行 / skill 行 / 用户消息条）实现，工具的 `execute` 与发给模型的内容一律不动。
+本包是一个 pi 扩展 + 主题包，全部代码运行在 pi 的 TUI 进程内，**只改显示层**：渲染接管通过 pi 公开的扩展 API（工具行走官方 `pi.registerToolRenderer` 渲染器通道、`ctx.ui.setHeader/setEditorComponent/setWidget`、`registerMarkdownTransformer`）和有限的原型补丁（prototype patch：压缩行 / skill 行与顺序 / 用户消息条 / InteractiveMode 两个 notice tap / assistant 终态行）实现，工具的 `execute` 与发给模型的内容一律不动。
 
 ```
 package.json ("pi": { extensions, themes })
@@ -32,6 +32,7 @@ themes/claude-code.json         ← 主题（pi theme 系统）
 | `lib/host-status.ts` | host 易变状态读取 seam（effort/思考档位，永不抛——render 栈安全） | `readEffortLevel` | `host-status.test.ts` |
 | `lib/cc-compaction-row.ts` | 把原生 `[compaction]` 盒子补丁成 CC 风格行（经 pi-proto-adapter 生命周期）；在组件树里静音原生 "Compacting…" 指示器 | `patchCompactionRow`、`restoreCompactionRow`、`silenceNativeCompactionIndicator` | `cc-compaction-row.test.ts` |
 | `lib/cc-skill-row.ts` | 把原生 `[skill]` 盒子补丁成 CC 式 `⏺ Skill(name)` 行（经 pi-proto-adapter）；展开块复用 cc-rows 的 gutter-wrap（字节钉死），保留原生点击展开 | `patchSkillRow`、`restoreSkillRow` | `cc-skill-row.test.ts`（含字节级展开块断言） |
+| `lib/cc-skill-order.ts` | skill 调用顺序（spec 2026-10-22）：wrapper patch `InteractiveMode.addMessageToChat`，把本次 append 切片重排为「用户条（归一化重建的 `/skill:name args` 原文）在前、⏺ 行在后」，无 args 时补合成用户条；DEC-N4 豁免形态（original 自吞 + 后置全 swallow） | `createSkillOrderPatch`、`reorderAppendedSkillBlock` | `cc-skill-order.test.ts`（切片表测 + adapter 级不变量） |
 | `lib/cc-notices.ts` | cc-notices（spec 2026-10-13）：进程级 NoticeCenter（compact/quiet/off 三模式、×N 合并、50 条环形）、DEC-N3 compact 改写、`cc-tui/notices` CustomEntry 行、quiet chip、InteractiveMode showError/showWarning 两 tap（随 patches 生命周期）、致命退出 stderr 兑底 | `createNoticeCenter`、`sharedNoticeCenter`、`compactNotice`、`noticeEntryRows`、`noticeChip`、`createNoticeTaps`、`installFatalExitDump` | `cc-notices.test.ts`（含 N-T5b 真原型 + 金丝雀） |
 | `lib/cc-api-error-row.ts` | assistant 终态行（spec 2026-10-13）：包裀式 patch `AssistantMessageComponent.updateContent`，只替换末尾终态 Text；识别 = pi 原生分支条件 + ANSI 剥除后文案精确匹配（fail-open）；error → ccResult 折叠行（`API Error:` 前缀去重）、aborted → dim Interrupted、length → 红；实例级 setExpanded 接入全局 ctrl+o | `nativeTerminalText`、`ccTerminalText`、`ccTerminalRows`、`classifyTerminal`、`patchApiErrorRow`、`restoreApiErrorRow` | `cc-api-error-row.test.ts`（含真组件矩阵 + 点击展开） |
 | `lib/claude-tui-editor.ts` | CC 式编辑器：平面分隔线、金色 `❯`、主题色条状光标（530ms 闪烁、仅 focused、unref、release 幂等——spec 8.1）、补全面板弹到框上方 | `CodexStyleEditor` | `claude-tui-editor.test.ts`（timer 生命周期）+ 人工验证 |
@@ -80,6 +81,7 @@ session_start → enable(ctx)
   ├─ ctx.ui.setWidget("cc-footer")    ← statusline + mode/hints 行
   ├─ patchCompactionRow(getFg)        ← 压缩行 CC 化
   ├─ patchSkillRow / applyUserBarPatch（UserMessageComponent.rebuild 补丁在 enable 打，非加载期）
+  ├─ skillOrderPatch.apply()          ← addMessageToChat wrapper：skill 顺序 CC 化（随 patches 生命周期）
   ├─ publishCcTuiCapability()         ← 告知 pm 本包存在（互相抑制）
   └─ coreBusClient.activate()  ← P0-2：交接基线 + 在场声明 + 三通道订阅（重试点：session_start / cc-status / cc-footer render）
 

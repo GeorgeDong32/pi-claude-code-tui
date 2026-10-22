@@ -67,6 +67,7 @@ import { assistantWhiteText, userMessageBar } from "./lib/cc-markdown.ts";
 import { patchCompactionRow, restoreCompactionRow } from "./lib/cc-compaction-row.ts";
 import { patchApiErrorRow, restoreApiErrorRow } from "./lib/cc-api-error-row.ts";
 import { patchSkillRow, restoreSkillRow } from "./lib/cc-skill-row.ts";
+import { createSkillOrderPatch } from "./lib/cc-skill-order.ts";
 import { weightedVerbSample } from "./lib/spinner-verbs.ts";
 import { SubagentPresentationBridge } from "./lib/subagent-presentation.ts";
 import { drawCcAsyncFrame, drawCcFleetFrame } from "./lib/cc-subagent-rows.ts";
@@ -170,6 +171,24 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	// --- CC-style skill invocation ORDER (spec 2026-10-22): user bubble
+	// (full typed "/skill:name args") BEFORE the ⏺ Skill(name) row. pi
+	// renders skill-first with an args-only bubble (and none at all without
+	// args). DEC-N11 guard mirrors the notice taps (the method is private in
+	// pi's d.ts, so the guard reads it through a typed view). ---
+	const interactiveModeProto = (InteractiveMode as unknown as {
+		prototype?: { addMessageToChat?: unknown };
+	}).prototype;
+	const skillOrderPatch =
+		typeof interactiveModeProto?.addMessageToChat === "function"
+			? createSkillOrderPatch(interactiveModeProto)
+			: null;
+	if (skillOrderPatch === null) {
+		console.warn(
+			"[claude-tui] InteractiveMode.addMessageToChat missing — skill invocation order stays native",
+		);
+	}
+
 	// --- P2-1: the session owns every mutable state + lifecycle. ---
 	const uiOf = (ctx: unknown): UiSlots => {
 		const c = ctx as ExtensionContext & {
@@ -221,6 +240,7 @@ export default function (pi: ExtensionAPI) {
 			applyAll: (getFg) => {
 				patchCompactionRow(getFg);
 				patchSkillRow(getFg);
+				skillOrderPatch?.apply();
 				patchApiErrorRow(getFg);
 				userBarAdapter.apply(() => null);
 				noticeTaps?.apply();
@@ -228,6 +248,7 @@ export default function (pi: ExtensionAPI) {
 			restoreAll: () => {
 				restoreCompactionRow();
 				restoreSkillRow();
+				skillOrderPatch?.restore();
 				restoreApiErrorRow();
 				userBarAdapter.restore();
 				noticeTaps?.restore();

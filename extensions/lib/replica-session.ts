@@ -86,8 +86,9 @@ export interface SessionBridge {
 }
 
 export interface SessionPatches {
-	/** Apply the prototype patches (compaction / skill / user-bar + the two
-	 * InteractiveMode notice taps; the API-error spec adds one more). */
+	/** Apply the prototype patches (compaction / skill row / user-bar + the
+	 * two InteractiveMode notice taps; the API-error and skill-order specs
+	 * each add one more). */
 	applyAll(getFg: () => ThemeFg | null): void;
 	restoreAll(): void;
 }

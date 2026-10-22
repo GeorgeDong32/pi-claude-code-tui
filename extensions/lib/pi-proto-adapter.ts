@@ -25,6 +25,14 @@
  * original call with side effects must be the LAST step of the body — the
  * degrade path calls original again, so calling it earlier and then failing
  * would duplicate the side effect (e.g. a double chat append).
+ *
+ * Exemption (cc-skill-order.ts): a wrapper body that MUST work after the
+ * original (it reorders what the original appended) keeps the same
+ * invariant by (a) swallowing the original's own failure instead of
+ * propagating it and (b) making every post-original step total (internal
+ * swallows, no throwing statements). The outer catch is then unreachable
+ * once the original ran, so the degrade replay can never duplicate a
+ * successful append.
  */
 
 export type ThemeFg = (color: string, text: string) => string;
