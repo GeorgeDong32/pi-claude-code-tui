@@ -19,6 +19,9 @@ export interface StatusLinePrefs {
 	command: string;
 	/** Right-aligned CC-style effort chip on the first statusline line. */
 	badge: boolean;
+	/** SP2 (STATUSLINE-PERF-PLAN D5): force the spawn path (bash + jq) even
+	 * for the bundled default command — parity debugging / escape hatch. */
+	forceScript: boolean;
 }
 
 export interface ClaudeTuiPrefs {
@@ -62,12 +65,13 @@ export function savePrefs(partial: ClaudeTuiPrefs, path = defaultPrefsPath()): v
 	}
 }
 
-/** Fill statusLine defaults: disabled, bundled command, badge on. */
+/** Fill statusLine defaults: disabled, bundled command, badge on, in-process renderer on. */
 export function resolveStatusLinePrefs(raw: Partial<StatusLinePrefs> | undefined): StatusLinePrefs {
 	return {
 		enabled: raw?.enabled === true,
 		command: typeof raw?.command === "string" ? raw.command : "",
 		badge: raw?.badge !== false,
+		forceScript: raw?.forceScript === true,
 	};
 }
 

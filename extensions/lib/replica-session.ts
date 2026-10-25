@@ -39,7 +39,8 @@ import { readEffortLevel } from "./host-status.ts";
 import { RunStateMachine } from "./run-state.ts";
 import { CodexStyleEditor, cursorOpenFromFgAnsi, setEditorAccentOpen } from "./claude-tui-editor.ts";
 import { silenceNativeCompactionIndicator, type ThemeFg } from "./cc-compaction-row.ts";
-import { buildStatuslineJson, composeFooterLines, StatuslineRunner } from "./statusline.ts";
+import { buildStatuslineJson, composeFooterLines, StatuslineRunner, type StatuslineSource } from "./statusline.ts";
+import { InProcessStatusline } from "./statusline-inprocess.ts";
 import { DEFAULT_STATUSLINE_SCRIPT } from "./statusline-default-script.ts";
 import { buildCompletionLine, effortBadgeSymbol, formatDuration, formatModelLabel, formatTokens } from "./format.ts";
 import { PiStartupHeader, type HeaderDataGetters } from "./pi-startup-header.ts";
@@ -110,6 +111,10 @@ export interface ReplicaSessionDeps {
 	noticeChip?: (theme: { fg(c: string, s: string): string; bold(s: string): string }) => string;
 	/** Statusline runner factory (tests inject a fake; default spawns bash). */
 	statuslineFactory?: (command: string) => StatuslineRunner;
+	/** SP2 (STATUSLINE-PERF-PLAN D1): in-process source factory for the
+	 * bundled default command (tests inject a fake; default = real
+	 * InProcessStatusline with the git-segment provider). */
+	inProcessStatuslineFactory?: () => StatuslineSource;
 	/** Pure read of the pm status chain (injectable; default = readPmStatus). */
 	readPmStatus?: () => PmStatus;
 	/** Pure read of bg-shell running tasks (injectable; default = 0 — CC footer pill parity). */
@@ -178,7 +183,7 @@ export class ReplicaSession {
 	private activeEditor: CodexStyleEditor | null = null;
 	private dockTui: { requestRender: (force?: boolean) => void } | null = null;
 	private spinnerPaint: (s: string) => string = (s) => s;
-	private statuslineRunner: StatuslineRunner | null = null;
+	private statuslineSource: StatuslineSource | null = null;
 	private statuslineWidth = 0;
 	private showNativeFooter = false;
 	private accentOpenAnsi = "\x1b[38;2;138;190;183m"; // sage fallback (#8ABEB7)
@@ -702,9 +707,9 @@ export class ReplicaSession {
 		// persistent error) the right group is the fallback holder, and the
 		// core string drops its duplicated numeric segments ONLY then.
 		const display = this.displayUsage();
-		const runnerLines = this.statuslineRunner ? this.statuslineRunner.getRenderLines() : [];
+		const runnerLines = this.statuslineSource ? this.statuslineSource.getRenderLines() : [];
 		const scriptHasOutput =
-			this.statusLinePrefs.enabled && !(this.statuslineRunner?.hasPersistentError() ?? false) && runnerLines.length > 0;
+			this.statusLinePrefs.enabled && !(this.statuslineSource?.hasPersistentError() ?? false) && runnerLines.length > 0;
 		const rightOwnsNumbers = !scriptHasOutput;
 		const rightShowsNumbers = display.cost > 0 || display.usedPercent !== null;
 		let pmStats: string;
@@ -805,7 +810,7 @@ export class ReplicaSession {
 		return composeFooterLines({
 			statuslineOn: this.statusLinePrefs.enabled,
 			badgeOn: this.statusLinePrefs.badge,
-			lines: this.statuslineRunner ? this.statuslineRunner.getRenderLines() : [],
+			lines: this.statuslineSource ? this.statuslineSource.getRenderLines() : [],
 			coreFooter,
 			badgeText: (() => {
 				if (!this.statusLinePrefs.badge) return "";
@@ -892,21 +897,33 @@ export class ReplicaSession {
 	}
 
 	private ensureStatuslineRunner(): void {
-		if (!this.statuslineOn() || this.statuslineRunner) return;
-		this.statuslineRunner = this.deps.statuslineFactory
-			? this.deps.statuslineFactory(this.statuslineCommand())
-			: new StatuslineRunner({ command: this.statuslineCommand() });
-		this.statuslineRunner.setOnUpdate(() => this.dockTui?.requestRender());
+		if (!this.statuslineOn() || this.statuslineSource) return;
+		// SP2 (STATUSLINE-PERF-PLAN D1): the bundled default command renders
+		// in-process (zero fork, git segment via the provider); any custom
+		// command keeps the CC-compatible spawn path byte-for-byte.
+		const command = this.statuslineCommand();
+		// prefs.command === "" IS the bundled default (statuslineCommand()
+		// expands it into the script source for the spawn path — check the
+		// raw pref here, not the expansion).
+		this.statuslineSource =
+			this.statusLinePrefs.command === "" && !this.statusLinePrefs.forceScript
+				? this.deps.inProcessStatuslineFactory
+					? this.deps.inProcessStatuslineFactory()
+					: new InProcessStatusline({ cwd: process.cwd() })
+				: this.deps.statuslineFactory
+				? this.deps.statuslineFactory(command)
+				: new StatuslineRunner({ command });
+		this.statuslineSource.setOnUpdate(() => this.dockTui?.requestRender());
 	}
 
 	private teardownStatusline(): void {
-		this.statuslineRunner?.dispose();
-		this.statuslineRunner = null;
+		this.statuslineSource?.dispose();
+		this.statuslineSource = null;
 	}
 
 	private refreshStatusline(): void {
-		if (!this.statuslineRunner) return;
-		this.statuslineRunner.request(this.buildStatuslineInput(), this.statuslineWidth || 100);
+		if (!this.statuslineSource) return;
+		this.statuslineSource.request(this.buildStatuslineInput(), this.statuslineWidth || 100);
 	}
 
 	private buildStatuslineInput(): string {

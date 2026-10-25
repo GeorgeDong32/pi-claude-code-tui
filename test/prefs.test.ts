@@ -55,18 +55,20 @@ test("savePrefs leaves no .tmp file behind", () => {
 });
 
 test("resolveStatusLinePrefs defaults and partial fills", () => {
-	assert.deepEqual(resolveStatusLinePrefs(undefined), { enabled: false, command: "", badge: true });
-	assert.deepEqual(resolveStatusLinePrefs({ enabled: true }), { enabled: true, command: "", badge: true });
-	assert.deepEqual(resolveStatusLinePrefs({ enabled: true, command: "x", badge: false }), {
+	assert.deepEqual(resolveStatusLinePrefs(undefined), { enabled: false, command: "", badge: true, forceScript: false });
+	assert.deepEqual(resolveStatusLinePrefs({ enabled: true }), { enabled: true, command: "", badge: true, forceScript: false });
+	assert.deepEqual(resolveStatusLinePrefs({ enabled: true, command: "x", badge: false, forceScript: true }), {
 		enabled: true,
 		command: "x",
 		badge: false,
+		forceScript: true,
 	});
 	// Wrong-typed fields degrade to defaults instead of leaking through.
 	assert.deepEqual(resolveStatusLinePrefs({ enabled: "yes" as unknown as boolean }), {
 		enabled: false,
 		command: "",
 		badge: true,
+		forceScript: false,
 	});
 });
 

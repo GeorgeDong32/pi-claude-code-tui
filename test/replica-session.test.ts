@@ -63,7 +63,7 @@ interface Harness {
 	deps: {
 		events: string[];
 		tools: Array<{ name: string; sourceInfo?: { source?: string } }>;
-		statusline: { created: string[]; disposed: number; requests: Array<[string, number]> };
+		statusline: { created: string[]; createdInProcess: number; disposed: number; requests: Array<[string, number]> };
 		silence: number;
 	};
 	agentDir: string;
@@ -85,7 +85,7 @@ const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boo
 		footerSlot: [],
 	};
 	const depEvents: string[] = [];
-	const statusline = { created: [] as string[], disposed: 0, requests: [] as Array<[string, number]> };
+	const statusline = { created: [] as string[], createdInProcess: 0, disposed: 0, requests: [] as Array<[string, number]> };
 	const tools = over.owner
 		? [{ name: "read", sourceInfo: { source: over.owner } }]
 		: [{ name: "read", sourceInfo: { source: "builtin" } }];
@@ -141,6 +141,21 @@ const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boo
 					statusline.disposed++;
 				},
 			} as unknown as StatuslineRunner;
+		},
+		// SP2: the default command routes to the in-process source — the fake
+		// records into the same `requests` well so the JSON-input assertions
+		// below stay backend-agnostic.
+		inProcessStatuslineFactory: () => {
+			statusline.createdInProcess++;
+			return {
+				setOnUpdate: () => {},
+				request: (input: string, width: number) => statusline.requests.push([input, width]),
+				getRenderLines: () => [],
+				hasPersistentError: () => false,
+				dispose: () => {
+					statusline.disposed++;
+				},
+			};
 		},
 		pickRunVerb: () => "Baking",
 		pickCompletionVerb: () => "Baked",
@@ -379,16 +394,21 @@ test("matrix: late footer-requeue after teardown writes nothing; old close keeps
 	}
 });
 
-test("statusline prefs: on creates the runner via the factory; off disposes it", () => {
+test("statusline prefs: on creates the in-process source for the default command; custom commands use the spawn factory; off disposes", () => {
 	const h = setupSession();
 	try {
 		h.session.enable(h.slots);
 		assert.equal(h.deps.statusline.created.length, 0, "disabled by default");
 		h.session.setStatusline("on", h.slots);
-		assert.equal(h.deps.statusline.created.length, 1, "runner created on on");
+		assert.equal(h.deps.statusline.createdInProcess, 1, "default command → in-process source (SP2 D1)");
+		assert.equal(h.deps.statusline.created.length, 0, "spawn factory untouched for the bundled command");
 		assert.ok(h.deps.statusline.requests.length >= 1, "refresh requested");
 		h.session.setStatusline("off", h.slots);
-		assert.equal(h.deps.statusline.disposed, 1, "off disposed the runner");
+		assert.equal(h.deps.statusline.disposed, 1, "off disposed the source");
+		// Custom command → CC-compatible spawn path via the factory (D1).
+		h.session.setStatusline("set echo hi", h.slots);
+		assert.equal(h.deps.statusline.created.length, 1, "custom command → spawn runner");
+		assert.equal(h.deps.statusline.created[0], "echo hi");
 	} finally {
 		h.dispose();
 	}

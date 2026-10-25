@@ -229,6 +229,25 @@ interface RunHandle {
 	escalation: RunnerTimerHandle | null;
 }
 
+/**
+ * SP2 (docs/STATUSLINE-PERF-PLAN.md §2): the seam both statusline backends
+ * satisfy. StatuslineRunner (spawn path, custom commands) implements it
+ * structurally; InProcessStatusline (statusline-inprocess.ts, default
+ * command) is the zero-fork twin. ReplicaSession holds one of these.
+ */
+export interface StatuslineSource {
+	/** Queue a refresh with the CC-shaped JSON input and target width. */
+	request(input: string, width: number): void;
+	/** Rendered rows (ANSI included); empty until the first refresh settles. */
+	getRenderLines(): string[];
+	/** True once the backend gave up (spawn path: ≥3 consecutive failures). The in-process path is always false. */
+	hasPersistentError(): boolean;
+	/** Host hook fired after each completed run (runner: child settle; in-process: render/git land). */
+	setOnUpdate(callback: (() => void) | null): void;
+	/** Terminal teardown; idempotent. */
+	dispose(): void;
+}
+
 export class StatuslineRunner {
 	private readonly command: string;
 	private readonly debounceMs: number;
