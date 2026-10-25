@@ -246,7 +246,12 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			unwatchFile(entry.watchedRefPath);
 			entry.watchedRefPath = null;
 		}
-		if (!branch) return; // detached — no branch ref to watch
+		if (!branch || branch === DETACHED_BRANCH_DISPLAY) {
+			// detached (or foreign symref mapped to the detached display,
+			// review n1 second half): no meaningful branch ref to watch —
+			// skip instead of arming a watcher on a garbage path
+			return;
+		}
 		// "No commits yet on X" carries the real name after the prefix; the
 		// watcher also serves born branches (ref writes re-read harmlessly).
 		const name = branch.startsWith("No commits yet on ") ? branch.slice("No commits yet on ".length) : branch;
@@ -312,13 +317,19 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			});
 	};
 
+	let providerDisposed = false;
+
 	return {
 		segment(cwd: string): StatuslineGitSegment | null {
+			// defense in depth (review follow-up): a stray post-dispose call
+			// must not bootstrap() a fresh entry and remount watchers
+			if (providerDisposed) return null;
 			const entry = bootstrap(cwd);
 			if (!entry || entry.branch === null) return null;
 			return { branch: entry.branch, dirty: entry.dirty };
 		},
 		poke(cwd: string): void {
+			if (providerDisposed) return;
 			const entry = bootstrap(cwd);
 			if (!entry) return;
 			const expired = now() - entry.dirtyAt >= ttlMs;
@@ -326,6 +337,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			if (expired || entry.dirtyStale) launchDirty(entry);
 		},
 		dispose(): void {
+			providerDisposed = true;
 			for (const entry of entries.values()) {
 				unwatchFile(entry.watchedHeadPath);
 				unwatchFile(entry.watchedIndexPath);

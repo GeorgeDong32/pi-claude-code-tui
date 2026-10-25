@@ -29,6 +29,9 @@ test("countDirty: ## header excluded, untracked/modified/staged all count", () =
 });
 
 test("branchFromHead: ref line strips refs/heads/, sha → detached display, foreign ref kept raw", () => {
+	// Pure PARSER semantics (display decisions live in readHeadBranch:
+	// a foreign symref maps to the detached display there — the split is
+	// deliberate, review follow-up note).
 	assert.equal(branchFromHead("ref: refs/heads/main\n"), "main");
 	assert.equal(branchFromHead("ref: refs/heads/feature/x\n"), "feature/x");
 	assert.equal(branchFromHead("0123456789abcdef0123456789abcdef01234567\n"), DETACHED_BRANCH_DISPLAY);
@@ -62,6 +65,19 @@ function makeRepo(name: string): string {
 
 // ---------------------------------------------------------------------------
 // Branch layer (fs, zero fork)
+
+test("review-m2: gitdir pointer with spaces in the path resolves (worktree under 'dir with spaces')", () => {
+	const spaced = join(root, "dir with spaces");
+	mkdirSync(spaced, { recursive: true });
+	const repo = makeRepo("space-main");
+	git(repo, "worktree", "add", join(spaced, "wt linked"), "-b", "spaced-branch");
+	const p = createGitSegmentProvider({ spawnGit: () => Promise.resolve("## spaced-branch\n") });
+	try {
+		assert.deepEqual(p.segment(join(spaced, "wt linked")), { branch: "spaced-branch", dirty: 0 });
+	} finally {
+		p.dispose();
+	}
+});
 
 test("segment: plain repo branch from HEAD, dirty 0 until first spawn lands", () => {
 	const repo = makeRepo("plain");
@@ -250,7 +266,8 @@ test("review-M1: a dirty spawn landing after dispose never re-notifies (no watch
 		resolveSpawn("## main\n M a\n"); // lands after dispose
 		await new Promise((r) => setTimeout(r, 0));
 		assert.equal(changes, 0, "onSegmentChange suppressed for a disposed entry");
-		assert.deepEqual(p.segment(repo), { branch: "main", dirty: 0 }, "dirty value NOT written into the dead entry map state");
+		assert.equal(p.segment(repo), null, "post-dispose segment() is a dead provider → null (no bootstrap resurrection)");
+		p.poke(repo); // equally inert
 	} finally {
 		p.dispose();
 	}
