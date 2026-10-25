@@ -97,6 +97,27 @@ test("segment: worktree (.git as a file with gitdir pointer) resolves like git s
 	}
 });
 
+test("segment: unborn branch (fresh git init, no commits) matches git status's display string", async () => {
+	const dir = join(root, "unborn");
+	mkdirSync(dir, { recursive: true });
+	git(dir, "init", "-b", "main");
+	const p = createGitSegmentProvider({
+		watchIntervalMs: 20,
+		spawnGit: () => Promise.resolve("## No commits yet on main\n?? a\n"),
+	});
+	try {
+		assert.equal(p.segment(dir)?.branch, "No commits yet on main", "unborn display parity");
+		// first commit: HEAD content unchanged — the branch ref file APPEARS
+		writeFileSync(join(dir, "a.txt"), "one\n");
+		git(dir, "add", "a.txt");
+		git(dir, "commit", "-m", "init");
+		await new Promise((r) => setTimeout(r, 150));
+		assert.equal(p.segment(dir)?.branch, "main", "unborn → born via ref-file watcher");
+	} finally {
+		p.dispose();
+	}
+});
+
 test("segment: non-repo → null and poke spawns nothing", () => {
 	const dir = join(root, "no-repo");
 	mkdirSync(dir, { recursive: true });

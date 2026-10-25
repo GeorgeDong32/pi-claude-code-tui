@@ -60,6 +60,7 @@ export const DETACHED_BRANCH_DISPLAY = "HEAD (no branch)";
 
 interface RepoEntry {
 	gitDir: string;
+	commonDir: string;
 	cwd: string;
 	branch: string | null;
 	dirty: number;
@@ -69,6 +70,7 @@ interface RepoEntry {
 	inFlight: boolean;
 	watchedHeadPath: string;
 	watchedIndexPath: string;
+	watchedRefPath: string | null;
 	headMtimeMs: number | null;
 }
 
@@ -135,9 +137,52 @@ export function resolveGitDir(cwd: string): string | null {
 	}
 }
 
-function readHeadBranch(gitDir: string): string | null {
+/**
+ * The dir holding shared refs/packed-refs for this checkout: plain repos
+ * it's the gitDir itself; worktrees keep theirs in the common dir (the
+ * `commondir` file when present, else the worktree gitdir's grandparent).
+ */
+export function resolveCommonDir(gitDir: string): string {
 	try {
-		return branchFromHead(readFileSync(join(gitDir, "HEAD"), "utf8"));
+		const body = readFileSync(join(gitDir, "commondir"), "utf8").trim();
+		if (body !== "") return resolve(gitDir, body);
+	} catch {
+		// no commondir file → plain repo or older worktree layout
+	}
+	const worktreeMatch = /(?:^|\/)(?:\.git|git)\/worktrees\/[^/]+\/?$/.exec(gitDir);
+	return worktreeMatch ? resolve(gitDir, "../..") : gitDir;
+}
+
+/** True when the branch ref exists at all (loose file or packed-refs line). */
+function refExists(commonDir: string, branch: string): boolean {
+	const refPath = join(commonDir, "refs", "heads", ...branch.split("/"));
+	try {
+		statSync(refPath);
+		return true;
+	} catch {
+		// fall through to packed-refs
+	}
+	try {
+		const packed = readFileSync(join(commonDir, "packed-refs"), "utf8");
+		return new RegExp(`^#?[0-9a-f]{40} refs/heads/${branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(packed);
+	} catch {
+		return false;
+	}
+}
+
+function readHeadBranch(gitDir: string, commonDir: string): string | null {
+	try {
+		const body = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+		if (body.startsWith("ref:")) {
+			const ref = body.slice(4).trim();
+			const prefix = "refs/heads/";
+			if (!ref.startsWith(prefix)) return ref;
+			const name = ref.slice(prefix.length);
+			// unborn branch (fresh `git init`): `git status -b` renders
+			// "No commits yet on <name>" — byte parity demands we match it
+			return refExists(commonDir, name) ? name : `No commits yet on ${name}`;
+		}
+		return DETACHED_BRANCH_DISPLAY;
 	} catch {
 		return null;
 	}
@@ -164,10 +209,12 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 		if (existing) return existing;
 		const gitDir = resolveGitDir(key);
 		if (!gitDir) return null;
+		const commonDir = resolveCommonDir(gitDir);
 		const entry: RepoEntry = {
 			gitDir,
+			commonDir,
 			cwd: key,
-			branch: readHeadBranch(gitDir),
+			branch: readHeadBranch(gitDir, commonDir),
 			dirty: 0,
 			dirtyAt: 0,
 			dirtyStale: true, // cold → first poke spawns immediately
@@ -176,6 +223,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			// worktrees keep their index inside the worktree gitDir; plain
 			// repos keep it in .git — join(gitDir, "index") is correct for both
 			watchedIndexPath: join(gitDir, "index"),
+			watchedRefPath: null,
 			headMtimeMs: null,
 		};
 		entry.headMtimeMs = mtimeOf(entry.watchedHeadPath);
@@ -184,16 +232,44 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 		return entry;
 	};
 
+	const watchBranchRef = (entry: RepoEntry, branch: string | null): void => {
+		// Unwatch the previous branch's ref (branch switch / → detached).
+		if (entry.watchedRefPath) {
+			unwatchFile(entry.watchedRefPath);
+			entry.watchedRefPath = null;
+		}
+		if (!branch) return; // detached — no branch ref to watch
+		// "No commits yet on X" carries the real name after the prefix; the
+		// watcher also serves born branches (ref writes re-read harmlessly).
+		const name = branch.startsWith("No commits yet on ") ? branch.slice("No commits yet on ".length) : branch;
+		const refPath = join(entry.commonDir, "refs", "heads", ...name.split("/"));
+		entry.watchedRefPath = refPath;
+		// watchFile works on nonexistent files — it fires when the file
+		// APPEARS, which is exactly the unborn → born transition (first
+		// commit writes the ref while HEAD's content stays unchanged).
+		watchFile(refPath, { interval: watchIntervalMs }, () => {
+			const next = readHeadBranch(entry.gitDir, entry.commonDir);
+			if (next !== entry.branch) {
+				entry.branch = next;
+				deps.onSegmentChange?.(entry.cwd);
+			}
+		});
+	};
+
 	const watchEntry = (entry: RepoEntry): void => {
 		watchFile(entry.watchedHeadPath, { interval: watchIntervalMs }, (cur) => {
 			const mtime = cur.mtimeMs;
 			if (mtime === entry.headMtimeMs) return;
 			entry.headMtimeMs = mtime;
-			// checkout / rebase / detach — re-read the name synchronously
-			const next = readHeadBranch(entry.gitDir);
+			// checkout / rebase / detach — re-read the name synchronously and
+			// re-mount the branch-ref watcher for the new branch
+			const next = readHeadBranch(entry.gitDir, entry.commonDir);
 			if (next !== entry.branch) {
 				entry.branch = next;
+				watchBranchRef(entry, next);
 				deps.onSegmentChange?.(entry.cwd);
+			} else {
+				watchBranchRef(entry, next);
 			}
 		});
 		watchFile(entry.watchedIndexPath, { interval: watchIntervalMs }, () => {
@@ -201,6 +277,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			// impossible, and a stale flag costs at most one spawn at the next poke
 			entry.dirtyStale = true;
 		});
+		watchBranchRef(entry, entry.branch);
 	};
 
 	const launchDirty = (entry: RepoEntry): void => {
@@ -238,6 +315,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			for (const entry of entries.values()) {
 				unwatchFile(entry.watchedHeadPath);
 				unwatchFile(entry.watchedIndexPath);
+				if (entry.watchedRefPath) unwatchFile(entry.watchedRefPath);
 			}
 			entries.clear();
 		},
