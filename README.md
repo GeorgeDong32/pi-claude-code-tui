@@ -120,13 +120,26 @@ The optional statusline runs a shell command with session JSON on stdin and disp
 
 ### Use the bundled script
 
-With Bash and jq installed, run:
+Run:
 
 ```text
 /claude-statusline on
 ```
 
-The default script shows the directory, Git branch and dirty-file count, model, context usage, and cost. It drops segments as terminal width decreases.
+With no custom command set, the statusline renders **in-process** (no
+`bash`/`jq`/`git` subprocess per refresh): the row is produced by a pure
+renderer byte-identical to the bundled script (pinned by a parity test
+suite), and the Git segment comes from a two-layer provider modeled on
+Claude Code's own design — the branch is read straight from `.git/HEAD`
+(with `fs.watchFile` invalidation, so branch switches and new commits show
+up immediately), and the dirty-file count refreshes at most once per 10s
+with instant refresh on tracked edits. The only visible difference to the
+script: an untracked file's `±N` count may lag up to 10s. If Bash and jq are
+installed you can still force the original script path for comparison:
+set `"statusLine": {"forceScript": true}` in `~/.pi/agent/claude-tui.json`.
+
+The default layout shows the directory, Git branch and dirty-file count,
+model, context usage, and cost. It drops segments as terminal width decreases.
 
 ```text
 ~/project │ ◆main ±2 │ model │ Ctx 23% (46k/200k) │ $0.042

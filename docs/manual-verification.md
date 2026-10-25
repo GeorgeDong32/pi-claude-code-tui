@@ -339,3 +339,12 @@ to silently skip an affected terminal scenario.
 - [x] **Resume replay**: `pi --session <id>` replays an old errored session with the CC rows.
 - [x] **Interrupted / truncated**: dim `⎿  Interrupted · …` and the red truncated row are covered by the real-component matrix (A-T3) — the probe env has no working streaming model, per spec fallback.
 - [ ] **Click-to-expand (fullscreen only)**: same pty limitation as cc-notices §15 — needs a real-terminal click on the `⎿  API Error:` row; the MouseRegion toggle is unit-pinned (A-T5).
+
+## 17. Statusline in-process rendering (STATUSLINE-PERF-PLAN SP1–SP3) — executed 2026-10-25 (unit/parity evidence in test/statusline-renderer.test.ts; items below are the live-TUI checks)
+
+- [ ] **Default row, zero fork**: `/claude-statusline on` (no custom command) renders the standard `~dir │ ◆branch ±N │ model │ Ctx p% (u/w) │ $cost` row; `ps` during an active turn shows no `bash -c`/`jq` children for the statusline (git status may appear at most once per 10s window).
+- [ ] **Branch switch immediacy**: `git checkout -b other` in the session repo — the `◆` segment flips within ~1-2s (watchFile poll), no turn needed.
+- [ ] **Dirty early refresh**: edit + `git add` a tracked file → `±N` updates within ~1-2s; a purely untracked new file may lag up to 10s (documented semantic).
+- [ ] **Custom command path intact**: `/claude-statusline set 'echo hello'` shows the script output row; `/claude-statusline set ''`… is invalid — use `/claude-statusline on` to return to the bundled default (in-process).
+- [ ] **forceScript escape hatch**: with `"statusLine": {"forceScript": true}` in `~/.pi/agent/claude-tui.json`, the default row renders via the bash script (needs jq) — byte-identical to the in-process row; flip back after comparing.
+- [ ] **Coalescing**: within one turn (message + reply), the statusline refresh happens once — visible as a single footer repaint per turn instead of two.

@@ -394,6 +394,23 @@ test("matrix: late footer-requeue after teardown writes nothing; old close keeps
 	}
 });
 
+test("SP3 D3: message_end + agent_settled in one tick coalesce to a single refresh; the next tick refreshes again", async () => {
+	const h = setupSession();
+	try {
+		h.session.enable(h.slots);
+		h.session.setStatusline("on", h.slots);
+		h.deps.statusline.requests.length = 0;
+		h.session.onUsagePoint("message_end", h.slots);
+		h.session.onRunSettled(h.slots); // routes through onUsagePoint("agent_settled")
+		assert.equal(h.deps.statusline.requests.length, 1, "same-tick double trigger → exactly one refresh");
+		await new Promise((r) => setImmediate(r));
+		h.session.onUsagePoint("message_end", h.slots);
+		assert.equal(h.deps.statusline.requests.length, 2, "suppression re-armed after the tick drained");
+	} finally {
+		h.dispose();
+	}
+});
+
 test("statusline prefs: on creates the in-process source for the default command; custom commands use the spawn factory; off disposes", () => {
 	const h = setupSession();
 	try {

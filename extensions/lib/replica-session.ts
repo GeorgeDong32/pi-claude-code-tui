@@ -184,6 +184,7 @@ export class ReplicaSession {
 	private dockTui: { requestRender: (force?: boolean) => void } | null = null;
 	private spinnerPaint: (s: string) => string = (s) => s;
 	private statuslineSource: StatuslineSource | null = null;
+	private statuslineSuppressRefresh = false;
 	private statuslineWidth = 0;
 	private showNativeFooter = false;
 	private accentOpenAnsi = "\x1b[38;2;138;190;183m"; // sage fallback (#8ABEB7)
@@ -424,7 +425,25 @@ export class ReplicaSession {
 	onUsagePoint(point: UsageObservationPoint, ctx: unknown): void {
 		if (!this.enabled) return;
 		this.observeUsage(this.deps.uiOf(ctx));
-		if (point !== "session_start") this.refreshStatusline();
+		if (point !== "session_start") this.refreshStatuslineCoalesced();
+	}
+
+	/**
+	 * SP3 (STATUSLINE-PERF-PLAN D3): message_end and agent_settled both route
+	 * here within one turn — the runner's 250ms debounce merges them only
+	 * probabilistically. First trigger of a macrotask refreshes immediately
+	 * (synchronous first-frame semantics tests rely on); further triggers in
+	 * the same tick are suppressed and setImmediate re-arms, so per turn at
+	 * most one refresh/child spawn escapes deterministically. setImmediate
+	 * never holds the event loop open.
+	 */
+	private refreshStatuslineCoalesced(): void {
+		if (this.statuslineSuppressRefresh) return;
+		this.statuslineSuppressRefresh = true;
+		setImmediate(() => {
+			this.statuslineSuppressRefresh = false;
+		});
+		this.refreshStatusline();
 	}
 
 	onModelSelect(model: { name?: string; id?: string; provider?: string; contextWindow?: number } | null | undefined): void {
