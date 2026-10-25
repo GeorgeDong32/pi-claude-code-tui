@@ -166,8 +166,14 @@ async function checkParity(c: ParityCase): Promise<void> {
 	// production hands the renderer process.cwd(), which is resolved the
 	// same way. Resolve here so both sides see identical dir text and fit
 	// math — the unresolved mkdtemp string would diverge by the symlink.
+	// HOME stays RAW for the no-override cases (review n2): bash compares
+	// $PWD against the env's $HOME verbatim, and realpath-ing a symlinked
+	// HOME here would diverge from both bash and production; explicit
+	// env.home overrides are realpath'd on BOTH sides so the prefix match
+	// behaves identically wherever the fixture lives.
 	const cwd = realpathSync(c.cwd);
-	const home = realpathSync(c.home ?? (c.env?.HOME as string | undefined) ?? process.env.HOME ?? "/");
+	const rawHome = c.home ?? (c.env?.HOME as string | undefined);
+	const home = rawHome !== undefined ? realpathSync(rawHome) : process.env.HOME ?? "/";
 	const json = JSON.stringify(c.input);
 	const stdout = await runOracle(json, c.width, cwd, c.env ? { ...c.env, HOME: home } : {});
 	const rendered = renderDefaultStatusline(c.input, c.width, { cwd, home, git: c.git });

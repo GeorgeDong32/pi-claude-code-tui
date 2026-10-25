@@ -5,7 +5,7 @@
 ### Changed (statusline in-process rendering — perf plan SP1-SP3)
 - **默认状态栏进程内化（spec docs/STATUSLINE-PERF-PLAN.md）**：`/claude-statusline on`（未设自定义命令时）不再为每次刷新 spawn `bash+jq+git` 子进程链（p95 ~50ms）——同一 JSON 直接喂 SP1 纯函数渲染器（p95 ≈0.005ms，四舍级提升），字节级与脚本一致（三方 parity 金测：TS 渲染器 / 内嵌脚本 / .sh 逐字节互证，含 cost/tok 边界、gitless/detached/worktree fixture、右到左宽度裁剪、CJK 字符宽度）。
 - **git 段 CC 式双层（对标 claude-code `gitFilesystem.ts`）**：branch 零 fork 直读 `.git/HEAD`（worktree/gitbutler 的 gitdir file 形态、detached → 字面 `HEAD (no branch)` 与 `git status` 显示一致），`fs.watchFile(HEAD)` 单点失效（checkout/rebase/detach 都重写它）→ **切分支/新提交即时反映**；dirty 计数每 10s TTL 窗口至多一次异步 `git status`，`.git/index` mtime watch 提前失效（tracked 改动/暂存立即刷新；**唯一可见语义变化**：仅 untracked 新文件的 ±N 计数最多 10s 陈旧）。失败静默保留旧值（对齐脚本 `2>/dev/null`），in-flight 去重，错误退避到下个窗口。
-- **每 turn 双触发合并（D3）**：`message_end` + `agent_settled` 同 tick 合并为恰好一次刷新（原先靠 spawn 路径 250ms debounce 概率合并）；首帧保持同步语义。
+- **每 turn 双触发合并（D3）**：`message_end` + `agent_settled` 同 tick 落地时合并为恰好一次刷新（两事件是独立异步分发，跨 tick 时仍是两次——合并语义是 tick 级而非 turn 级）；首帧保持同步语义。
 - **自定义命令路径字节不变（D1）**：`/claude-statusline set <cmd>` 仍走 CC 兼容 spawn 协议；逃生口 `statusLine.forceScript: true`（claude-tui.json）强制默认命令也走脚本，用于 parity 对照排障。
 - bench：`node scripts/bench-statusline.mjs --in-process`（门 p95<1ms）；`node scripts/bench-statusline.mjs`（spawn 路径门不变 p95<50ms）。
 

@@ -7,10 +7,13 @@
  * - branch: ZERO fork. The branch NAME is the only thing display needs, and
  *   it lives in `.git/HEAD` (`ref: refs/heads/<name>` / detached sha). CC
  *   also resolves ref SHAs and remote URLs, which forces packed-refs parsing
- *   and branch-ref watching; we cache the name only, so those drop out and
- *   HEAD is the single invalidation point (checkout / rebase / detach / new
- *   branch all rewrite it). Worktrees are handled by resolving the `gitdir:`
- *   pointer when `.git` is a file (gitbutler layout included).
+ *   and branch-ref watching; we cache the name only, so those drop out.
+ *   Invalidation points: HEAD (checkout / rebase / detach / new branch all
+ *   rewrite it) plus the current branch's ref file — the ref APPEARS on an
+ *   unborn branch's first commit while HEAD stays byte-identical, so the
+ *   ref watcher is what covers unborn → born (why CC also watches it).
+ *   Worktrees are handled by resolving the `gitdir:` pointer when `.git` is
+ *   a file (gitbutler layout included; the pointer may contain spaces).
  * - dirty count: ONE async `git status -b --porcelain` per TTL window
  *   (default 10s), dedup'd in flight, with `.git/index` mtime watching as
  *   EARLY invalidation (tracked edits/stages recompute immediately;
@@ -24,9 +27,11 @@
  * to the next TTL window instead of retrying every poke (silent, keeps the
  * last dirty value, matching the bash script's `2>/dev/null` behavior).
  *
- * Watchers use fs.watchFile (stat polling, CC's choice): it works on files
- * that do not exist yet and never needs FSEvents edge-case handling.
- * Everything unwatched in dispose(); never holds the event loop.
+ * Watchers use fs.watchFile (stat polling, CC's choice) with
+ * persistent: false — they never hold the host's event loop open — and work
+ * on files that do not exist yet (unborn branch refs). Everything unwatched
+ * in dispose(); a spawn that lands after dispose never re-notifies (entry
+ * liveness guard), so disposed providers cannot resurrect watchers.
  */
 
 import { execFile } from "node:child_process";
@@ -124,8 +129,8 @@ export function resolveGitDir(cwd: string): string | null {
 		if (st?.isFile()) {
 			try {
 				const body = readFileSync(dotGit, "utf8").trim();
-				const match = /^gitdir:\s*(\S+)$/m.exec(body);
-				if (match) return resolve(current, match[1]!);
+				const match = /^gitdir:\s*(.+)$/m.exec(body);
+				if (match) return resolve(current, match[1]!.trim());
 			} catch {
 				// unreadable pointer → treat as non-repo
 			}
@@ -176,7 +181,10 @@ function readHeadBranch(gitDir: string, commonDir: string): string | null {
 		if (body.startsWith("ref:")) {
 			const ref = body.slice(4).trim();
 			const prefix = "refs/heads/";
-			if (!ref.startsWith(prefix)) return ref;
+			// a foreign symref (manual `git symbolic-ref` to something outside
+			// refs/heads) renders as detached in `git status -b` — match it
+			// (review n1) and skip the meaningless ref watch
+			if (!ref.startsWith(prefix)) return DETACHED_BRANCH_DISPLAY;
 			const name = ref.slice(prefix.length);
 			// unborn branch (fresh `git init`): `git status -b` renders
 			// "No commits yet on <name>" — byte parity demands we match it
@@ -247,7 +255,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 		// watchFile works on nonexistent files — it fires when the file
 		// APPEARS, which is exactly the unborn → born transition (first
 		// commit writes the ref while HEAD's content stays unchanged).
-		watchFile(refPath, { interval: watchIntervalMs }, () => {
+		watchFile(refPath, { interval: watchIntervalMs, persistent: false }, () => {
 			const next = readHeadBranch(entry.gitDir, entry.commonDir);
 			if (next !== entry.branch) {
 				entry.branch = next;
@@ -257,7 +265,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 	};
 
 	const watchEntry = (entry: RepoEntry): void => {
-		watchFile(entry.watchedHeadPath, { interval: watchIntervalMs }, (cur) => {
+		watchFile(entry.watchedHeadPath, { interval: watchIntervalMs, persistent: false }, (cur) => {
 			const mtime = cur.mtimeMs;
 			if (mtime === entry.headMtimeMs) return;
 			entry.headMtimeMs = mtime;
@@ -272,7 +280,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 				watchBranchRef(entry, next);
 			}
 		});
-		watchFile(entry.watchedIndexPath, { interval: watchIntervalMs }, () => {
+		watchFile(entry.watchedIndexPath, { interval: watchIntervalMs, persistent: false }, () => {
 			// watchFile only fires on an actual stat change; over-marking is
 			// impossible, and a stale flag costs at most one spawn at the next poke
 			entry.dirtyStale = true;
@@ -283,6 +291,7 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 	const launchDirty = (entry: RepoEntry): void => {
 		entry.inFlight = true;
 		entry.dirtyStale = false;
+		const prevDirty = entry.dirty;
 		Promise.resolve(spawnGit(entry.cwd))
 			.then((out) => {
 				entry.dirty = countDirty(out);
@@ -294,7 +303,12 @@ export function createGitSegmentProvider(deps: GitSegmentProviderDeps = {}): Git
 			.finally(() => {
 				entry.inFlight = false;
 				entry.dirtyAt = now();
-				deps.onSegmentChange?.(entry.cwd);
+				// Review M1: a dispose() mid-flight clears `entries` and unwatches;
+				// firing onSegmentChange now would rerender → segment() →
+				// bootstrap() → REMOUNT watchers on a disposed provider. Guard:
+				// only notify while this exact entry is still live.
+				if (entries.get(entry.cwd) !== entry) return;
+				if (entry.dirty !== prevDirty) deps.onSegmentChange?.(entry.cwd);
 			});
 	};
 

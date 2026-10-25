@@ -36,6 +36,7 @@ export class InProcessStatusline implements StatuslineSource {
 	private lastInput = "";
 	private lastWidth = 100;
 	private onUpdate: (() => void) | null = null;
+	private disposed = false;
 	private readonly home: string | undefined;
 	private readonly cwd: string;
 	private readonly git: GitSegmentProvider;
@@ -47,6 +48,10 @@ export class InProcessStatusline implements StatuslineSource {
 			options.gitProvider ??
 			createGitSegmentProvider({
 				onSegmentChange: () => {
+					// Review M1: a dirty spawn landing after dispose() must not
+					// rerender (which would touch the provider and, through a
+					// real provider's segment(), remount watchers on a dead source)
+					if (this.disposed) return;
 					this.rerender();
 					this.onUpdate?.();
 				},
@@ -54,10 +59,14 @@ export class InProcessStatusline implements StatuslineSource {
 	}
 
 	request(input: string, width: number): void {
+		if (this.disposed) return;
 		this.lastInput = input;
 		this.lastWidth = width;
 		this.git.poke(this.cwd);
 		this.rerender();
+		// requestRender is idempotent and deferred by pi-tui — firing it
+		// synchronously inside a render path (width change → footer requeue)
+		// coalesces into the same frame (review n3).
 		this.onUpdate?.();
 	}
 
@@ -74,11 +83,13 @@ export class InProcessStatusline implements StatuslineSource {
 	}
 
 	dispose(): void {
+		this.disposed = true;
+		this.onUpdate = null;
 		this.git.dispose();
 	}
 
 	private rerender(): void {
-		if (this.lastInput === "") return;
+		if (this.disposed || this.lastInput === "") return;
 		try {
 			const line = renderDefaultStatusline(JSON.parse(this.lastInput), this.lastWidth, {
 				cwd: this.cwd,

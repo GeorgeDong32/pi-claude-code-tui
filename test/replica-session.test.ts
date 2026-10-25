@@ -411,6 +411,18 @@ test("SP3 D3: message_end + agent_settled in one tick coalesce to a single refre
 	}
 });
 
+test("SP2 D5: forceScript routes the bundled default through the spawn factory (escape hatch)", () => {
+	const h = setupSession({ prefs: JSON.stringify({ statusLine: { enabled: true, command: "", forceScript: true } }) });
+	try {
+		h.session.enable(h.slots);
+		assert.equal(h.deps.statusline.createdInProcess, 0, "in-process bypassed when forceScript");
+		assert.equal(h.deps.statusline.created.length, 1, "spawn factory used");
+		assert.ok(h.deps.statusline.created[0]!.includes("#!/usr/bin/env bash"), "command is the expanded embedded script source");
+	} finally {
+		h.dispose();
+	}
+});
+
 test("statusline prefs: on creates the in-process source for the default command; custom commands use the spawn factory; off disposes", () => {
 	const h = setupSession();
 	try {

@@ -430,12 +430,13 @@ export class ReplicaSession {
 
 	/**
 	 * SP3 (STATUSLINE-PERF-PLAN D3): message_end and agent_settled both route
-	 * here within one turn — the runner's 250ms debounce merges them only
-	 * probabilistically. First trigger of a macrotask refreshes immediately
-	 * (synchronous first-frame semantics tests rely on); further triggers in
-	 * the same tick are suppressed and setImmediate re-arms, so per turn at
-	 * most one refresh/child spawn escapes deterministically. setImmediate
-	 * never holds the event loop open.
+	 * here per turn; the runner's 250ms debounce merges them only
+	 * probabilistically. Same-tick arrivals (common) coalesce: the first
+	 * trigger refreshes immediately (synchronous first-frame semantics tests
+	 * rely on), follow-ups in the same macrotask are suppressed and
+	 * setImmediate re-arms. Cross-tick arrivals remain two refreshes — the
+	 * merge window is the tick, not the turn (review m3). setImmediate never
+	 * holds the event loop open.
 	 */
 	private refreshStatuslineCoalesced(): void {
 		if (this.statuslineSuppressRefresh) return;

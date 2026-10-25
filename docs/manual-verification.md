@@ -347,4 +347,4 @@ to silently skip an affected terminal scenario.
 - [ ] **Dirty early refresh**: edit + `git add` a tracked file → `±N` updates within ~1-2s; a purely untracked new file may lag up to 10s (documented semantic).
 - [ ] **Custom command path intact**: `/claude-statusline set 'echo hello'` shows the script output row; `/claude-statusline set ''`… is invalid — use `/claude-statusline on` to return to the bundled default (in-process).
 - [ ] **forceScript escape hatch**: with `"statusLine": {"forceScript": true}` in `~/.pi/agent/claude-tui.json`, the default row renders via the bash script (needs jq) — byte-identical to the in-process row; flip back after comparing.
-- [ ] **Coalescing**: within one turn (message + reply), the statusline refresh happens once — visible as a single footer repaint per turn instead of two.
+- [ ] **Coalescing (tick-level)**: message_end and agent_settled arriving in the same tick refresh once; cross-tick arrivals still refresh twice (both async dispatches) — visible as at most one footer repaint per same-tick pair.

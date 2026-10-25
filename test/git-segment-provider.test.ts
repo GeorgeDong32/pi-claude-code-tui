@@ -236,6 +236,53 @@ test("dirty: spawn failure is silent, keeps the last value, backs off to the nex
 	}
 });
 
+test("review-M1: a dirty spawn landing after dispose never re-notifies (no watcher resurrection)", async () => {
+	const repo = makeRepo("post-dispose");
+	let resolveSpawn: (out: string) => void = () => {};
+	let changes = 0;
+	const p = createGitSegmentProvider({
+		spawnGit: () => new Promise<string>((res) => { resolveSpawn = res; }),
+		onSegmentChange: () => { changes += 1; },
+	});
+	try {
+		p.poke(repo); // in-flight spawn window
+		p.dispose(); // teardown mid-flight
+		resolveSpawn("## main\n M a\n"); // lands after dispose
+		await new Promise((r) => setTimeout(r, 0));
+		assert.equal(changes, 0, "onSegmentChange suppressed for a disposed entry");
+		assert.deepEqual(p.segment(repo), { branch: "main", dirty: 0 }, "dirty value NOT written into the dead entry map state");
+	} finally {
+		p.dispose();
+	}
+});
+
+test("review-M1: identical dirty value on a live entry does not re-notify (n3 dedup)", async () => {
+	const repo = makeRepo("dedup-notify");
+	let changes = 0;
+	let out = "## main\n M a\n";
+	let t = 1_000;
+	const p = createGitSegmentProvider({
+		now: () => t,
+		ttlMs: 0,
+		spawnGit: async () => out,
+		onSegmentChange: () => { changes += 1; },
+	});
+	try {
+		p.poke(repo);
+		await new Promise((r) => setTimeout(r, 0));
+		assert.equal(changes, 1, "value changed 0 → 1: notify");
+		p.poke(repo);
+		await new Promise((r) => setTimeout(r, 0));
+		assert.equal(changes, 1, "same value: silent");
+		out = "## main\n M a\n?? b\n";
+		p.poke(repo);
+		await new Promise((r) => setTimeout(r, 0));
+		assert.equal(changes, 2, "value changed: notify");
+	} finally {
+		p.dispose();
+	}
+});
+
 test("index watcher: tracked edit early-invalidates the TTL window", async () => {
 	const repo = makeRepo("watch-index");
 	let t = 1_000;
