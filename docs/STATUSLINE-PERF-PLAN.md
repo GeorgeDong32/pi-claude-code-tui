@@ -1,5 +1,9 @@
 # STATUSLINE-PERF-PLAN — 默认渲染进程内化（提案 · 草案待批）
 
+> **存档说明**：SP1–SP3 已全部落地（bf57684 / 1f32324 / ef7d703 + unborn 修复 8ac597f，测试绿）。
+> 本文档保留为设计决策存档；当前行为以代码与 CHANGELOG 为准。实机验证补充：默认路径
+> 6 turn 零 fork（scoped 采样 0）；unborn 分支字节分歧由实机探针发现并修复（金测矩阵盲区）。
+
 > **状态：草案**——2026-10-25 泄漏深度扫描的优化产出（报告 /tmp/leakscan/leak-deep-scan-report.md P1）。
 > 等用户批准后按 Phase 执行；批准前不动任何代码。
 
