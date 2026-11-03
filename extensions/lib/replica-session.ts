@@ -32,6 +32,19 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { BUILTIN_SEVEN, type ChannelPhase } from "./takeover-rules.ts";
+
+// DEC-S1/T7 (spec 2026-11-03 附录): pi re-runs loadExtension on every
+// in-process session switch, so the entry factory (and this class) is
+// re-instantiated — phase state must survive the instance swap via a
+// process-level snapshot. Symbol.for keeps one key across jiti module
+// instances (same pattern as the cross-reload presence singletons).
+const PHASE_SNAPSHOT_KEY = Symbol.for("pi-cc-tui.channelPhase");
+type PhaseSnapshotHolder = { [PHASE_SNAPSHOT_KEY]?: { phase: ChannelPhase } };
+const readPhaseSnapshot = (): ChannelPhase | undefined =>
+	(globalThis as unknown as PhaseSnapshotHolder)[PHASE_SNAPSHOT_KEY]?.phase;
+const writePhaseSnapshot = (phase: ChannelPhase): void => {
+	(globalThis as unknown as PhaseSnapshotHolder)[PHASE_SNAPSHOT_KEY] = { phase };
+};
 import { thinkingToggleHint } from "./cc-rows.ts";
 import { buildStatusRightGroup, permissionModeLabel, pinnedRightLayout, statusRowLayout, stripDuplicateStats } from "./cc-status-line.ts";
 import type { PmStatus } from "./pm-capability.ts";
@@ -169,7 +182,7 @@ export class ReplicaSession {
 	// ── the mutable state fields (write rights live HERE; the entry keeps none) ──
 	private sessionState: SessionState = "inactive";
 	private enabled = false;
-	private channelPhase: ChannelPhase = "never-active";
+	private channelPhase: ChannelPhase = readPhaseSnapshot() ?? "never-active";
 	// DEC-S3 (spec 2026-11-03): auto 态在切换窗口让路的指纹标志 —— 仅 window
 	// 相位置位，下一次 setup() 补打一条 info notice（per-process-once）。
 	private suspiciousYieldFlag = false;
@@ -294,6 +307,7 @@ export class ReplicaSession {
 			// DEC-S1 (T5): rollback 后回到 never-active 并清 flag（防悬挂到后续
 			// 手动 on 时上下文错位地补打）；release 本身不写相位。
 			this.channelPhase = "never-active";
+			writePhaseSnapshot("never-active");
 			this.suspiciousYieldFlag = false;
 			try {
 				this.release(ui);
@@ -310,6 +324,7 @@ export class ReplicaSession {
 		// DEC-S1 (T3): 用户显式关 —— 相位置位在 mode 检查之后（非 TUI 的
 		// disable 不可达，守卫为对称防御）。
 		this.channelPhase = "user-off";
+		writePhaseSnapshot("user-off");
 		// UI slot restore (N2): shutdown skips this — the next session's
 		// enable re-owns the slots.
 		this.slot(ui, "working-visible", (s) => s.setWorkingVisible?.(true));
@@ -332,7 +347,10 @@ export class ReplicaSession {
 		// DEC-S1 (T2): 会话切换 teardown → rebind 窗口；置位在 mode 检查之后
 		// （非 TUI 进程的 session_shutdown 真实可达，不得污染相位）。
 		// P2-2 拍板 c: user-off 粘滞 —— off 后切换不迁移，直到下一次 setup。
-		if (this.channelPhase === "active" || this.channelPhase === "window") this.channelPhase = "window";
+		if (this.channelPhase === "active" || this.channelPhase === "window") {
+			this.channelPhase = "window";
+			writePhaseSnapshot("window");
+		}
 		this.slot(ui, "working-indicator", (s) => s.setWorkingIndicator());
 		this.slot(ui, "editor-component", (s) => s.setEditorComponent(undefined));
 	}
@@ -352,6 +370,7 @@ export class ReplicaSession {
 		this.headerCwd = ui.cwd ?? process.cwd();
 		this.resolveToolRows(ui);
 		this.channelPhase = "active"; // TUI session active (non-TUI returned above)
+		writePhaseSnapshot("active");
 		// DEC-S3: 消费切换窗口的让路指纹（仅一次；rebind 窗口里 ui 已被 release
 		// 置空，只能等到这里补打）。
 		if (this.suspiciousYieldFlag && !this.suspiciousYieldNotified) {

@@ -70,7 +70,11 @@ const makePi = () => {
 			list.push(fn);
 			handlers.set(event, list);
 		},
-		registerToolRenderer: () => {},
+		registerToolRenderer: (r: unknown) => {
+			(pi as { toolRenderers?: unknown[] }).toolRenderers = (
+				(pi as { toolRenderers?: unknown[] }).toolRenderers ?? []
+			).concat(r);
+		},
 		registerEntryRenderer: () => {},
 		registerMarkdownTransformer: () => {},
 		registerCommand: (name: string, def: { handler: (args: string, ctx: unknown) => Promise<void> }) =>
@@ -475,6 +479,55 @@ test("C11b: core display.footer rows render in the cc-footer widget (dim, before
 		const coreIdx = rows.findIndex((r) => r.includes("observation-pack degraded"));
 		const hintsIdx = rows.findIndex((r) => r.includes("bash mode"));
 		assert.ok(coreIdx >= 0 && hintsIdx > coreIdx, "core row above the hints line");
+	} finally {
+		h.dispose();
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Resolver wiring (spec 2026-11-03 DEC-S3, acceptance P2-3): the entry's
+// registerToolRenderer callback flags a window-phase auto yield so the next
+// session_start delivers the one-shot notice; other phases must NOT flag.
+
+test("resolver wiring: window-phase auto yield flags the notice; user-off/never-active never do", async () => {
+	const h = setup("tui");
+	try {
+		await h.pi.fire("session_start", h.ctx); // phase: active
+		const renderers = (h.pi.pi as unknown as { toolRenderers?: Array<(name: string, next: () => unknown) => unknown> }).toolRenderers ?? [];
+		const resolver = renderers.find((r) => typeof r === "function") as ((name: string, next: () => unknown) => unknown) | undefined;
+		assert.ok(resolver, "resolver registered");
+		const origDef = { renderCall: () => ({}), renderResult: () => ({}) };
+		const next = () => origDef;
+
+		// Active phase, auto prefs: plan exists (auto-yield depends on owner
+		// detection; either way no flag is owed — a plan means CC, a
+		// detection-based yield means toolRowsEnabled=false, not a window).
+		await h.pi.fire("session_shutdown", h.ctx); // phase: window
+		const out = resolver("bash", next);
+		assert.equal(out, origDef, "window-phase auto yield returns next() verbatim");
+		// The flag was raised: the next session_start must deliver exactly one
+		// notice and never a second one on a later window cycle.
+		await h.pi.fire("session_start", h.ctx);
+		const notes = h.rec.notified.filter((n) => n.msg.includes("skipped during session switch"));
+		assert.equal(notes.length, 1, "notice delivered once at setup");
+		assert.equal(notes[0]!.level, "info");
+		await h.pi.fire("session_shutdown", h.ctx);
+		void resolver("bash", next);
+		await h.pi.fire("session_start", h.ctx);
+		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 1, "per-process-once");
+
+		// user-off: the yield path must NOT flag (disable keeps slots clean).
+		await h.pi.fire("session_shutdown", h.ctx);
+		const commands = (h.pi.pi as unknown as { __c?: unknown }).__c;
+		void commands;
+		h.rec.notified.length = 0;
+		// Drive disable via the registered /claude-tui command (off).
+		const claudeTui = h.pi.commands.get("claude-tui");
+		assert.ok(claudeTui, "/claude-tui registered");
+		await claudeTui.handler("off", h.ctx);
+		void resolver("bash", next); // user-off yield — must not flag
+		await h.pi.fire("session_start", h.ctx); // re-enable
+		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 0, "user-off yield never flags");
 	} finally {
 		h.dispose();
 	}

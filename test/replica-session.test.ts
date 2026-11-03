@@ -25,6 +25,9 @@ interface Recording {
 	footerSlot: unknown[];
 }
 
+const PHASE_KEY = Symbol.for("pi-cc-tui.channelPhase");
+type Holder = { [PHASE_KEY]?: { phase: string } };
+
 const makeSlots = (mode: "tui" | "rpc" = "tui", rec: Recording): UiSlots => ({
 	mode,
 	notify: (msg, level) => rec.notified.push({ msg, level }),
@@ -73,11 +76,14 @@ interface Harness {
 	dispose: () => void;
 }
 
-const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boolean; boomBus?: boolean; boomPatches?: boolean } = {}): Harness => {
+const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boolean; boomBus?: boolean; boomPatches?: boolean; keepPhaseSnapshot?: boolean } = {}): Harness => {
 	const agentDir = mkdtempSync(join(tmpdir(), "cc-tui-session-"));
 	const prefsPath = join(agentDir, "claude-tui.json");
 	if (over.prefs !== undefined) writeFileSync(prefsPath, over.prefs);
 	delete process.env.CC_TUI_TOOL_ROWS;
+	// Test isolation: drop any phase snapshot a previous test left behind —
+	// unless the test asks to inherit it (T7 instance-alternation).
+	if (!over.keepPhaseSnapshot) delete (globalThis as unknown as { [PHASE_KEY]?: unknown })[PHASE_KEY];
 	const rec: Recording = {
 		events: [],
 		widgetContent: new Map(),
@@ -828,5 +834,61 @@ test("enable rollback (T5b): a stray flag pending before the consumer is dropped
 		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 0, "stray flag dropped on rollback");
 	} finally {
 		h.dispose();
+	}
+});
+
+// ── T7 (spec appendix): phase survives instance swaps via a process snapshot ──
+
+test("T7: a fresh instance inherits the previous instance's terminal phase (session-switch reload)", () => {
+	try {
+		// Real instance alternation, as pi re-runs loadExtension on switch:
+		// instance #1 shuts down into the window, instance #2 is constructed
+		// before its own session_start — it must inherit "window".
+		const h1 = setupSession({ prefs: "{\"toolRows\": true}" });
+		h1.session.enable(h1.slots);
+		assert.equal((globalThis as unknown as Holder)[PHASE_KEY]!.phase, "active", "setup mirrors active");
+		h1.session.shutdown(h1.slots);
+		assert.equal((globalThis as unknown as Holder)[PHASE_KEY]!.phase, "window", "shutdown mirrors window");
+		h1.dispose();
+		const h2 = setupSession({ prefs: "{\"toolRows\": true}", keepPhaseSnapshot: true }); // the "new" instance
+		try {
+			assert.equal(h2.session.toolRowsDecisionInput().phase, "window", "ctor inherits window snapshot (switch reload)");
+			h2.session.disable(h2.slots);
+			assert.equal((globalThis as unknown as Holder)[PHASE_KEY]!.phase, "user-off", "disable mirrors user-off");
+		} finally {
+			h2.dispose();
+		}
+		// The next instance (switch while off) inherits user-off stickiness.
+		const h3 = setupSession({ prefs: "{\"toolRows\": true}", keepPhaseSnapshot: true });
+		try {
+			assert.equal(h3.session.toolRowsDecisionInput().phase, "user-off", "next instance inherits user-off");
+		} finally {
+			h3.dispose();
+		}
+	} finally {
+		delete (globalThis as unknown as Holder)[PHASE_KEY];
+	}
+});
+
+test("T7: no snapshot (RPC/print first boot) stays never-active; rollback mirrors never-active", () => {
+	try {
+		delete (globalThis as unknown as Holder)[PHASE_KEY];
+		const h = setupSession();
+		try {
+			assert.equal(h.session.toolRowsDecisionInput().phase, "never-active", "no snapshot ⇒ never-active");
+		} finally {
+			h.dispose();
+		}
+		// Rollback must mirror never-active so a later instance does not
+		// inherit a stale active/window from the failed enable.
+		const h2 = setupSession({ boomBus: true });
+		try {
+			h2.session.enable(h2.slots); // contained failure → rollback
+			assert.equal((globalThis as unknown as Holder)[PHASE_KEY]!.phase, "never-active", "rollback mirrors never-active");
+		} finally {
+			h2.dispose();
+		}
+	} finally {
+		delete (globalThis as unknown as Holder)[PHASE_KEY];
 	}
 });
