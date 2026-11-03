@@ -300,7 +300,7 @@ export default function (pi: ExtensionAPI) {
 			const orig = next();
 			const decision = session.toolRowsDecisionInput();
 			const plan = planResolverTakeover({
-				channelActive: decision.channelActive,
+				phase: decision.phase,
 				toolRowsEnabled: decision.toolRowsEnabled,
 				forced: decision.forced,
 				isMcp: mcpDisplayName(toolName) !== null,
@@ -309,7 +309,14 @@ export default function (pi: ExtensionAPI) {
 				hasOrigResult: Boolean(orig?.renderResult),
 				toolName,
 			});
-			if (!plan) return orig;
+			if (!plan) {
+				// DEC-S3 (spec 2026-11-03): 仅切换窗口的 auto 让路置指纹标志
+				// （off/never-active 不置 —— 防假通报；setup 补打，per-process-once）。
+				if (decision.phase === "window" && decision.toolRowsEnabled && !decision.forced) {
+					session.flagSuspiciousYield();
+				}
+				return orig;
+			}
 			// Call factory — MCP badge / builtin seven / third-party + then_run
 			// (TR D2/D3). P1-1 R4/R5: the proxy shape resolves only once args
 			// are visible here (the resolver itself never sees args).

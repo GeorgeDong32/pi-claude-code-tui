@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed (resume tool rows regression — channel phase)
+- **修复进程内会话切换（/resume、/fork、import）后历史工具行回退 pi 原生渲染**（spec specs/design/2026-11-03-resume-toolrows-native-spec.md，双轮对抗评审）：根因是 pi 的 rebind `renderBeforeBind` 先渲染历史后绑扩展，而旧闸门 `!channelActive → 整体让路` 在该窗口误触发且组件永不重建；`channelActive` 布尔升级为四态相位（never-active/active/window/user-off，判别缝 = shutdown vs disable），仅 window 相位对 forced 免疫——prefs `toolRows=true` 用户切换后历史行保持 `⏺/⎿` CC 形态；user-off 与 never-active 无条件让路（保 `/claude-tui off` 语义与 RPC exportToHtml 原生导出，评审钉住的两个回归锚）。
+- **auto 态有声降级（DEC-S3）**：切换窗口 auto 让路时下一次 session_start 补打一条 info notice（per-process-once；`CC tool rows skipped during session switch — reopen the session to re-render (/claude-tools on to prevent)`）；决策矩阵按相位全枚举（256 行）+ 相位迁移/flag 生命周期直测。
+
 ### Changed (statusline in-process rendering — perf plan SP1-SP3)
 - **默认状态栏进程内化（spec docs/STATUSLINE-PERF-PLAN.md）**：`/claude-statusline on`（未设自定义命令时）不再为每次刷新 spawn `bash+jq+git` 子进程链（p95 ~50ms）——同一 JSON 直接喂 SP1 纯函数渲染器（p95 ≈0.005ms，四舍级提升），字节级与脚本一致（三方 parity 金测：TS 渲染器 / 内嵌脚本 / .sh 逐字节互证，含 cost/tok 边界、gitless/detached/worktree fixture、右到左宽度裁剪、CJK 字符宽度）。
 - **git 段 CC 式双层（对标 claude-code `gitFilesystem.ts`）**：branch 零 fork 直读 `.git/HEAD`（worktree/gitbutler 的 gitdir file 形态、detached → 字面 `HEAD (no branch)` 与 `git status` 显示一致），`fs.watchFile(HEAD)` 单点失效（checkout/rebase/detach 都重写它）→ **切分支/新提交即时反映**；dirty 计数每 10s TTL 窗口至多一次异步 `git status`，`.git/index` mtime watch 提前失效（tracked 改动/暂存立即刷新；**唯一可见语义变化**：仅 untracked 新文件的 ±N 计数最多 10s 陈旧）。失败静默保留旧值（对齐脚本 `2>/dev/null`），in-flight 去重，错误退避到下个窗口。

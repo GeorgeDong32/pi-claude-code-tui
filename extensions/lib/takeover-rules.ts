@@ -97,10 +97,14 @@ export const decideTakeover = (input: TakeoverInput): TakeoverDecision => {
 
 // ── Resolver-channel planning (pi >= 1.0.1) ──
 
+/** TUI 渲染通道相位（spec 2026-11-03 DEC-S1）：区分「切换窗口」与「用户关闭」，取代单一布尔。
+ * 判别缝：rebind teardown 走 shutdown()（→ window），用户 off 走 disable()（→ user-off）。 */
+export type ChannelPhase = "never-active" | "active" | "window" | "user-off";
+
 /** resolver 合并决策输入（spec DEC-06）；hasOrig 按槽位分离。 */
 export interface ResolverTakeoverInput {
-	/** enabled && 最新 ctx.mode === "tui"（入口维护的通道旗标）。 */
-	channelActive: boolean;
+	/** 通道相位（取代 channelActive 布尔）：active=会话已绑定；window=切换 teardown→重绑之间（renderBeforeBind，历史行构造点）；user-off=/claude-tui off；never-active=进程未激活或非 TUI（RPC/print，exportToHtml 消费点）。 */
+	phase: ChannelPhase;
 	/** Tool rows on (prefs / env / auto-detect 合成的有效开关)。 */
 	toolRowsEnabled: boolean;
 	/** Force mode: user explicitly asked for CC rows (/claude-tools on)。 */
@@ -138,7 +142,12 @@ export interface ResolverTakeoverPlan {
  *   the "orig" member stays in the type as the documented fallback.
  */
 export const planResolverTakeover = (i: ResolverTakeoverInput): ResolverTakeoverPlan | undefined => {
-	if (!i.channelActive || !i.toolRowsEnabled) return undefined;
+	// DEC-S1（2026-11-03 spec）: user-off 与 never-active 无条件让路（保
+	// /claude-tui off 语义与 print/RPC stock 红线——exportToHtml 在非 TUI 进程
+	// 消费 resolver）；window 相位对 forced 免疫（/resume 的 renderBeforeBind
+	// 窗口里构造的历史行是本修复的目标场景）。
+	if (!i.toolRowsEnabled) return undefined;
+	if (i.phase !== "active" && !(i.phase === "window" && i.forced)) return undefined;
 	const call = decideTakeover({
 		enabled: true,
 		toolRowsEnabled: true,

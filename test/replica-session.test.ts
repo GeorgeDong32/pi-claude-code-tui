@@ -65,13 +65,15 @@ interface Harness {
 		tools: Array<{ name: string; sourceInfo?: { source?: string } }>;
 		statusline: { created: string[]; createdInProcess: number; disposed: number; requests: Array<[string, number]> };
 		silence: number;
+		boomBus?: boolean;
+		boomPatches?: boolean;
 	};
 	agentDir: string;
 	prefsPath: string;
 	dispose: () => void;
 }
 
-const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boolean } = {}): Harness => {
+const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boolean; boomBus?: boolean; boomPatches?: boolean } = {}): Harness => {
 	const agentDir = mkdtempSync(join(tmpdir(), "cc-tui-session-"));
 	const prefsPath = join(agentDir, "claude-tui.json");
 	if (over.prefs !== undefined) writeFileSync(prefsPath, over.prefs);
@@ -91,7 +93,7 @@ const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boo
 		: [{ name: "read", sourceInfo: { source: "builtin" } }];
 	const h: Harness = {
 		rec,
-		deps: { events: depEvents, tools, statusline, silence: 0 },
+		deps: { events: depEvents, tools, statusline, silence: 0, boomBus: over.boomBus === true, boomPatches: over.boomPatches === true },
 		agentDir,
 		prefsPath,
 		dispose: () => rmSync(agentDir, { recursive: true, force: true }),
@@ -108,7 +110,10 @@ const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boo
 			return (ctx as { slots?: UiSlots }).slots ?? (ctx as UiSlots);
 		},
 		coreBus: {
-			activate: () => depEvents.push("bus:activate"),
+			activate: () => {
+				if (h.deps.boomBus) throw new Error("boom: bus activate");
+				depEvents.push("bus:activate");
+			},
 			retry: () => {
 				depEvents.push("bus:retry");
 				return true;
@@ -121,7 +126,10 @@ const setupSession = (over: { prefs?: string; owner?: string; thinkingPref?: boo
 			stop: () => depEvents.push("bridge:stop"),
 		},
 		patches: {
-			applyAll: () => depEvents.push("patches:apply"),
+			applyAll: () => {
+				if (h.deps.boomPatches) throw new Error("boom: patches apply");
+				depEvents.push("patches:apply");
+			},
 			restoreAll: () => depEvents.push("patches:restore"),
 		},
 		prefsPath,
@@ -172,7 +180,12 @@ test("matrix: rpc enable — zero UiSlots writes, no presence, no patches", () =
 		assert.deepEqual(h.rec.events, []);
 		assert.deepEqual(h.deps.events, []);
 		assert.equal(h.session.isEnabled(), false);
-		assert.deepEqual(h.session.toolRowsDecisionInput(), { channelActive: false, toolRowsEnabled: true, forced: false });
+		assert.deepEqual(h.session.toolRowsDecisionInput(), { phase: "never-active", toolRowsEnabled: true, forced: false });
+		// DEC-S1 (T6, review r2 P1-1): a non-TUI shutdown must NOT pollute the
+		// phase — exportToHtml in RPC processes consumes the resolver and
+		// would otherwise render CC rows into the export for forced-prefs users.
+		h.session.shutdown(rpc);
+		assert.equal(h.session.toolRowsDecisionInput().phase, "never-active", "rpc shutdown keeps never-active");
 	} finally {
 		h.dispose();
 	}
@@ -710,6 +723,109 @@ test("N-T9 footer: native-footer mode keeps the chip (cc-footer stays mounted)",
 		const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
 		const rows = h.session.renderFooterRows(90, plain as never, true);
 		assert.ok(rows[rows.length - 1]!.includes("⚠ 1 notice · /notice"));
+	} finally {
+		h.dispose();
+	}
+});
+
+// ── Channel phase + suspicious-yield notice (spec 2026-11-03 DEC-S1/S3, review r2) ──
+
+test("phase transitions (T1–T6): setup→active, shutdown→window, disable→user-off sticky, release writes nothing", () => {
+	const h = setupSession();
+	try {
+		const phase = () => h.session.toolRowsDecisionInput().phase;
+		assert.equal(phase(), "never-active", "initial");
+		// Acceptance P2-2: from the initial state, a non-TUI ctx must leave
+		// the phase untouched by either entry (shutdown/disable).
+		const rpc0 = makeSlots("rpc", h.rec);
+		h.session.shutdown(rpc0);
+		h.session.disable(rpc0);
+		assert.equal(phase(), "never-active", "rpc shutdown/disable from initial keeps never-active");
+		h.session.enable(h.slots);
+		assert.equal(phase(), "active", "setup → active");
+		h.session.shutdown(h.slots);
+		assert.equal(phase(), "window", "TUI shutdown → window (rebind window)");
+		// Consecutive switches stay in window.
+		h.session.shutdown(h.slots);
+		assert.equal(phase(), "window", "shutdown → shutdown stays window");
+		h.session.enable(h.slots);
+		assert.equal(phase(), "active", "rebind setup → active");
+		h.session.disable(h.slots);
+		assert.equal(phase(), "user-off", "disable → user-off");
+		// P2-2 ruling (c): a session switch while user-off keeps user-off —
+		// off is sticky until the next setup; no notice flag is raised either.
+		h.session.shutdown(h.slots);
+		assert.equal(phase(), "user-off", "shutdown does not migrate user-off");
+		// RPC ctx must not touch the phase from any state.
+		const rpc = makeSlots("rpc", h.rec);
+		h.session.shutdown(rpc);
+		assert.equal(phase(), "user-off", "rpc shutdown keeps phase (guard)");
+		// Acceptance P2-2: disable on an rpc ctx must not touch the phase
+		// either (symmetric guard, unreachable via production wiring).
+		h.session.disable(rpc);
+		assert.equal(phase(), "user-off", "rpc disable keeps phase (guard)");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("suspicious-yield notice: flagged in window, delivered once at next setup, not on user-off", () => {
+	const h = setupSession(); // prefs absent ⇒ auto (forced=false)
+	try {
+		h.session.enable(h.slots);
+		// Simulate the switch window: shutdown flips to window; the resolver's
+		// yield path flags it (entry wiring tested separately; here we call it).
+		h.session.shutdown(h.slots);
+		h.session.flagSuspiciousYield();
+		// While still in the window, nothing is delivered (ui slots released).
+		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 0);
+		h.session.enable(h.slots); // rebind setup consumes the flag
+		const notes = h.rec.notified.filter((n) => n.msg.includes("skipped during session switch"));
+		assert.equal(notes.length, 1, "delivered exactly once at setup");
+		assert.equal(notes[0]!.level, "info");
+		// Per-process-once: a second window + flag does not notify again.
+		h.session.shutdown(h.slots);
+		h.session.flagSuspiciousYield();
+		h.session.enable(h.slots);
+		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 1, "per-process-once");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("enable rollback (T5a): phase set to active inside setup is restored to never-active (non-vacuous pin)", () => {
+	// boomPatches throws AFTER channelPhase="active" (setup order: … →
+	// phase=active → bridge slot (swallows) → patches.applyAll, a direct
+	// call) — the rollback write in the catch is the only thing that can
+	// bring the phase back; deleting it makes this test red.
+	const h = setupSession({ boomPatches: true });
+	try {
+		h.session.enable(h.slots); // enable contains the failure — no rethrow
+		assert.ok(!h.deps.events.includes("patches:apply"), "patches boom fired before its event");
+		// (bus:close IS owed here: the bus slot registered before the boom.)
+		assert.equal(h.session.toolRowsDecisionInput().phase, "never-active", "rollback restored never-active");
+		h.deps.boomPatches = false;
+		h.session.enable(h.slots);
+		assert.equal(h.session.toolRowsDecisionInput().phase, "active", "re-enable after fix");
+	} finally {
+		h.dispose();
+	}
+});
+
+test("enable rollback (T5b): a stray flag pending before the consumer is dropped", () => {
+	// boomBus throws BEFORE phase=active and before the flag consumer, so a
+	// flag raised in the previous switch window is still pending at rollback —
+	// the catch must drop it, or the next successful enable would fire a
+	// context-misplaced notice.
+	const h = setupSession({ boomBus: true });
+	try {
+		h.session.flagSuspiciousYield();
+		h.session.enable(h.slots); // contained failure → rollback
+		h.deps.boomBus = false;
+		h.rec.notified.length = 0;
+		h.session.enable(h.slots);
+		assert.equal(h.session.toolRowsDecisionInput().phase, "active");
+		assert.equal(h.rec.notified.filter((n) => n.msg.includes("skipped during session switch")).length, 0, "stray flag dropped on rollback");
 	} finally {
 		h.dispose();
 	}

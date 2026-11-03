@@ -31,7 +31,7 @@
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-import { BUILTIN_SEVEN } from "./takeover-rules.ts";
+import { BUILTIN_SEVEN, type ChannelPhase } from "./takeover-rules.ts";
 import { thinkingToggleHint } from "./cc-rows.ts";
 import { buildStatusRightGroup, permissionModeLabel, pinnedRightLayout, statusRowLayout, stripDuplicateStats } from "./cc-status-line.ts";
 import type { PmStatus } from "./pm-capability.ts";
@@ -169,7 +169,11 @@ export class ReplicaSession {
 	// ── the mutable state fields (write rights live HERE; the entry keeps none) ──
 	private sessionState: SessionState = "inactive";
 	private enabled = false;
-	private channelActive = false;
+	private channelPhase: ChannelPhase = "never-active";
+	// DEC-S3 (spec 2026-11-03): auto 态在切换窗口让路的指纹标志 —— 仅 window
+	// 相位置位，下一次 setup() 补打一条 info notice（per-process-once）。
+	private suspiciousYieldFlag = false;
+	private suspiciousYieldNotified = false;
 	private toolRowsPref: boolean | undefined;
 	private statusLinePrefs: StatusLinePrefs;
 	private toolRowsEnabled = true;
@@ -235,8 +239,13 @@ export class ReplicaSession {
 
 	// ── read-only projections (resolver / commands / tests) ───────────────
 
-	toolRowsDecisionInput(): { channelActive: boolean; toolRowsEnabled: boolean; forced: boolean } {
-		return { channelActive: this.channelActive, toolRowsEnabled: this.toolRowsEnabled, forced: this.toolRowsPref === true };
+	toolRowsDecisionInput(): { phase: ChannelPhase; toolRowsEnabled: boolean; forced: boolean } {
+		return { phase: this.channelPhase, toolRowsEnabled: this.toolRowsEnabled, forced: this.toolRowsPref === true };
+	}
+
+	/** resolver 在让路（plan===undefined）且 phase==="window" 时调用；只置标志，永不抛（DEC-S3）。 */
+	flagSuspiciousYield(): void {
+		this.suspiciousYieldFlag = true;
 	}
 
 	isEnabled(): boolean {
@@ -282,6 +291,10 @@ export class ReplicaSession {
 			// not be invisible.
 			const reason = (error as Error | null | undefined)?.message ?? String(error);
 			console.warn(`[claude-tui] enable failed and rolled back: ${reason}`);
+			// DEC-S1 (T5): rollback 后回到 never-active 并清 flag（防悬挂到后续
+			// 手动 on 时上下文错位地补打）；release 本身不写相位。
+			this.channelPhase = "never-active";
+			this.suspiciousYieldFlag = false;
 			try {
 				this.release(ui);
 			} catch {
@@ -294,6 +307,9 @@ export class ReplicaSession {
 		const ui = this.deps.uiOf(ctx);
 		this.release(ui);
 		if (ui.mode !== "tui") return;
+		// DEC-S1 (T3): 用户显式关 —— 相位置位在 mode 检查之后（非 TUI 的
+		// disable 不可达，守卫为对称防御）。
+		this.channelPhase = "user-off";
 		// UI slot restore (N2): shutdown skips this — the next session's
 		// enable re-owns the slots.
 		this.slot(ui, "working-visible", (s) => s.setWorkingVisible?.(true));
@@ -313,6 +329,10 @@ export class ReplicaSession {
 		const ui = this.deps.uiOf(ctx);
 		this.release(ui);
 		if (ui.mode !== "tui") return;
+		// DEC-S1 (T2): 会话切换 teardown → rebind 窗口；置位在 mode 检查之后
+		// （非 TUI 进程的 session_shutdown 真实可达，不得污染相位）。
+		// P2-2 拍板 c: user-off 粘滞 —— off 后切换不迁移，直到下一次 setup。
+		if (this.channelPhase === "active" || this.channelPhase === "window") this.channelPhase = "window";
 		this.slot(ui, "working-indicator", (s) => s.setWorkingIndicator());
 		this.slot(ui, "editor-component", (s) => s.setEditorComponent(undefined));
 	}
@@ -331,7 +351,17 @@ export class ReplicaSession {
 		this.headerModelLabel = formatModelLabel(model as never);
 		this.headerCwd = ui.cwd ?? process.cwd();
 		this.resolveToolRows(ui);
-		this.channelActive = true; // TUI session active (non-TUI returned above)
+		this.channelPhase = "active"; // TUI session active (non-TUI returned above)
+		// DEC-S3: 消费切换窗口的让路指纹（仅一次；rebind 窗口里 ui 已被 release
+		// 置空，只能等到这里补打）。
+		if (this.suspiciousYieldFlag && !this.suspiciousYieldNotified) {
+			this.suspiciousYieldNotified = true;
+			this.suspiciousYieldFlag = false;
+			ui.notify(
+				"CC tool rows skipped during session switch — reopen the session to re-render (/claude-tools on to prevent)",
+				"info",
+			);
+		}
 		// Presentation seam: probe → register (or re-register on late hosts).
 		this.slot(ui, "subagent-bridge", () => this.deps.bridge.start(ui.sessionId?.() ?? null));
 		this.deps.patches.applyAll(() => this.themeFg);
@@ -358,7 +388,8 @@ export class ReplicaSession {
 		// Gate re-entrant setup FIRST: generation invalidates every late
 		// callback (footer requeue, bridge handshakes) from this session.
 		this.enabled = false;
-		this.channelActive = false;
+		// DEC-S1 (spec 2026-11-03): release 不写相位 —— 置位权专属 shutdown/
+		// disable/setup（T4），防覆盖 window/user-off。
 		this.sessionState = "disposing";
 		this.sessionGeneration++;
 		if (this.footerRequeueTimer) {

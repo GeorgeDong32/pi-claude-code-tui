@@ -17,6 +17,7 @@ import {
 	FORCE_RESULT_EXEMPT,
 	isBuiltinToolName,
 	planResolverTakeover,
+	type ChannelPhase,
 } from "../extensions/lib/takeover-rules.ts";
 
 type Row = [boolean, boolean, boolean, boolean, boolean, boolean];
@@ -91,32 +92,57 @@ test("BUILTIN_SEVEN: exactly the seven migrated names; powershell deliberately e
 
 // ── planResolverTakeover (resolver channel, DEC-05/06) ──
 
-type PlanRow = [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
-// [channelActive, toolRowsEnabled, forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult]
+type PlanRow = [ChannelPhase, boolean, boolean, boolean, boolean, boolean, boolean];
+// [phase, toolRowsEnabled, forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult] — spec 2026-11-03 DEC-S1/DEC-S4
 const ALL_PLAN_BOOLS: PlanRow[] = [];
-for (const channelActive of [false, true])
+for (const phase of ["never-active", "active", "window", "user-off"] as ChannelPhase[])
 	for (const toolRows of [false, true])
 		for (const forced of [false, true])
 			for (const isMcp of [false, true])
 				for (const isBuiltin of [false, true])
 					for (const hasOrigCall of [false, true])
 						for (const hasOrigResult of [false, true])
-							ALL_PLAN_BOOLS.push([channelActive, toolRows, forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult]);
+							ALL_PLAN_BOOLS.push([phase, toolRows, forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult]);
 
 const p = (r: PlanRow, toolName = "zz_third") =>
 	planResolverTakeover({
-		channelActive: r[0], toolRowsEnabled: r[1], forced: r[2], isMcp: r[3], isBuiltin: r[4],
+		phase: r[0], toolRowsEnabled: r[1], forced: r[2], isMcp: r[3], isBuiltin: r[4],
 		hasOrigCall: r[5], hasOrigResult: r[6], toolName,
 	});
 
-test("channel gates: any off ⇒ undefined (resolver must return next() verbatim)", () => {
-	for (const r of ALL_PLAN_BOOLS.filter((x) => !x[0] || !x[1])) {
+// Pin the matrix size (acceptance P3-1): a silent dimension add/remove must
+// fail here instead of quietly changing coverage.
+assert.equal(ALL_PLAN_BOOLS.length, 256, "4 phases × 2^6 = 256 rows");
+
+test("gates (DEC-S1): rows off / user-off / never-active / window-without-force ⇒ undefined (resolver returns next() verbatim)", () => {
+	for (const r of ALL_PLAN_BOOLS.filter((x) => !x[1] || x[0] === "never-active" || x[0] === "user-off" || (x[0] === "window" && !x[2]))) {
 		assert.equal(p(r), undefined, JSON.stringify(r));
 	}
+	// Regression pins (spec 2026-11-03, review r1 P1-1): forced must NOT
+	// rescue user-off (keeps /claude-tui off semantics) nor never-active
+	// (keeps RPC exportToHtml stock).
+	assert.equal(p(["user-off", true, true, false, true, true, true]), undefined);
+	assert.equal(p(["never-active", true, true, true, false, true, true]), undefined);
+});
+
+test("window phase (DEC-S1): forced immune — /resume renderBeforeBind renders CC", () => {
+	// The fix's target scenario: switch teardown → replay construction with
+	// forced prefs. Slots track the same matrix as active.
+	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] === "window" && x[1] && x[2])) {
+		const plan = p(r)!;
+		const [, , forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult] = r;
+		const wantCall = d([true, true, forced, isMcp, isBuiltin, hasOrigCall], "call");
+		const wantResult = d([true, true, forced, isMcp, isBuiltin, hasOrigResult], "result");
+		assert.equal(plan.call, wantCall, JSON.stringify(r));
+		assert.equal(plan.result, wantResult, JSON.stringify(r));
+	}
+	assert.deepEqual(p(["window", true, true, false, true, true, true]), { call: "cc", result: "cc", shell: "self" }, "builtin seven in window+forced");
+	assert.deepEqual(p(["window", true, true, true, false, true, true]), { call: "cc", result: "cc", shell: "self" }, "MCP in window+forced");
+	assert.deepEqual(p(["window", true, true, false, false, false, false]), { call: "cc", result: "cc", shell: "self" }, "renderer-less third-party in window+forced (Q4: same as active)");
 });
 
 test("plan call/result slots: track the matrix per slot (builtin ours, MCP ours, yield/force/vacancy per slot)", () => {
-	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] && x[1])) {
+	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] === "active" && x[1])) {
 		const plan = p(r)!;
 		const [, , forced, isMcp, isBuiltin, hasOrigCall, hasOrigResult] = r;
 		const wantCall = d([true, true, forced, isMcp, isBuiltin, hasOrigCall], "call");
@@ -127,7 +153,7 @@ test("plan call/result slots: track the matrix per slot (builtin ours, MCP ours,
 });
 
 test("DEC-05 shell: call=cc ⇒ self; call=orig ⇒ self for non-builtin (P1-1 yield-path flat shell), builtin+orig unreachable", () => {
-	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] && x[1])) {
+	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] === "active" && x[1])) {
 		const plan = p(r)!;
 		const wantShell = plan.call === "cc" || !r[4] ? "self" : "orig";
 		assert.equal(plan.shell, wantShell, JSON.stringify(r));
@@ -135,33 +161,36 @@ test("DEC-05 shell: call=cc ⇒ self; call=orig ⇒ self for non-builtin (P1-1 y
 		// yields call+result in auto mode still gets the flat container —
 		// exactly today's prototype-patch shell behavior.
 	}
-	const yieldRow: PlanRow = [true, true, false, false, false, true, true];
+	const yieldRow: PlanRow = ["active", true, false, false, false, true, true];
 	assert.deepEqual(p(yieldRow), { call: "orig", result: "orig", shell: "self" }, "P1-1: yield path keeps flat shell");
-	const builtinRow: PlanRow = [true, true, false, false, true, true, true];
+	const builtinRow: PlanRow = ["active", true, false, false, true, true, true];
 	assert.deepEqual(p(builtinRow), { call: "cc", result: "cc", shell: "self" }, "builtin seven taken over in auto");
-	const mcpRow: PlanRow = [true, true, false, true, false, true, true];
+	const mcpRow: PlanRow = ["active", true, false, true, false, true, true];
 	assert.deepEqual(p(mcpRow), { call: "cc", result: "cc", shell: "self" }, "MCP always taken over");
-	const vacantRow: PlanRow = [true, true, false, false, false, false, false];
+	const vacantRow: PlanRow = ["active", true, false, false, false, false, false];
 	assert.deepEqual(p(vacantRow), { call: "cc", result: "cc", shell: "self" }, "renderer-less third-party taken over");
 });
 
-test("plan exempt tools: forced result yields for the subagent live card, call stays ours", () => {
+test("plan exempt tools: forced result yields for the subagent live card, call stays ours (exempt survives the window phase)", () => {
 	for (const name of FORCE_RESULT_EXEMPT) {
-		const r: PlanRow = [true, true, true, false, false, true, true];
+		const r: PlanRow = ["active", true, true, false, false, true, true];
 		assert.deepEqual(p(r, name), { call: "cc", result: "orig", shell: "self" }, name);
+		// DEC-S4: the exemption must not be lost in the switch window either.
+		const w: PlanRow = ["window", true, true, false, false, true, true];
+		assert.deepEqual(p(w, name), { call: "cc", result: "orig", shell: "self" }, `window ${name}`);
 	}
 });
 
 test("obs_recall unified into the CC result slot (user direction): force mode takes call and result", () => {
-	const r: PlanRow = [true, true, true, false, false, true, true];
+	const r: PlanRow = ["active", true, true, false, false, true, true];
 	assert.deepEqual(p(r, "obs_recall"), { call: "cc", result: "cc", shell: "self" });
 });
 
-test("plan channel gates lose to nothing: rows on + channel active always yields a plan (definition guaranteed)", () => {
+test("plan channel gates lose to nothing: rows on + active (or window+forced) always yields a plan (definition guaranteed)", () => {
 	// With the channel open a plan always exists — the resolver then returns
 	// a merged object, so the component always has a definition (Δ4b
 	// unregistered-tool coverage rides on this).
-	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] && x[1])) {
+	for (const r of ALL_PLAN_BOOLS.filter((x) => x[0] === "active" && x[1])) {
 		assert.notEqual(p(r), undefined, JSON.stringify(r));
 	}
 });
@@ -179,7 +208,7 @@ test("R-T5: direct-named (env-listed) is MCP for takeover; proxy stays third-par
 	try {
 		process.env.PI_CORE_MCP_DIRECT_SERVERS = "exa";
 		const direct = planResolverTakeover({
-			channelActive: true, toolRowsEnabled: true, forced: false,
+			phase: "active", toolRowsEnabled: true, forced: false,
 			isMcp: mcpDisplayName("exa_search") !== null,
 			isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "exa_search",
 		});
@@ -191,7 +220,7 @@ test("R-T5: direct-named (env-listed) is MCP for takeover; proxy stays third-par
 	// Proxy without args: NOT MCP for the resolver — auto yields to an
 	// existing renderer (never grab a proxied tool that may own its UI).
 	const proxyAuto = planResolverTakeover({
-		channelActive: true, toolRowsEnabled: true, forced: false,
+		phase: "active", toolRowsEnabled: true, forced: false,
 		isMcp: mcpDisplayName("mcp") !== null,
 		isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "mcp",
 	});
@@ -202,7 +231,7 @@ test("R-T5: direct-named (env-listed) is MCP for takeover; proxy stays third-par
 	);
 	// ... but with no renderer of its own it still renders CC (no-victim rule).
 	const proxyNoRenderer = planResolverTakeover({
-		channelActive: true, toolRowsEnabled: true, forced: false,
+		phase: "active", toolRowsEnabled: true, forced: false,
 		isMcp: mcpDisplayName("mcp") !== null,
 		isBuiltin: false, hasOrigCall: false, hasOrigResult: false, toolName: "mcp",
 	});
@@ -210,7 +239,7 @@ test("R-T5: direct-named (env-listed) is MCP for takeover; proxy stays third-par
 	// Force mode takes the proxy over like any third-party tool (the badge
 	// formats from args inside renderCall).
 	const proxyForced = planResolverTakeover({
-		channelActive: true, toolRowsEnabled: true, forced: true,
+		phase: "active", toolRowsEnabled: true, forced: true,
 		isMcp: mcpDisplayName("mcp") !== null,
 		isBuiltin: false, hasOrigCall: true, hasOrigResult: true, toolName: "mcp",
 	});
