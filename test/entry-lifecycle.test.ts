@@ -203,6 +203,7 @@ const setup = (mode: "tui" | "rpc" = "tui", branch: unknown[] = []): Harness => 
 			// prototype patches and presence keys are process-global even
 			// though each harness builds a fresh factory closure.
 			void pi.fire("session_shutdown", ctx).catch(() => {});
+			delete (globalThis as Record<symbol, unknown>)[Symbol.for("pi-cc-tui.channelPhase")];
 			bus.cleanup();
 			rmSync(agentDir, { recursive: true, force: true });
 		},

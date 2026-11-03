@@ -5,6 +5,7 @@
 ### Fixed (resume tool rows regression — channel phase)
 - **修复进程内会话切换（/resume、/fork、import）后历史工具行回退 pi 原生渲染**（spec specs/design/2026-11-03-resume-toolrows-native-spec.md，双轮对抗评审）：根因是 pi 的 rebind `renderBeforeBind` 先渲染历史后绑扩展，而旧闸门 `!channelActive → 整体让路` 在该窗口误触发且组件永不重建；`channelActive` 布尔升级为四态相位（never-active/active/window/user-off，判别缝 = shutdown vs disable），仅 window 相位对 forced 免疫——prefs `toolRows=true` 用户切换后历史行保持 `⏺/⎿` CC 形态；user-off 与 never-active 无条件让路（保 `/claude-tui off` 语义与 RPC exportToHtml 原生导出，评审钉住的两个回归锚）。
 - **auto 态有声降级（DEC-S3）**：切换窗口 auto 让路时下一次 session_start 补打一条 info notice（per-process-once；`CC tool rows skipped during session switch — reopen the session to re-render (/claude-tools on to prevent)`）；决策矩阵按相位全枚举（256 行）+ 相位迁移/flag 生命周期直测。
+- **相位跨实例存续（spec 附录 T7）**：人工验证发现 pi 在进程内切换时**重新执行 loadExtension**（entry factory 与 ReplicaSession 重建，历史渲染恰落在新实例构造与 session_start 之间）——相位镜像到进程级快照（`Symbol.for` 挂 globalThis），新实例构造继承旧实例终态，切换后 forced 用户的历史行才真正稳定 CC。
 
 ### Changed (statusline in-process rendering — perf plan SP1-SP3)
 - **默认状态栏进程内化（spec docs/STATUSLINE-PERF-PLAN.md）**：`/claude-statusline on`（未设自定义命令时）不再为每次刷新 spawn `bash+jq+git` 子进程链（p95 ~50ms）——同一 JSON 直接喂 SP1 纯函数渲染器（p95 ≈0.005ms，四舍级提升），字节级与脚本一致（三方 parity 金测：TS 渲染器 / 内嵌脚本 / .sh 逐字节互证，含 cost/tok 边界、gitless/detached/worktree fixture、右到左宽度裁剪、CJK 字符宽度）。
